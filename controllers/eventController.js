@@ -1,0 +1,508 @@
+import EventService from '../services/eventService.js';
+import { encrypt,decrypt,generateKey } from '../helpers/encryption.js';
+import { verifySignature,calculateDataHash } from '../helpers/signedData.js';
+import colors from "colors";
+
+class EventController {
+  async verifyTickets(req, res) {
+    try {
+      const userId = req.params.id;
+      const resultCode = await EventService.verifyUserTickets(userId);
+
+      if (resultCode) {
+        return res.status(200).json({ response_code: resultCode });
+      } else {
+        return res.status(404).json({ message: 'Usuario no encontrado' });
+      }
+    } catch (error) {
+      console.error('Error al verificar los tickets del usuario:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async getTickets(req, res) {
+
+    try {
+      console.log("TICKETS USER - FROM IP: ".blue,req.clientIp.green);
+      const {b7Yx9Q,v8Lw2Z} = req.body;
+
+      const userId = decrypt(v8Lw2Z,b7Yx9Q);    
+      console.log('USER:'.blue,userId.yellow);
+
+      const result = await EventService.getTickets(userId);
+
+      if (result) {
+        const o9RnDQ = generateKey();
+        const Pm5dJk = encrypt(String(result.userTicket.tickets),o9RnDQ);
+        const rTcc53 = encrypt(String(result.userTicketOro.tickets),o9RnDQ);
+
+        return res.status(200).json({o9RnDQ,Pm5dJk,rTcc53});
+      } else {
+        return res.status(404).json({ message: 'Usuario no encontrado' });
+      }
+    } catch (error) {
+      console.error('Error al obtener la cantidad de tickets:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+
+ /* async getTicketsEvents(req, res) {
+
+    try {
+      console.log("TICKETS EVENT USER - FROM IP: ".blue,req.clientIp.green);
+      const {b7Yx9Q,v8Lw2Z,IODLas} = req.body;
+
+      const userId = decrypt(v8Lw2Z,b7Yx9Q);
+      const event = Number(decrypt(IODLas,b7Yx9Q));
+      console.log('USER:'.blue,userId.yellow);
+
+      const result = await EventService.getTicketsEvents(userId,event);
+
+      if (result) {
+        const o9RnDQ = generateKey();
+        const Pm5dJk = encrypt(String(result.tickets),o9RnDQ);
+
+        return res.status(200).json({o9RnDQ,Pm5dJk});
+      } else {
+        return res.status(404).json({ message: 'Usuario no encontrado' });
+      }
+    } catch (error) {
+      console.error('Error al obtener la cantidad de tickets:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }*/
+
+  async getSlots(req, res) {
+
+    try {
+      console.log("SLOTS USER - FROM IP: ".blue,req.clientIp.green);
+      const {b7Yx9Q,v8Lw2Z} = req.body;
+
+      const userId = decrypt(v8Lw2Z,b7Yx9Q);    
+      console.log('USER:'.blue,userId.yellow);
+
+      const result = await EventService.getSlots(userId);
+
+      if (result) {
+        const PPIFmi = generateKey();
+        const SSIDm8 = encrypt(String(90-result.dataValues.slots),PPIFmi);
+
+        return res.status(200).json({PPIFmi,SSIDm8});
+      } else {
+        return res.status(404).json({ message: 'Usuario no encontrado' });
+      }
+    } catch (error) {
+      console.error('Error al obtener la cantidad de tickets:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async redeemTicketAndReward(req, res) {
+    try {
+
+      console.log("REDEEM PRIZES - FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
+
+      //const signature = K2tFvE;
+
+      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
+      
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(W4aRzY);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === j1xYbZ;
+
+      const { TuVjKl,EeF789,GhIjKl,qF7z2N,f4rDnT,BSSIMO,LLODKF,FLGMDN,MTORLD } = W4aRzY;
+
+      //console.log("DATA:",W4aRzY);
+      //console.log(signature);
+      //console.log("VER:",ver);
+      console.log("HASH:",isDataIntegrityValid);
+
+      const key = TuVjKl;
+      const key2 = decrypt(qF7z2N,key);
+
+      const type = Number(decrypt(f4rDnT,key)); //tipo de evento
+
+      const id = decrypt(EeF789,key);
+      const id2 = decrypt(decrypt(GhIjKl,key),key);
+
+      const token = decrypt(LLODKF,key);
+
+      const tknGame = decrypt(MTORLD,key);
+
+      const opcion = Number(decrypt(FLGMDN,key));
+
+      const modalidad = Number(decrypt(BSSIMO,key)); //segun el evento, es 0 si no hay modalidad
+
+      const paramsString = `${EeF789}-${GhIjKl}-${TuVjKl}-${qF7z2N}-${f4rDnT}-${BSSIMO}-${LLODKF}-${FLGMDN}-${MTORLD}`;
+
+      const result = await EventService.redeemTicketAndReward(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async redeemAllPrizesEvent(req, res) {
+    try {
+
+      console.log("REDEEM PRIZES EVENT - FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
+
+      //const signature = K2tFvE;
+
+      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
+      
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(W4aRzY);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === j1xYbZ;
+
+      const { TuVjKl,AMSKDS,PoRmNo,EeF789,GhIjKl } = W4aRzY;
+
+      //console.log("DATA:",W4aRzY);
+      //console.log(signature);
+      //console.log("VER:",ver);
+      console.log("HASH:",isDataIntegrityValid);
+
+      const key = TuVjKl;
+      const token = decrypt(AMSKDS,key);
+      const authGame = decrypt(PoRmNo,key);
+      const user = decrypt(EeF789,key);
+      const type = Number(decrypt(GhIjKl,key));
+
+      const paramsString = `${PoRmNo}-${EeF789}-${GhIjKl}-${TuVjKl}-${AMSKDS}`;
+
+      const result = await EventService.redeemAllPrizesEvent(token,user,authGame,type,isDataIntegrityValid,paramsString, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async decreaseTickets(req, res) {
+    try {
+
+      console.log("DECREASE TICKETS- FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
+
+      //const signature = K2tFvE;
+
+      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
+      
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(W4aRzY);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === j1xYbZ;
+
+      const { MOLjPO,OPJKOU,UIODMM,TKDNS } = W4aRzY;
+
+      //console.log("DATA:",W4aRzY);
+      //console.log(signature);
+      //console.log("VER:",ver);
+      console.log("HASH:",isDataIntegrityValid);
+
+      const key = MOLjPO;
+      const user = decrypt(OPJKOU,key);
+      const type = decrypt(UIODMM,key);
+      const token = decrypt(TKDNS,key);
+
+      const paramsString = `${MOLjPO}-${OPJKOU}-${UIODMM}-${TKDNS}`;
+
+      const result = await EventService.decreaseTickets(token,type,user,isDataIntegrityValid,paramsString, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async setPartida(req, res) {
+    try {
+
+      console.log("SET MATCCH- FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
+
+      //const signature = K2tFvE;
+
+      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
+      
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(W4aRzY);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === j1xYbZ;
+
+      const { MOLjPO,OPJKOU,OLPOKK,MKUID,OIDOL,MKLOIJ,MTODLA } = W4aRzY;
+
+      //console.log("DATA:",W4aRzY);
+      //console.log(signature);
+      //console.log("VER:",ver);
+      console.log("HASH:",isDataIntegrityValid);
+
+      const key = MOLjPO;
+      const user = decrypt(OPJKOU,key);
+      const token = decrypt(OLPOKK,key);
+      const estado = Number(decrypt(MKUID,key));// 0 borrar, 1 insertar, 2 buscar
+      const type = Number(decrypt(MKLOIJ,key));
+      const authGame = decrypt(MTODLA,key)
+      const index = Number(decrypt(OIDOL,key));
+
+      const paramsString = `${MOLjPO}-${OPJKOU}-${OLPOKK}-${MKUID}-${MKLOIJ}-${OIDOL}-${MTODLA}`;
+
+      const result = await EventService.setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async redeemCupon(req, res) {
+    try {
+
+      console.log("REDEEM CUPON - FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { TEMDLa,/*K2tFvE,T7hLpW,*/TIIDsK } = req.body;
+
+      //const signature = K2tFvE;
+
+      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
+      
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(TEMDLa);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === TIIDsK;
+
+      const { KIddmL,USIDA4,GMTDDs,IODKSD } = TEMDLa;
+
+      //console.log("DATA:",W4aRzY);
+      //console.log(signature);
+      //console.log("VER:",ver);
+      console.log("HASH:",isDataIntegrityValid);
+
+      const key = KIddmL;
+      const user = decrypt(USIDA4,key);
+      const token = decrypt(IODKSD,key);
+      const cupon = decrypt(GMTDDs,key);
+
+      const paramsString = `${KIddmL}-${USIDA4}-${GMTDDs}-${IODKSD}`;
+
+      const result = await EventService.redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async buyTickets(req, res) {
+    try {
+
+      console.log("BUY TICKETS - FROM IP: ".blue,req.clientIp.green);
+
+      const { y6uGvQ, I3eSkR } = req.body;
+
+      // Calcula un resumen de los datos recibidos
+      const receivedDataHash = calculateDataHash(y6uGvQ);
+      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
+      const isDataIntegrityValid = receivedDataHash === I3eSkR;
+
+      console.log("HASH:",isDataIntegrityValid);
+
+      const { qF7z2N, W4aRzY, j1xYbZ ,CCIOMD,TKDNS } = y6uGvQ;
+
+      const key = j1xYbZ;
+
+      const ticketCount = Number(decrypt(W4aRzY,key));
+
+      const userId = decrypt(qF7z2N,key);
+
+      const paramsString = `${qF7z2N}-${W4aRzY}-${j1xYbZ}-${CCIOMD}-${TKDNS}`;
+
+      const typePay = decrypt(CCIOMD,key);
+      const token = decrypt(TKDNS,key);
+
+      //const typePay = decrypt(CCIOMD,key) === 'cash' ? 1 : (decrypt(CCIOMD,key) === 'gold' ? 2 : null);
+
+      //onsole.log(typePay);
+      //console.log(decrypt(CCIOMD,key));
+
+      //console.log(paramsString);
+
+      const result = await EventService.buyTickets(typePay,isDataIntegrityValid,paramsString,userId,ticketCount,token,req);
+  
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la compra de tickets:', error);
+      return res.status(500).json({error: 'Error interno del servidor'});
+    }
+  }  
+
+  async getAllRoulettePrizes(req, res) {
+    try {
+      const { K2tFvE, A9sCqD } = req.body;
+
+      const type = Number(decrypt(A9sCqD,K2tFvE));
+
+      const roulettePrizes = await EventService.getAllRoulettePrizes(type);
+
+      const mNoABC = generateKey();
+      const DeFgHI = encrypt(JSON.stringify(roulettePrizes),mNoABC);
+      res.status(200).json({mNoABC,DeFgHI});
+    } catch (error) {
+      console.error('Error al obtener los premios de la ruleta:', error.message);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async verifyToken(req, res) {
+    try {
+      const { IOU9jO,MIOhKK, IOJKOl } = req.body;
+
+      const user = decrypt(MIOhKK,IOU9jO);
+      const token = decrypt(IOJKOl,IOU9jO);
+
+      const result = await EventService.verifyToken(user,token);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al obtener los premios de la ruleta:', error.message);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async setAuthCountDown(req, res) {
+    try {
+
+      console.log("SET COUNTDOWN AUTH - FROM IP: ".blue,req.clientIp.green);
+
+      //enviar otro key para comparar...
+      const { token,user } = req.body;
+
+      const result = await EventService.setAuthCountDown(token,user);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la operación:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
+  }
+
+  async getPieceAndChest(req, res, next) {
+    try {
+      const { user,token } = req.body;
+
+      const dataGame = await EventService.getPieceAndChest(user,token);
+      //console.log(ranking);
+
+      if (dataGame.success || dataGame.code) {
+        return res.status(200).json(dataGame);
+      } else {
+        return res.status(400).json(dataGame);
+      }
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async obtenerNuevaPieza(req, res, next) {
+    try {
+      const { user,token } = req.body;
+
+      const dataGame = await EventService.obtenerNuevaPieza(user,token);
+      //console.log(ranking);
+
+      if (dataGame.success || dataGame.code) {
+        return res.status(200).json(dataGame);
+      } else {
+        return res.status(400).json(dataGame);
+      }
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async obtenerCofre(req, res, next) {
+    try {
+      const { user,token } = req.body;
+
+      const dataGame = await EventService.obtenerCofre(user,token);
+      //console.log(ranking);
+
+      if (dataGame.success || dataGame.code) {
+        return res.status(200).json(dataGame);
+      } else {
+        return res.status(400).json(dataGame);
+      }
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async obtenerTodos(req, res, next) {
+    try {
+      const eventos = await EventService.obtenerTodos();
+      //console.log(ranking);
+
+      return res.status(200).json(eventos);
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+}
+
+export default new EventController();

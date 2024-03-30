@@ -1,0 +1,8 @@
+# Dependency directories
+node_modules/
+
+# Test Develop
+app.js
+config/
+.env
+app.exe
