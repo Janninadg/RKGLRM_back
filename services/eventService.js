@@ -4,7 +4,7 @@ import UserGameInfo from '../models/userGameInfoModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
 import TempPrize from '../models/tempPrizes.js'
 import TrackingPacket from '../models/trackingPacketModel.js';
-import RoulettePrize from '../models/roulettePrizesModel.js';
+import PrizesGame from '../models/prizesGamesModel.js';
 import { Sequelize, useInflection } from 'sequelize';
 import sequelize from '../config/database.js';
 import { verifyPacketAndBan } from '../utils/securityUtils.js';
@@ -21,7 +21,7 @@ import TempPumpkins from '../models/tempPumpkinsModel.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
 import UserPoisons from '../models/userPoisonsModel.js';
-import CountdownAuth from '../models/countdownAuthModel.js';
+import GameAuth from '../models/gameAuthModel.js';
 import { generateRandomToken } from '../utils/authUtils.js';
 import PumpkinsAuth from '../models/calabazasAuthModel.js';
 import HotslotAuth from '../models/hotSlotAuthModel.js';
@@ -408,7 +408,7 @@ class EventService {
                   do {
       
                     const newItem = {
-                      id: dataPr[i].idRoulette,
+                      id: dataPr[i].orderPrize,
                       name: dataPr[i].name,
                       url: dataPr[i].url,
                       prob: dataPr[i].probability,
@@ -1019,7 +1019,7 @@ class EventService {
       const verifyPacketEqual = (isDataIntegrityValid) && (userId === user2) && (key1 === key2);
       /*console.log(userId);
       console.log(user2);
-      console.log(idRoulette);
+      console.log(orderPrize);
       console.log(idRoulette2);*/
       console.log("Redeem validate:", verifyPacketEqual);
       const banInfo = await verifyPacketAndBan(userId, user2, paramsString, verifyPacketEqual, t, req);
@@ -1066,13 +1066,13 @@ class EventService {
       }*/
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      const allPrizes = await RoulettePrize.findAll({
-        attributes: ['type', 'prize', 'name', 'probability'],
+      const allPrizes = await PrizesGame.findAll({
+        attributes: ['type', 'prize', 'name', 'probability','limite','users'],
         where: {
-          //idRoulette: idRoulette,
+          //orderPrize: orderPrize,
           type_game: type,
         },
-        order: [['idRoulette', 'ASC']],
+        order: [['orderPrize', 'ASC']],
         transaction: t, // Asociar la transacción con esta consulta
       });
   
@@ -1097,23 +1097,46 @@ class EventService {
         }
       }
 
-      const roulettePrize = allPrizes[selectedItem];
-      //console.log(roulettePrize);
+      const prizesGame = allPrizes[selectedItem];
+      //console.log(prizesGame);
 
-      var typePrize = roulettePrize.type;
+      var typePrize = prizesGame.type;
       var cofres; //solo para juego 5 y 6
+
+      // Verificar token (todos los juegos sin partida):
+      const tokenCount = await GameAuth.findOne({
+        attributes: ['token'],
+        where: {
+          token: tknGame,
+          user: userId,
+          type_game: type,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!tokenCount){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '301', message: 'Has abierto el juego en otra pestaña...' };
+      }
 
       //Acciones segun tipo de evento, Ruleta 0, Count 1, etc...
       switch (type) {
         //Ruleta
         case 0:
           var userTickets;
-          var slotsAvaible;
+          //var slotsAvaible;
           var typename;
           //Acciones según modalidad:
           switch (modalidad) {
             //Cash
             case 1:
+              // Verificar si el premio excedio el limite :( :
+
+              if(prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite){
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '400', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a girar la ruleta para obtener un premio :)`};
+              }
+
               typename = 'cash';
 
               userTickets = await Ticket.findOne({
@@ -1133,14 +1156,14 @@ class EventService {
                 transaction: t, // Asociar la transacción con esta operación
               });
 
-              slotsAvaible = true;
+              //slotsAvaible = true;
 
               break;
             //Oro
             case 2:
               typename = 'oro';
 
-              if(roulettePrize.type == 0){
+              if(prizesGame.type == 0){
                 typePrize = 5;
               }
 
@@ -1197,7 +1220,7 @@ class EventService {
               break;
           }
           
-          if (!userTickets || userTickets.tickets < 1 || !slotsAvaible) {
+          if (!userTickets || userTickets.tickets < 1) {
             await t.rollback(); // Revertir la transacción en caso de error
             if(!userTickets || userTickets.tickets < 1){
               return { success: false, code: '001', message:`No tiene tickets de ${typename} suficientes para girar la ruleta` };
@@ -1209,21 +1232,6 @@ class EventService {
           break;
         //Countdown
         case 1:
-
-          // Verificar token:
-          const tokenCount = await CountdownAuth.findOne({
-            attributes: ['token'],
-            where: {
-              token: tknGame,
-              user: userId,
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
-
-          if(!tokenCount){
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '301', message: 'Has abierto el CountDown en otra pestaña...' };
-          }
 
           //modalidad:
 
@@ -1269,7 +1277,7 @@ class EventService {
 
             if(timedif < veriTime){
               await t.rollback(); 
-              return { success: false, code: '001', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos (o 2 minutos si presionas en Adelantar) ¡Evita ser sancionado!' };
+              return { success: false, code: '001', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos ¡Evita ser sancionado!' };
             }
           }
 
@@ -1384,7 +1392,7 @@ class EventService {
           // Agregar el premio a PendingPresents usando el ID de usuario obtenido
           await PendingPresents.create(
             {
-              present_id: roulettePrize.prize,
+              present_id: prizesGame.prize,
               user_id: userGameInfo.id, // Usar el ID de usuario obtenido
               added_time: new Date(),
             },
@@ -1392,13 +1400,57 @@ class EventService {
               transaction: t, // Asociar la transacción con esta operación
             }
           );
+
+          //Verificar si el premio es una pocion ?
+            const itemData = await ItemInfo.findOne({
+              attributes: ['type'],
+              where: {
+                id: prizesGame.prize, // Cambia esto para usar el nombre de usuario correcto
+              },
+              //transaction: t, // Asociar la transacción con esta consulta
+            });
+        
+            // if (!itemData) {
+            //   await transaction.rollback(); // Revertir la transacción en caso de error
+            //   return { success: false, code: '402', message: 'ID de Item no encontrado' };
+            // }
+
+            if(itemData.type === 12){
+              //Insertar en tabla poisions :)
+              //Verificar si el usuario ya tiene esa pocion:
+              const userPocion = await UserPoisons.findOne({
+                where: {
+                  idpocion: prizesGame.prize, // Cambia esto para usar el nombre de usuario correcto
+                  user: userId,
+                },
+                //transaction: t, // Asociar la transacción con esta consulta
+              });
+          
+              if (!userPocion) {
+                await UserPoisons.create(
+                  {
+                    user: userId,
+                    idpocion: prizesGame.prize,
+                    cantidad: 1,
+                  },
+                  {
+                    //transaction: t, // Asociar la transacción con esta operación
+                  }
+                );
+              } else{
+                await UserPoisons.increment(
+                  'cantidad',
+                  { by: 1, where: { user: userId,idpocion: prizesGame.prize }/*, transaction: t*/ }
+                );
+              }
+            }
   
           // Insertar el premio en temp_prizes
           await TempPrize.create(
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1408,13 +1460,13 @@ class EventService {
             }
           );
 
-          message = `Has obtenido un(a) ${roulettePrize.name}`;
+          message = `Has obtenido un(a) ${prizesGame.name}`;
           break;
         case 1:
           // Actualizar el gold en UserGameInfo
           await UserGameInfo.increment(
             'gold',
-            { by: roulettePrize.prize, where: { name: userId }, transaction: t }
+            { by: prizesGame.prize, where: { name: userId }, transaction: t }
           );
   
           // Insertar el premio en temp_prizes
@@ -1422,7 +1474,7 @@ class EventService {
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1431,13 +1483,13 @@ class EventService {
               transaction: t, // Asociar la transacción con esta operación
             }
           );
-          message = `Has obtenido ${roulettePrize.prize} de Oro`;
+          message = `Has obtenido ${prizesGame.prize} de Oro`;
           break;
         case 2:
           // Actualizar el cash en Cash
           await Cash.increment(
             'cash',
-            { by: roulettePrize.prize, where: { id: userId }, transaction: t }
+            { by: prizesGame.prize, where: { id: userId }, transaction: t }
           );
   
           // Insertar el premio en temp_prizes
@@ -1445,7 +1497,7 @@ class EventService {
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1454,13 +1506,13 @@ class EventService {
               transaction: t, // Asociar la transacción con esta operación
             }
           );
-          message = `Has obtenido ${roulettePrize.prize} de Cash`;
+          message = `Has obtenido ${prizesGame.prize} de Cash`;
           break;
         case 3:
           // Actualizar el cash en Cash
           await Ticket.increment(
             'tickets',
-            { by: roulettePrize.prize, where: { id: userId }, transaction: t }
+            { by: prizesGame.prize, where: { id: userId }, transaction: t }
           );
   
           // Insertar el premio en temp_prizes
@@ -1468,7 +1520,7 @@ class EventService {
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1477,13 +1529,13 @@ class EventService {
               transaction: t, // Asociar la transacción con esta operación
             }
           );
-          message = `Has obtenido ${roulettePrize.prize} ticket(s) de cash`;
+          message = `Has obtenido ${prizesGame.prize} ticket(s) de cash`;
           break;
         case 4:
             // Actualizar el cash en Cash
             await TicketOro.increment(
               'tickets',
-              { by: roulettePrize.prize, where: { id: userId }, transaction: t }
+              { by: prizesGame.prize, where: { id: userId }, transaction: t }
             );
     
             // Insertar el premio en temp_prizes
@@ -1491,7 +1543,7 @@ class EventService {
               {
                 user: userId,
                 type: typePrize,
-                prize: roulettePrize.prize,
+                prize: prizesGame.prize,
                 game: type,
                 opcion: opcion,
                 fecha: new Date(),
@@ -1500,7 +1552,7 @@ class EventService {
                 transaction: t, // Asociar la transacción con esta operación
               }
             );
-            message = `Has obtenido ${roulettePrize.prize} ticket(s) de oro`;
+            message = `Has obtenido ${prizesGame.prize} ticket(s) de oro`;
             break;
         case 5:
           //Obtener id de usuario
@@ -1553,7 +1605,7 @@ class EventService {
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1564,7 +1616,7 @@ class EventService {
           );
 
           const limit = await calculatePowerUse(0,2);
-          const responseAmount = await getAmountItem(roulettePrize.prize,t);
+          const responseAmount = await getAmountItem(prizesGame.prize,t);
 
           if(responseAmount.success === false && responseAmount.code === '402'){
             return responseAmount;
@@ -1575,7 +1627,7 @@ class EventService {
           await UserItemInfo.create(
             {
               userid: userGame.id,
-              itemid: roulettePrize.prize,
+              itemid: prizesGame.prize,
               slot: slotFree,
               limittime: limit, //calculo como power use
               exp: responseAmount,
@@ -1585,7 +1637,7 @@ class EventService {
             }
           );
 
-          message = `Has obtenido un(a) ${roulettePrize.name} temporal (2 días)`;
+          message = `Has obtenido un(a) ${prizesGame.name} temporal (2 días)`;
           break;
         case 6:
           // Obtener el powertime de usuario desde UserGameInfo por su nombre
@@ -1602,7 +1654,7 @@ class EventService {
             return { success: false, code: '202', message: 'Usuario no encontrado' };
           }
 
-          const powertimefinal = await calculatePowerUse(userGamePower.powertime,roulettePrize.prize);
+          const powertimefinal = await calculatePowerUse(userGamePower.powertime,prizesGame.prize);
           //console.log(powertimefinal);
           await UserGameInfo.update(
             { powertime: powertimefinal}, //cambiar a codigo_base
@@ -1616,7 +1668,7 @@ class EventService {
             {
               user: userId,
               type: typePrize,
-              prize: roulettePrize.prize,
+              prize: prizesGame.prize,
               game: type,
               opcion: opcion,
               fecha: new Date(),
@@ -1626,7 +1678,7 @@ class EventService {
             }
           );
 
-          message = `Has obtenido ${roulettePrize.prize} días de Power User`;
+          message = `Has obtenido ${prizesGame.prize} días de Power User`;
           break;
         case 10:
           // Insertar un SET
@@ -1650,7 +1702,7 @@ class EventService {
           const itemsSet = await SetItem.findAll({
             attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('itemid')), 'itemid']],
             where: {
-              idset: roulettePrize.prize,
+              idset: prizesGame.prize,
             },
             raw: true,
             transaction: t,
@@ -1688,7 +1740,7 @@ class EventService {
             );
           }
 
-          message = `Has obtenido un(a) ${roulettePrize.name}`;
+          message = `Has obtenido un(a) ${prizesGame.name}`;
 
           break;
         default:
@@ -1697,20 +1749,20 @@ class EventService {
       }
   
       //const key = generateKey();
-      //const MnOpQr = encrypt(JSON.stringify(roulettePrize), key) + '-' + key;
+      //const MnOpQr = encrypt(JSON.stringify(prizesGame), key) + '-' + key;
   
      // Confirmar la transacción si todas las operaciones tienen éxito
 
       if(type === 5 || type === 6){
         // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
         //console.log('AAAAA AQUI');
-        const allPrizesFinal = await RoulettePrize.findAll({
+        const allPrizesFinal = await PrizesGame.findAll({
           attributes: ['name', 'url'],
           where: {
-            //idRoulette: idRoulette,
+            //orderPrize: orderPrize,
             type_game: type,
           },
-          order: [['idRoulette', 'ASC']],
+          order: [['orderPrize', 'ASC']],
           transaction: t, // Asociar la transacción con esta consulta
         });
 
@@ -1718,6 +1770,15 @@ class EventService {
         return { success: true, code: '000', _pw:selectedItem,allpz:allPrizesFinal,_cf:cofres, message };
       }
   
+      await LogRewardsUser.create({  
+        user:userId,
+        origen:1,
+        recompensa:prizesGame.prize,
+        tipo_recompensa: typePrize,
+        origen_2: type,
+        fecha: new Date(), 
+      }, { transaction:t });
+
       await t.commit();
       return { success: true, code: '000', _pw:selectedItem, message };
     } catch (error) {
@@ -1735,10 +1796,10 @@ class EventService {
   
       // Verificar el paquete utilizando la clase PacketVerifier
 
-      const verifyPacketEqual = (isDataIntegrityValid);// && (userId === user2) && ((idRoulette+operator) === res) && (idRoulette === idRoulette2) && (key1 === key2);
+      const verifyPacketEqual = (isDataIntegrityValid);// && (userId === user2) && ((orderPrize+operator) === res) && (orderPrize === idRoulette2) && (key1 === key2);
       /*console.log(userId);
       console.log(user2);
-      console.log(idRoulette);
+      console.log(orderPrize);
       console.log(idRoulette2);*/
       console.log("Redeem validate:", verifyPacketEqual);
       const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
@@ -1868,11 +1929,11 @@ class EventService {
       //console.log(type);
 
       for (const p of prizes) {
-        // Obtener el premio de la tabla rouletteprizes según idRoulette y tipo de evento:
-        const prizePumpkin = await RoulettePrize.findOne({
+        // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
+        const prizePumpkin = await PrizesGame.findOne({
           attributes: ['type', 'prize', 'name', 'url'],
           where: {
-            idRoulette: p,
+            orderPrize: p,
             type_game: type,
           },
           transaction: t, // Asociar la transacción con esta consulta
@@ -2419,7 +2480,7 @@ class EventService {
       }
 
       // Obtener el tipo, nombre,uri:
-      // Obtener el premio de la tabla rouletteprizes según idRoulette y tipo de evento:
+      // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
       const cuponPrize = await Cupon.findOne({
         attributes: ['type', 'id_prize', 'name_prize', 'uri','limite','users'],
         where: {
@@ -2743,14 +2804,14 @@ class EventService {
     }
   } 
 
-  async getAllRoulettePrizes(type) {
+  async getAllPrizesGames(type) {
     try {
-      const roulettePrizes = await RoulettePrize.findAll({
-        attributes: ['idRoulette','name','url','clase'],
+      const roulettePrizes = await PrizesGame.findAll({
+        attributes: ['orderPrize','name','url','clase','limite','users'],
         where: {
           type_game: type,
         },
-        order: [['idRoulette', 'ASC']],
+        order: [['orderPrize', 'ASC']],
       });
   
       // Función para calcular el nombre con el rango y tipo
@@ -2780,12 +2841,12 @@ class EventService {
 
   async getAllPrizes(type) {
     try {
-      const roulettePrizes = await RoulettePrize.findAll({
+      const roulettePrizes = await PrizesGame.findAll({
         //attributes: ['name','url'],
         where: {
           type_game: type,
         },
-        order: [['idRoulette', 'ASC']],
+        order: [['orderPrize', 'ASC']],
       });
   
       // Función para calcular el nombre con el rango y tipo
@@ -2813,7 +2874,7 @@ class EventService {
     }
   }
   
-  async setAuthCountDown(token,user) {
+  async setAuthGame(token,user,game) {
     const t = await sequelize.transaction();
     try {
      
@@ -2833,9 +2894,10 @@ class EventService {
       }
      
       //Verificar si ya existe token en tabla:
-      const countAuth = await CountdownAuth.findOne({
+      const countAuth = await GameAuth.findOne({
         where: {
           user: user, // Cambia esto para usar el nombre de usuario correcto
+          type_game:game,
         },
         transaction: t, // Asociar la transacción con esta consulta
       });
@@ -2843,30 +2905,31 @@ class EventService {
       const tokenGen = generateRandomToken();
 
       if(!countAuth){
-        await CountdownAuth.create(
+        await GameAuth.create(
           {
             user: user,
             token: tokenGen,
             date: new Date(),
+            type_game:game
           },
           {
             transaction: t, // Asociar la transacción con esta operación
           }
         );
       } else{
-        await CountdownAuth.update(
+        await GameAuth.update(
           { date: new Date(),
             token: tokenGen,
           },
           {
-              where: { user: user },
+              where: { user: user, type_game : game },
               transaction: t,
           }
       );
       }
 
       await t.commit();
-      return { success: true, code: '000',_athcd:tokenGen };
+      return { success: true, code: '000',_athg:tokenGen };
     } catch (error) {
       await t.rollback();
       console.error('Error al obtener la cantidad de tickets:', error);

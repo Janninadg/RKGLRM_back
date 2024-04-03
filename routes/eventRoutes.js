@@ -9,7 +9,7 @@ router.get('/all', EventController.obtenerTodos);
 router.get('/roulette/verfTcks/:id', EventController.verifyTickets);
 
 router.post('/reedOne', EventController.redeemTicketAndReward);
-router.post('/setPr', EventController.getAllRoulettePrizes);
+router.post('/setPr', EventController.getAllPrizesGames);
 
 router.post('/gtTGm', EventController.getTickets);
 
@@ -28,11 +28,10 @@ router.post('/reedMul', EventController.redeemAllPrizesEvent);
 router.post('/dcTck', EventController.decreaseTickets);
 router.post('/sesAct', EventController.verifyToken);
 
-router.post('/stMtch', EventController.setPartida);
+//Juegos:
 
-//CountDown:
-
-router.post('/genMch', EventController.setAuthCountDown);
+router.post('/genMch', EventController.setAuthGame); // Juegos solo con token
+router.post('/stMtch', EventController.setPartida); // Juegos que necesitan un token y partida
 
 
 //Puzzle:

@@ -380,13 +380,13 @@ class EventController {
     }
   }  
 
-  async getAllRoulettePrizes(req, res) {
+  async getAllPrizesGames(req, res) {
     try {
       const { K2tFvE, A9sCqD } = req.body;
 
       const type = Number(decrypt(A9sCqD,K2tFvE));
 
-      const roulettePrizes = await EventService.getAllRoulettePrizes(type);
+      const roulettePrizes = await EventService.getAllPrizesGames(type);
 
       const mNoABC = generateKey();
       const DeFgHI = encrypt(JSON.stringify(roulettePrizes),mNoABC);
@@ -417,15 +417,15 @@ class EventController {
     }
   }
 
-  async setAuthCountDown(req, res) {
+  async setAuthGame(req, res) {
     try {
 
-      console.log("SET COUNTDOWN AUTH - FROM IP: ".blue,req.clientIp.green);
+      console.log("SET GAME AUTH - FROM IP: ".blue,req.clientIp.green);
 
       //enviar otro key para comparar...
-      const { token,user } = req.body;
+      const { token,user,game } = req.body;
 
-      const result = await EventService.setAuthCountDown(token,user);
+      const result = await EventService.setAuthGame(token,user,game);
 
       if (result.success || result.code) {
         return res.status(200).json(result);

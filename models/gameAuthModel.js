@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 
-const CountdownAuth = sequelize.define('countdownauth', {
+const GameAuth = sequelize.define('gameauth', {
   id: {
     type: DataTypes.INTEGER(11),
     primaryKey: true,
@@ -16,13 +16,17 @@ const CountdownAuth = sequelize.define('countdownauth', {
     type: DataTypes.TEXT,
     allowNull: false
   },
+  type_game: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
   date: {
     type: DataTypes.DATE,
     allowNull: false
   }
 }, {
-  tableName: 'countdownauth',
+  tableName: 'gameauth',
   timestamps: false
 });
 
-export default CountdownAuth;
+export default GameAuth;

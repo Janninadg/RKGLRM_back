@@ -24,6 +24,16 @@ const Evento = sequelize.define('evento', {
     type: DataTypes.TEXT,
     allowNull: false
   },
+  inicio: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  fin: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null
+  },
   show: {
     type: DataTypes.TINYINT(1),
     allowNull: false,

@@ -2,14 +2,14 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js'; // Asegúrate de importar la configuración de tu base de datos
 
-// Define el modelo RoulettePrize
-const RoulettePrize = sequelize.define('rouletteprizes', {
+// Define el modelo PrizesGame
+const PrizesGame = sequelize.define('prizesgames', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true
   },
-  idRoulette: {
+  orderPrize: {
     type: DataTypes.INTEGER,
     allowNull: false
   },
@@ -44,12 +44,21 @@ const RoulettePrize = sequelize.define('rouletteprizes', {
   type_game: {
     type: DataTypes.INTEGER,
     allowNull: false
+  },
+  limite: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  users: {
+    type: DataTypes.INTEGER,
+    allowNull: false
   }
 }, {
   // Otras opciones del modelo
-  tableName: 'rouletteprizes', // Nombre de la tabla en la base de datos
+  tableName: 'prizesgames', // Nombre de la tabla en la base de datos
   timestamps: false // Si no tienes campos createdAt y updatedAt en tu tabla
 });
 
 // Exporta el modelo para su uso en otras partes de tu aplicación
-export default RoulettePrize;
+export default PrizesGame;

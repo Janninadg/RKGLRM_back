@@ -84,10 +84,10 @@ class UserService {
   
       // Verificar el paquete utilizando la clase PacketVerifier
 
-      const verifyPacketEqual = (isDataIntegrityValid);// && (userId === user2) && ((idRoulette+operator) === res) && (idRoulette === idRoulette2) && (key1 === key2);
+      const verifyPacketEqual = (isDataIntegrityValid);// && (userId === user2) && ((orderPrize+operator) === res) && (orderPrize === idRoulette2) && (key1 === key2);
       /*console.log(userId);
       console.log(user2);
-      console.log(idRoulette);
+      console.log(orderPrize);
       console.log(idRoulette2);*/
       console.log("Redeem validate:", verifyPacketEqual);
       const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
