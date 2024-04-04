@@ -446,7 +446,7 @@ class UserService {
       await UserGameInfo.create(
         {
           name: username,
-          gold:10000,
+          gold:20000,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
@@ -486,16 +486,16 @@ class UserService {
       }
       
       // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-      await PendingPresents.create(
-        {
-          present_id: 8000,
-          user_id: userGameInfo.id, // Usar el ID de usuario obtenido
-          added_time: new Date(),
-        },
-        {
-          transaction, // Asociar la transacción con esta operación
-        }
-      );
+      // await PendingPresents.create(
+      //   {
+      //     present_id: 8000,
+      //     user_id: userGameInfo.id, // Usar el ID de usuario obtenido
+      //     added_time: new Date(),
+      //   },
+      //   {
+      //     transaction, // Asociar la transacción con esta operación
+      //   }
+      // );
 
       // const presentIds = setPresentsReward(character); // Lista de present_ids que deseas insertar
       // presentIds.push(8000);
@@ -530,23 +530,23 @@ class UserService {
       await LogRewardsUser.create({  
         user:username,
         origen:0,
-        recompensa:10000,
+        recompensa:20000,
         tipo_recompensa: 1,
         fecha: new Date(), 
       }, { transaction });
 
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:8000,
-        tipo_recompensa: 0,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:8000,
+      //   tipo_recompensa: 0,
+      //   fecha: new Date(), 
+      // }, { transaction });
       //await LogRewardsUser.bulkCreate(originRecords, { transaction });
 
       await transaction.commit();
   
-      return { success: true,message:'Te has registrado correctamente ¡Obtuviste tus recompensas de bienvenida por registrarte!', code: '000' };
+      return { success: true,message:'Te has registrado correctamente ¡Has recibido 5 días de PU y 20000 de Oro de recompensas por registrarte!', code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);

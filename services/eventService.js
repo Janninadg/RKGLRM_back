@@ -1067,7 +1067,7 @@ class EventService {
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
       const allPrizes = await PrizesGame.findAll({
-        attributes: ['type', 'prize', 'name', 'probability','limite','users'],
+        attributes: ['type', 'prize', 'name','clase', 'probability','limite','users'],
         where: {
           //orderPrize: orderPrize,
           type_game: type,
@@ -1780,7 +1780,7 @@ class EventService {
       }, { transaction:t });
 
       await t.commit();
-      return { success: true, code: '000', _pw:selectedItem, message };
+      return { success: true, code: '000', _pw:selectedItem, message,_pwb:prizesGame.clase };
     } catch (error) {
       await t.rollback(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);
