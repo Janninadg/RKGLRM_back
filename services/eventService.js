@@ -1065,6 +1065,21 @@ class EventService {
         return { success: false, code: '005', message: 'Cierra todas las pestañas del COUNTDOWN ¡Cierra sesión y actualiza el navegador!' };
       }*/
 
+      //Primero verificar si el juego esta en modo show :)
+      const gameActive = await Evento.findOne({
+            where: {
+                id: type+1,
+                show: 1
+            },
+            transaction: t
+        });
+
+      // Revertir la transacción en caso de error
+      if(!gameActive){
+        await t.rollback();
+        return { success: false, code: '001', message:`Este evento ya ha concluido. ¡Por favor, actualice la página!` };
+      }
+
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
       const allPrizes = await PrizesGame.findAll({
         attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
