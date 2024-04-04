@@ -1067,7 +1067,7 @@ class EventService {
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
       const allPrizes = await PrizesGame.findAll({
-        attributes: ['type', 'prize', 'name','clase', 'probability','limite','users'],
+        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
         where: {
           //orderPrize: orderPrize,
           type_game: type,
@@ -1119,6 +1119,19 @@ class EventService {
         return { success: false, code: '301', message: 'Has abierto el juego en otra pestaña...' };
       }
 
+      // Verificar si el premio excedio el limite :( :
+
+      if (prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite || prizesGame.limite == -1){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '400', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a girar la ruleta para obtener un premio :)`};
+      } else if(prizesGame.limite > 0 && prizesGame.users < prizesGame.limite){
+        //update
+        await PrizesGame.increment(
+          'users',
+          { by: 1, where: { id: prizesGame.id  }, transaction: t }
+        );
+      }
+
       //Acciones segun tipo de evento, Ruleta 0, Count 1, etc...
       switch (type) {
         //Ruleta
@@ -1130,12 +1143,6 @@ class EventService {
           switch (modalidad) {
             //Cash
             case 1:
-              // Verificar si el premio excedio el limite :( :
-
-              if(prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite){
-                await t.rollback(); // Revertir la transacción en caso de error
-                return { success: false, code: '400', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a girar la ruleta para obtener un premio :)`};
-              }
 
               typename = 'cash';
 
