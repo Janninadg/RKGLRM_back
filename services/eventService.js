@@ -969,7 +969,7 @@ class EventService {
       } 
   
 
-      const ticketsPrice = payment === 1 ? 800 : 2000; // Precio de un ticket en cash u oro
+      const ticketsPrice = payment === 1 ? 1000 : 2000; // Precio de un ticket en cash u oro
   
       if (!currencyAmount || amount < ticketsPrice * ticketCount) {
         await t.rollback();
