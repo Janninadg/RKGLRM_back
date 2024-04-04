@@ -3177,7 +3177,7 @@ class EventService {
 
       const eventos = await Evento.findAll({
         where:{
-          show:1,
+          estado:1,
         }
       });
      

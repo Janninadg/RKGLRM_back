@@ -38,6 +38,11 @@ const Evento = sequelize.define('evento', {
     type: DataTypes.TINYINT(1),
     allowNull: false,
     defaultValue: 0
+  },
+  estado: {
+    type: DataTypes.TINYINT(1),
+    allowNull: false,
+    defaultValue: 1
   }
 }, {
   tableName: 'eventos',

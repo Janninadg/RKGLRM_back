@@ -7,7 +7,7 @@ import TypeOrigenReward from '../models/typeOrigenRewardModel.js';
 import TypeEvents from '../models/typeEventsModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import TypeLogsStreamers from '../models/typeLogsStreamersModel.js';
-import { getFormatDate } from './utils.js';
+// import { getFormatDate } from './utils.js';
 import LogExchange from '../models/logExchanges.js';
 import TempCupon from '../models/tempCupones.js';
 import Cupon from '../models/cuponesModel.js';
@@ -36,7 +36,7 @@ const obtenerLogsGM = async () => {
             Usuario: log.user ? log.user : '-',
             Cantidad: log.amount ? log.amount  : '-',
             'Elemento generado': log.cupon ? log.cupon : '-',
-            Fecha: getFormatDate(log.date),
+            Fecha: log.date,
             //...log.toJSON()
         };
     });
@@ -70,7 +70,7 @@ const obtenerLogsStreamers = async () => {
               Accion: typeNames[log.type] ? typeNames[log.type] : '-',
               Cantidad: log.prize ? log.prize  : '-',
               'Elemento generado': log.cupon ? log.cupon : '-',
-              Fecha: getFormatDate(log.date),
+              Fecha: log.date,
               //...log.toJSON()
           };
       });
@@ -95,7 +95,7 @@ const obtenerLogsStreamers = async () => {
               Usuario: log.user,
               Cash: log.cash,
               Oro: log.oro,
-              Fecha: getFormatDate(log.date),
+              Fecha: log.date,
               //...log.toJSON()
           };
       });
@@ -119,7 +119,7 @@ const obtenerLogsStreamers = async () => {
               ID: log.id,
               Usuario: log.user,
              'Cupón canjeado': log.ticket,
-              Fecha: getFormatDate(log.fecha),
+              Fecha: log.fecha,
               //...log.toJSON()
           };
       });
@@ -198,7 +198,7 @@ const obtenerLogsRecompensas = async () => {
               Recompensa: log.recompensa,
               'Tipo de recompensa': typeRewardName[log.tipo_recompensa] ? typeRewardName[log.tipo_recompensa] : '-',
               'Evento': typeEventName[log.origen_2] ? typeEventName[log.origen_2] : '-',
-              Fecha: getFormatDate(log.fecha),
+              Fecha:log.fecha,
               //...log.toJSON()
           };
       });
