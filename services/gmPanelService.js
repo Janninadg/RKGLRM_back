@@ -555,7 +555,7 @@ class GMPanelService {
             await LogRewardsUser.create({  
               user:u.name,
               origen:tipo === 1 ? 2 : 3,
-              recompensa:tipo === 1 ? (cash*-1): cash,
+              recompensa:tipo === 1 ? cash: (cash*-1),
               tipo_recompensa: 2,
               fecha: new Date(), 
             }, { transaction:t });
@@ -594,7 +594,7 @@ class GMPanelService {
             await LogRewardsUser.create({  
               user:u.name,
               origen:tipo === 1 ? 2 : 3,
-              recompensa:tipo === 1 ? (oro*-1): oro,
+              recompensa:tipo === 1 ? oro: (oro*-1),
               tipo_recompensa: 1,
               fecha: new Date(), 
             }, { transaction:t });
