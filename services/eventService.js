@@ -395,7 +395,7 @@ class EventService {
               let nuevosNombres = [...setnombres];
 
               if (Math.random() < probabilidades[Number(matchFound.picked)]){
-                const dataPr = await this.getAllPrizes(type);
+                const dataPr = await this.getAllPrizes(type,t);
                 //console.log(dataPr);
                 const prizes = [];
 
@@ -541,7 +541,7 @@ class EventService {
                 }
                 else{
 
-                  const dataPr2 = await this.getAllPrizes(type);
+                  const dataPr2 = await this.getAllPrizes(type,t);
 
                   const randomProb = Math.random();
                   var premioIndex;
@@ -637,7 +637,7 @@ class EventService {
                 return {success:true,code:'003',xc:false,message:'¡Perdiste! Mejor suerte para la próxima...' };
 
               } else{
-                const dataPr = await this.getAllPrizes(type);
+                const dataPr = await this.getAllPrizes(type,t);
 
                 const randomProb = Math.random();
                 var premioIndex;
@@ -1786,8 +1786,10 @@ class EventService {
         fecha: new Date(), 
       }, { transaction:t });
 
+      const pr = await this.getAllPrizes(type,t);
+
       await t.commit();
-      return { success: true, code: '000', _pw:selectedItem, message,_pwb:prizesGame.clase };
+      return { success: true, code: '000', _pw:selectedItem, message,_pwb:prizesGame.clase,pr };
     } catch (error) {
       await t.rollback(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);
@@ -2846,7 +2848,7 @@ class EventService {
     }
   }
 
-  async getAllPrizes(type) {
+  async getAllPrizes(type,t) {
     try {
       const roulettePrizes = await PrizesGame.findAll({
         //attributes: ['name','url'],
@@ -2854,6 +2856,7 @@ class EventService {
           type_game: type,
         },
         order: [['orderPrize', 'ASC']],
+        transaction: t,
       });
   
       // Función para calcular el nombre con el rango y tipo
