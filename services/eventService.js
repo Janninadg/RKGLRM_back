@@ -998,6 +998,15 @@ class EventService {
         }
 
       } 
+
+      await LogRewardsUser.create({  
+        user:userId,
+        origen:payment ? 4 : 5,
+        recompensa:ticketCount,
+        tipo_recompensa: payment ? 3 : 4,
+        //origen_2: type,
+        fecha: new Date(), 
+      }, { transaction: t });
   
       await t.commit();
       return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa'};
