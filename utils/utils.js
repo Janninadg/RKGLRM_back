@@ -30,4 +30,17 @@ const getDateMinusTimeZone = (date) => {
     return adjustedDate;
 }
 
-export {getFormatDate,getDateMinusTimeZone};
+const getDateAdjustedMeridiam = (date) => {
+    // Convertir la fecha de la base de datos a un objeto Date
+    // const date = new Date(isoDate);
+
+    // Obtener la diferencia horaria actual del sistema en minutos
+    const offsetMinutes = date.getTimezoneOffset();
+
+    // Ajustar la fecha para que coincida con el horario:
+    const adjustedDate = new Date(date.getTime() - (offsetMinutes * 60000));
+
+    return adjustedDate;
+}
+
+export {getFormatDate,getDateMinusTimeZone,getDateAdjustedMeridiam};

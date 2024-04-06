@@ -24,6 +24,10 @@ const actualizarEventos = async () => {
             const inicio = getDateMinusTimeZone(evento.inicio);
             const fin = evento.fin ? getDateMinusTimeZone(evento.fin) : null;
 
+            console.log(inicio);
+console.log(date);
+console.log(fin);
+
             if (fin !== null && fin < date) {
                 evento.show = 0;
             } else if ((fin === null && inicio < date) || (fin !== null && fin > date && inicio < date)){
