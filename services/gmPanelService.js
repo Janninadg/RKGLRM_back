@@ -943,6 +943,17 @@ class GMPanelService {
         }
       );
 
+      const originRecords = members.map(u => ({
+        userAction:user,
+        action: 'Añadir miembro a Clan',
+        user:u,
+        amount:clanId,
+        type:5,
+        date: new Date(),
+      }));
+
+      await LogPanelGM.bulkCreate(originRecords, { transaction:t });
+
       await UserGameInfo.update(
         { clanid: clanId },
         {
@@ -1048,19 +1059,16 @@ class GMPanelService {
       }
 
       //Insertar en LOG
-      await LogPanelGM.create(
-        {
-          userAction:user,
-          action: 'Añadir miembros a Clan '+String(clan),
-          user:JSON.stringify(members),
-          amount:clan,
-          type:5,
-          date: new Date(),
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
-      );
+      const originRecords = members.map(u => ({
+        userAction:user,
+        action: 'Añadir miembro a Clan',
+        user:u,
+        amount:clan,
+        type:5,
+        date: new Date(),
+      }));
+
+      await LogPanelGM.bulkCreate(originRecords, { transaction:t });
 
       // Aumentar la cantidad de miembros en claninfo por id (clan)
       await ClanInfo.increment(
