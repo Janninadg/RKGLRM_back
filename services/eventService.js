@@ -2598,15 +2598,6 @@ class EventService {
             }
           );
 
-          await LogRewardsUser.create({  
-            user:user,
-            origen:1,
-            origen_2:2,
-            recompensa:cuponPrize.id_prize,
-            tipo_recompensa: typePrize,
-            fecha: new Date(), 
-          }, { transaction: t });
-
           //console.log(res);
 
           message = `Has obtenido un(a) ${cuponPrize.name_prize}`;
@@ -2822,6 +2813,15 @@ class EventService {
           transaction: t, // Asociar la transacción con esta operación
         }
       );
+
+      await LogRewardsUser.create({  
+        user:user,
+        origen:1,
+        origen_2:2,
+        recompensa:cuponPrize.id_prize,
+        tipo_recompensa: typePrize,
+        fecha: new Date(), 
+      }, { transaction: t });
 
       //const key = generateKey();
       //const MnOpQr = encrypt(JSON.stringify(cuponPrize), key) + '-' + key;
