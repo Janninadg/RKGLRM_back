@@ -1188,6 +1188,17 @@ class GMPanelService {
         }
       );
 
+      const originRecords = updatedUserGamePowers.map(user => ({
+          user:user.name,
+          origen:6,
+          recompensa:dias,
+          tipo_recompensa: 6,
+          fecha: new Date(),
+        }));
+
+      await LogRewardsUser.bulkCreate(originRecords, { transaction:t });
+
+
       await t.commit();
       
       return {
