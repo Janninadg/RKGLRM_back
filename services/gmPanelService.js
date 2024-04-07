@@ -1182,20 +1182,21 @@ class GMPanelService {
       }
 
       //Insertar en LOG
-      await LogPanelGM.create(
-        {
+    
+
+      //Insertar en LOG PANEL
+      const originRecordsPanel = members.map(u => ({
           userAction:user,
           action: 'Dar días de Power User',
-          user:JSON.stringify(usuarios),
+          user: u,
           amount:dias,
           type:6,
           date: new Date(),
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
-      );
+      }));
 
+      await LogPanelGM.bulkCreate(originRecordsPanel, { transaction:t });
+
+      //LOG reward:
       const originRecords = updatedUserGamePowers.map(user => ({
           user:user.name,
           origen:6,

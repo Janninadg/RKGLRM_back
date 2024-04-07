@@ -33,8 +33,8 @@ const obtenerLogsGM = async () => {
             ID: log.id,
             Administrador: log.userAction,
             Accion: typeNames[log.type] ? typeNames[log.type] : '-',
-            Usuario: log.user ? log.user : '-',
-            Cantidad: log.amount ? log.amount  : '-',
+            'Usuario/Personaje': log.user ? log.user : '-',
+            'Cantidad/Número': log.amount ? log.amount  : '-',
             'Elemento generado': log.cupon ? log.cupon : '-',
             Fecha: log.date,
             //...log.toJSON()
