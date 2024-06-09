@@ -441,16 +441,16 @@ class UserService {
 
       //console.log(111111);
 
-      const powertimefinal = await calculatePowerUse(0,5);
+      // const powertimefinal = await calculatePowerUse(0,5);
 
       await UserGameInfo.create(
         {
           name: username,
-          gold:20000,
+          gold:10000,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
-          powertime: powertimefinal,
+          // powertime: powertimefinal,
           //powertimedate: fechaActual,
         },
         { transaction }
@@ -469,7 +469,7 @@ class UserService {
       //Insertar IP:
       await InitialIpUser.create({ user: username, ip: ip }, { transaction });
 
-      await BarraConexion.create({ User: username, BarCount: 0,ResTime:0 }, { transaction });
+      // await BarraConexion.create({ User: username, BarCount: 0,ResTime:0 }, { transaction });
 
       // Obtener el ID de usuario desde UserGameInfo por su nombre
       const userGameInfo = await UserGameInfo.findOne({
@@ -519,18 +519,18 @@ class UserService {
 
       //LOGS REWARDS:
       // await LogRewardsUser.bulkCreate(originRecords, { transaction });
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:5,
-        tipo_recompensa: 6,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:5,
+      //   tipo_recompensa: 6,
+      //   fecha: new Date(), 
+      // }, { transaction });
 
       await LogRewardsUser.create({  
         user:username,
         origen:0,
-        recompensa:20000,
+        recompensa:10000,
         tipo_recompensa: 1,
         fecha: new Date(), 
       }, { transaction });
@@ -546,7 +546,7 @@ class UserService {
 
       await transaction.commit();
   
-      return { success: true,message:'Te has registrado correctamente ¡Has recibido 5 días de PU y 20000 de Oro de recompensas por registrarte!', code: '000' };
+      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Oro de recompensa por registrarte!', code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);

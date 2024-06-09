@@ -24,9 +24,9 @@ const actualizarEventos = async () => {
             const inicio = getDateMinusTimeZone(evento.inicio);
             const fin = evento.fin ? getDateMinusTimeZone(evento.fin) : null;
 
-            console.log(inicio);
-console.log(date);
-console.log(fin);
+//             console.log(inicio);
+// console.log(date);
+// console.log(fin);
 
             if (fin !== null && fin < date) {
                 evento.show = 0;
@@ -45,7 +45,7 @@ console.log(fin);
 // Función para ejecutar la función de actualización de eventos cada segundo
 const ejecutarActualizacionPeriodica = () => {
     setInterval(async () => {
-        await actualizarEventos();
+        // await actualizarEventos();
     }, 1000);
 };
 
