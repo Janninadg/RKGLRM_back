@@ -173,15 +173,16 @@ class UserController {
 
   async registerUser(req, res, next) {
 
-    console.log("REGISTER USER - FROM IP: ".blue,req.clientIp.green);
-
+    console.log("---------------------------------------------------------------".blue);
+    console.log("NEW REGISTER - FROM IP: ".blue,req.clientIp.green);
     const { uYz3Tk, mS5bAt, iGqP1O, vFwR9Z,chrw,ip } = req.body;
 
     const username = decrypt(mS5bAt,uYz3Tk);
     const password = decrypt(iGqP1O,uYz3Tk);
     const phoneNumber = decrypt(vFwR9Z,uYz3Tk);
 
-    console.log('USER:'.blue,username.yellow);
+    console.log('Usuario:'.blue,username.yellow);
+    console.log("---------------------------------------------------------------".blue);
 
   
     try {
