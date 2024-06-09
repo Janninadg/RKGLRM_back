@@ -20,7 +20,7 @@ import LogExchange from '../models/logExchanges.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import UserStageInfo from '../models/userStageInfo.js';
 import { calculatePowerUse } from '../utils/prizesUtils.js';
-import BarraConexion from '../models/barProgressModel.js';
+// import BarraConexion from '../models/barProgressModel.js';
 import { decrypt, encrypt } from '../helpers/encryption.js';
 import config from '../config/config.js';
 import { setPresentsReward } from '../utils/gameUtils.js';
