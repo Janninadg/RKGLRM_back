@@ -182,18 +182,20 @@ class UserController {
     const phoneNumber = decrypt(vFwR9Z,uYz3Tk);
 
     console.log('Usuario:'.blue,username.yellow);
-    console.log("---------------------------------------------------------------".blue);
+    // console.log("---------------------------------------------------------------".blue);
 
   
     try {
       const result = await UserService.registerUser(req,username, password, phoneNumber,chrw,ip);
+
+      console.log('¿Success? :'.blue,result.success);
+      console.log("---------------------------------------------------------------".blue);
 
       if (result.success || result.code) {
         return res.status(200).json(result);
       } else {
         return res.status(400).json(result);
       }
-      
     } catch (error) {
       console.error('Error al registrar el usuario:', error);
       return res.status(500).json({ error: 'Error interno del servidor' });
