@@ -4,6 +4,8 @@ import { encrypt, decrypt, generateKey } from '../helpers/encryption.js';
 import colors from "colors";
 import { calculateDataHash } from '../helpers/signedData.js';
 
+//hola
+
 class UserController {
   async getAllUsers(req, res, next) {
     /*const authHeader = req.headers.authorization;
