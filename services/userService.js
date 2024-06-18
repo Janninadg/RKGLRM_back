@@ -441,7 +441,7 @@ class UserService {
 
       //console.log(111111);
 
-      // const powertimefinal = await calculatePowerUse(0,5);
+      const powertimefinal = await calculatePowerUse(0,15);
 
       await UserGameInfo.create(
         {
@@ -450,7 +450,7 @@ class UserService {
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
-          // powertime: powertimefinal,
+          powertime: powertimefinal,
           //powertimedate: fechaActual,
         },
         { transaction }
@@ -519,13 +519,13 @@ class UserService {
 
       //LOGS REWARDS:
       // await LogRewardsUser.bulkCreate(originRecords, { transaction });
-      // await LogRewardsUser.create({  
-      //   user:username,
-      //   origen:0,
-      //   recompensa:5,
-      //   tipo_recompensa: 6,
-      //   fecha: new Date(), 
-      // }, { transaction });
+      await LogRewardsUser.create({  
+        user:username,
+        origen:0,
+        recompensa:15,
+        tipo_recompensa: 6,
+        fecha: new Date(), 
+      }, { transaction });
 
       await LogRewardsUser.create({  
         user:username,
@@ -546,7 +546,7 @@ class UserService {
 
       await transaction.commit();
   
-      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Oro de recompensa por registrarte!', code: '000' };
+      return { success: true,message:'Te has registrado correctamente ¡Has recibido 15 días de PowerPack y 10000 de DuckCoin de recompensa por registrarte!', code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);
