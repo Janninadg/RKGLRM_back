@@ -5,14 +5,16 @@ import colors from "colors";
 class AuthController {
   async login(req, res, next) {
 
-    console.log("LOGIN - FROM IP: ".blue,req.clientIp.green);
-    console.log("LOGIN - FROM IPv4: ".blue,req.socket.remoteAddress.green);
-
-    const { K9aCvP,xw1yZ4,Q7RdEf,OeDMFL } = req.body;
+    const { K9aCvP,xw1yZ4,Q7RdEf,OeDMFL,ip } = req.body;
     const id = decrypt(xw1yZ4,K9aCvP);
     const password = decrypt(Q7RdEf,K9aCvP);
     const sessionActive = decrypt(OeDMFL,K9aCvP);
-    console.log('USER:'.blue,id.yellow);
+
+    console.log("---------------------------------------------------------------".blue);
+    console.log("LOGIN - FROM IP: ".blue,ip.green);
+    // console.log("LOGIN - FROM IPv4: ".blue,req.socket.remoteAddress.green);
+    console.log('Usuario:'.blue,id.yellow);
+    console.log("---------------------------------------------------------------".blue);
 
     try {
       const result = await UserService.login(req,id, password,sessionActive);
