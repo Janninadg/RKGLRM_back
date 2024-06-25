@@ -1,5 +1,6 @@
 # Dependency directories
 node_modules/
+triggers/
 
 # Test Develop
 app.js
@@ -7,5 +8,4 @@ config/
 .env
 app.exe
 Dockerfile
-triggers/
 .dockerignore
