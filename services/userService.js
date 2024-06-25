@@ -497,7 +497,8 @@ class UserService {
       //   }
       // );
 
-      const presentIds = setPresentsReward(character); // Lista de present_ids que deseas insertar
+      const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
+      const presentIds = pr.i;
       // presentIds.push(8000);
       // presentIds.push(7000);
 
@@ -554,7 +555,7 @@ class UserService {
 
       await transaction.commit();
   
-      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro +  de recompensa por registrarte!', code: '000' };
+      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro + '+ pr.m +' de recompensa por registrarte!', code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);
