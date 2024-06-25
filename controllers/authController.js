@@ -32,13 +32,16 @@ class AuthController {
 
   async logout(req, res) {
     try {
-      console.log("LOGOUT - FROM IP: ".blue,req.clientIp.green);
 
-      const { yW9KuQ, rDcJ7I, lNx8Ve } = req.body;
+      const { yW9KuQ, rDcJ7I, lNx8Ve,ip } = req.body;
 
       const token = decrypt(rDcJ7I,yW9KuQ);
       const user = decrypt(lNx8Ve,yW9KuQ);
-      console.log('USER:'.blue,user.yellow);
+
+      console.log("---------------------------------------------------------------".blue);
+      console.log("LOGOUT - FROM IP: ".blue,ip.green);
+      console.log('Usuario:'.blue,user.yellow);
+      console.log("---------------------------------------------------------------".blue);
 
       // Llama al servicio para agregar el token a Blackout y guardar la ultima conexion
       await UserService.logout(user, token);
