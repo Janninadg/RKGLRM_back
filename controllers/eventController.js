@@ -140,7 +140,7 @@ class EventController {
 
       const paramsString = `${EeF789}-${GhIjKl}-${TuVjKl}-${qF7z2N}-${f4rDnT}-${BSSIMO}-${LLODKF}-${FLGMDN}-${MTORLD}`;
 
-      const result = await EventService.redeemTicketAndReward(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2, req);
+      const result = await EventService.playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2, req);
 
       if (result.success || result.code) {
         return res.status(200).json(result);
@@ -498,6 +498,24 @@ class EventController {
       //console.log(ranking);
 
       return res.status(200).json(eventos);
+    } catch (error) {
+      console.error('Error al obtener usuarios:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async setPersonaje(req, res, next) {
+    try {
+      const { user,token,character } = req.body;
+
+      const response = await EventService.setPersonaje(user,token,character);
+      //console.log(ranking);
+
+      if (response.success || response.code) {
+        return res.status(200).json(response);
+      } else {
+        return res.status(400).json(response);
+      }
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
       return res.status(500).json({ error: 'Error interno del servidor' });

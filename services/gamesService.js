@@ -1,0 +1,913 @@
+
+import { Sequelize,Op, Transaction } from 'sequelize';
+import sequelize from '../config/database.js';
+import { verifyPacketAndBan } from '../utils/securityUtils.js';
+import { encrypt,generateKey } from '../helpers/encryption.js';
+import PanelGM from '../models/gmPanelModel.js';
+import UserGameInfo from '../models/userGameInfoModel.js';
+import Banlist from '../models/banListModel.js';
+import Cash from '../models/cashModel.js';
+import TrackingPacket from '../models/trackingPacketModel.js';
+import ItemInfo from '../models/itemInfoModel.js';
+import Cupon from '../models/cuponesModel.js';
+import InitialIpUser from '../models/ipUserModel.js';
+import Streamer from '../models/streamers.js';
+import LogStream from '../models/logStreamsModel.js';
+import Linksgame from '../models/linksGameModel.js';
+import Anuncio from '../models/anunciosModel.js';
+import CharacterInfo from '../models/characterInfo.js';
+import PrizesGame from '../models/prizesGamesModel.js';
+import Matches from '../models/matchesModel.js';
+import EventLevelCharacter from '../models/eventLevelChModel.js';
+import UserPoisons from '../models/userPoisonsModel.js';
+import PendingPresents from '../models/pendingPresentsModel.js';
+import UserItemInfo from '../models/userItemInfoModel.js';
+import { calculatePowerUse, getAmountItem } from '../utils/prizesUtils.js';
+import SetItem from '../models/setItemsModel.js';
+import TicketOro from '../models/ticketsOroModel.js';
+import Ticket from '../models/ticketsModel.js';
+import RewardsBox from '../models/rewardsBoxModel.js';
+import LogRewardsUser from '../models/logRewardUserModel.js';
+import UnclassifiedPrizes from '../models/unclassifiedPrizesModel.js';
+
+class GamesService {
+
+    async getPrizeByGame(game,clase,transaction) {
+        try {
+            switch (game) {
+                case 1:
+                    return (
+                        await PrizesGame.findOne({
+                            attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
+                            where: {
+                            orderPrize: clase,
+                            // clase: clase,
+                            type_game: game,
+                            },
+                            order: [['orderPrize', 'ASC']],
+                            transaction, // Asociar la transacción con esta consulta
+                        })
+                    );
+                default:
+                    const allPrizes = await PrizesGame.findAll({
+                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
+                        where: {
+                        //orderPrize: orderPrize,
+                        type_game: game,
+                        },
+                        order: [['orderPrize', 'ASC']],
+                        transaction, // Asociar la transacción con esta consulta
+                    })
+
+                    // Realizar el calculo de probabilidad:
+                    const randomProb = Math.random();
+                    let cumulativeProb = 0;
+                    let selectedItem = 0;
+
+                    //console.log(allPrizes.length);
+
+                    for (let i = 0; i < allPrizes.length; i++) {
+                        //console.log(allPrizes[i]);
+                        cumulativeProb += allPrizes[i].probability;
+                        if (randomProb <= cumulativeProb) {
+                        selectedItem = i;
+                        break;
+                        }
+                    }
+
+                    return allPrizes[selectedItem];
+            }
+        } catch (error) {
+            await transaction.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al obtener premios:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+
+    /**
+     * Guarda un ítem para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveItem(userId,prize,t) {
+        try {
+             // Obtener el ID de usuario desde UserGameInfo por su nombre
+             const userGameInfo = await UserGameInfo.findOne({
+                attributes: ['id'],
+                where: {
+                name: userId, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+            });
+    
+            if (!userGameInfo) {
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            }
+            
+            // Agregar el premio a PendingPresents usando el ID de usuario obtenido
+            await PendingPresents.create(
+                {
+                    present_id: prize.prize,
+                    user_id: userGameInfo.id, // Usar el ID de usuario obtenido
+                    added_time: new Date(),
+                },
+                {
+                    transaction: t, // Asociar la transacción con esta operación
+                }
+            );
+
+            // Verificar si el premio es una pocion :
+            const itemData = await ItemInfo.findOne({
+                attributes: ['type'],
+                where: {
+                    id: prize.prize, // Cambia esto para usar el nombre de usuario correcto
+                },
+                // transaction: t, // Asociar la transacción con esta consulta
+            });
+        
+            // if (!itemData) {
+            //   await transaction.rollback(); // Revertir la transacción en caso de error
+            //   return { success: false, code: '402', message: 'ID de Item no encontrado' };
+            // }
+
+            if(itemData.type === 12){
+                //Insertar en tabla poisions :)
+                //Verificar si el usuario ya tiene esa pocion:
+                const userPocion = await UserPoisons.findOne({
+                    where: {
+                    idpocion: prize.prize, // Cambia esto para usar el nombre de usuario correcto
+                    user: userId,
+                    },
+                    //transaction: t, // Asociar la transacción con esta consulta
+                });
+        
+                if (!userPocion) {
+                    await UserPoisons.create(
+                    {
+                        user: userId,
+                        idpocion: prize.prize,
+                        cantidad: 1,
+                    },
+                    {
+                        //transaction: t, // Asociar la transacción con esta operación
+                    }
+                    );
+                } else{
+                    await UserPoisons.increment(
+                    'cantidad',
+                    { by: 1, where: { user: userId,idpocion: prize.prize }/*, transaction: t*/ }
+                    );
+                }
+            }
+            
+            return { message:`Has obtenido un(a) ${prize.name}`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar item:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda oro para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveOro(userId,prize,t) {
+        try {
+            await UserGameInfo.increment(
+                'gold',
+                { by: prize.prize, where: { name: userId }, transaction: t }
+            );
+            
+            return { message:`Has obtenido ${prize.prize} de Oro`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar oro:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+     /**
+     * Guarda cash para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+     async saveCash(userId,prize,t) {
+        try {
+             // Actualizar el cash en Cash
+             await Cash.increment(
+                'cash',
+                { by: prize.prize, where: { id: userId }, transaction: t }
+            );
+            return { message:`Has obtenido ${prize.prize} de Cash`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar cash:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda tickets de cash para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveTicketsCash(userId,prize,t) {
+        try {
+             // Actualizar el ticket de cash
+             await Ticket.increment(
+                'tickets',
+                { by: prize.prize, where: { id: userId }, transaction: t }
+            );
+            return { message:`Has obtenido ${prize.prize} ticket(s) de cash`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar tickets de cash:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda tickets de oro para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveTicketsOro(userId,prize,t) {
+        try {
+            // Actualizar el ticket de oro
+            await TicketOro.increment(
+                'tickets',
+                    { by: prize.prize, where: { id: userId }, transaction: t }
+                );
+        
+            return { message:`Has obtenido ${prize.prize} ticket(s) de oro`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar tickets de oro:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda items temporales para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveItemTemporal(userId,prize,t) {
+        try {
+            //Obtener id de usuario
+            // Obtener el ID de usuario desde UserGameInfo por su nombre
+            const userGame = await UserGameInfo.findOne({
+                attributes: ['id'],
+                where: {
+                name: userId, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+            });
+    
+            if (!userGame) {
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            }
+            
+            //Obtener el nro de slot mas cercano disponible
+            // Obtener todos los slots distintos del usuario
+            const distinctSlots = await UserItemInfo.findAll({
+                attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
+                where: {
+                userid: userGame.id,
+                },
+                raw: true,
+                transaction: t,
+            });
+
+            // Mapear los resultados a un array de números
+            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
+            var slotFree = null;
+
+            //console.log(distinctSlotsArray);
+
+            for (let i = 0; i <= 89; i++) {
+                if (!distinctSlotsArray.includes(i)) {
+                    slotFree = i;
+                    break;
+                }
+            }
+            //console.log(slotFree);
+            //Si no hay, volver a enviar el mensaje de slot no disponible
+            if(slotFree === null){
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '200', message: 'No tiene slots disponbiles para jugar' };
+            }
+
+            const days = 2;
+            const limit = await calculatePowerUse(0,days);
+            const responseAmount = await getAmountItem(prize.prize,t);
+
+            if(responseAmount.success === false && responseAmount.code === '402'){
+                return responseAmount;
+            }
+            //console.log(limit);
+
+            //Si tiene, guardar el premio temporal en useriteminfo
+            await UserItemInfo.create(
+                {
+                    userid: userGame.id,
+                    itemid: prize.prize,
+                    slot: slotFree,
+                    limittime: limit, //calculo como power use
+                    exp: responseAmount,
+                },
+                {
+                    transaction: t, // Asociar la transacción con esta operación
+                }
+            );
+
+            return { message:`Has obtenido un(a) ${prize.name} temporal (${String(days)} días)`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar item temporal:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda poweruser para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async savePowerUser(userId,prize,t) {
+        try {
+            // Obtener el powertime de usuario desde UserGameInfo por su nombre
+            const userGamePower = await UserGameInfo.findOne({
+                attributes: ['powertime'],
+                where: {
+                name: userId, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+            });
+    
+            if (!userGamePower) {
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '200', message: 'Usuario no encontrado' };
+            }
+
+            const powertimefinal = await calculatePowerUse(userGamePower.powertime,prize.prize);
+            //console.log(powertimefinal);
+            await UserGameInfo.update(
+                { powertime: powertimefinal}, //cambiar a codigo_base
+                { where: { name: userId },
+                transaction: t 
+                },
+            );
+
+            return { message:`Has obtenido ${prize.prize} días de Power User`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar poweruser:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda set de items para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveSetItems(userId,prize,t) {
+        try {
+            // Insertar un SET
+
+            // Obtener el ID de usuario desde UserGameInfo por su nombre
+            const userGameInfoID = await UserGameInfo.findOne({
+                attributes: ['id'],
+                where: {
+                name: userId, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+            });
+    
+            if (!userGameInfoID) {
+                await t.rollback(); // Revertir la transacción en caso de error
+                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            }
+
+            //console.log(pr.prize);
+            //Obtener todos los id's del set:
+            const itemsSet = await SetItem.findAll({
+                attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('itemid')), 'itemid']],
+                where: {
+                idset: prize.prize,
+                },
+                raw: true,
+                transaction: t,
+            });
+
+            // Mapear los resultados a un array de números
+            const arrayItems = itemsSet.map((item) => item.itemid);
+            //console.log(arrayItems);
+
+            // Crear los registros para bulkCreate
+            const presentRecords = arrayItems.map(itemid => ({
+                present_id: itemid,
+                user_id: userGameInfoID.id,
+                added_time: new Date()
+            }));
+
+            // Insertar los registros en PendingPresents
+            await PendingPresents.bulkCreate(presentRecords, { transaction: t });
+
+            return { message:`Has obtenido un(a) ${prize.name}`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar set de items:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda paquete de premios para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveRewardBox(game,userId,prize,t) {
+        try {
+            // Buscar todos los premios de la tabla rewardsbox por game y prize.prize
+            const rewards = await RewardsBox.findAll({
+                where: { game: game, clase: prize.prize },
+                transaction: t
+            });
+
+            if (!rewards) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'No se encontraron premios para el paquete especificado' };
+            }
+
+            // Buscar el userId del usuario dado su username dentro de la transacción
+            const user = await UserGameInfo.findOne({
+                where: { name: userId },
+                transaction:t // Añadir transacción aquí
+            });
+
+            if (!user) {
+                await t.rollback(); 
+                return { success: false, code: '200', message: 'No existe el usuario' };
+            }
+
+            // Recorrer el arreglo rewards y verificar si reward.multiple es true o false
+            for (const r of rewards) {
+
+                const typePrize = r.tipo;
+                const name = r.paquete;
+                const selectedPrize = {};
+                var res;
+                // console.log(r);
+
+                if (r.multiple) {
+                    // Lógica cuando reward.multiple es true
+                    // console.log(`El premio ${r.premio} es múltiple.`);
+                    const opciones =JSON.parse(r.options);
+
+                     // Obtener el characterid de la tabla eventlevelcharacter por user
+                    const eventCharacter = await EventLevelCharacter.findOne({
+                        attributes: ['characterid'],
+                        where: { user: userId },
+                        transaction: t
+                    });
+
+                    if (!eventCharacter) {
+                        await t.rollback();
+                        return { success: false, code: '999', message: '¡El usuario aún no ha seleccionado un personaje!' };
+                    }
+
+                    // Buscar el personaje específico según el characterid en existingEntry
+                    const characterSelected = await CharacterInfo.findOne({
+                        attributes: ['id', 'name', 'level', 'Class'],
+                        where: {
+                            userid: user.id,
+                            id: eventCharacter.characterid
+                        },
+                        transaction:t // Añadir transacción aquí
+                    });
+
+                    const classCh = characterSelected.Class;
+                    selectedPrize['name'] = name;
+                    selectedPrize['prize'] = Number(opciones[classCh]);
+
+                    res = await this.setWinPrizes(game,typePrize,selectedPrize,userId,t);
+                    // Aquí puedes agregar la lógica específica para premios múltiples
+                } else {
+                    // Lógica cuando reward.multiple es false
+                    // console.log(`El premio ${r.premio} no es múltiple.`);
+                    selectedPrize['name'] = name;
+                    selectedPrize['prize'] = r.premio;
+                    res = await this.setWinPrizes(game,typePrize,selectedPrize,userId,t);
+                    // Aquí puedes agregar la lógica específica para premios no múltiples
+                }
+
+                if(!res.success) return res;
+            }
+
+            return { message:`Has obtenido el paquete de nivel ${(prize.prize + 1)*5}`, success: true};
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar el paquete de premios:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda premios aun no clasificados para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveUnclassified(game,userId,prize,typePrize,t) {
+        try {
+            
+            // Insertar el premio en la tabla unclassifiedprizes
+            await UnclassifiedPrizes.create({
+                user: userId,
+                prize: prize.prize,
+                name: prize.name,
+                type: typePrize,
+                game: game
+            }, {
+                transaction: t // Asociar la transacción con esta operación
+            });
+
+            return { message:`Has obtenido un(a) ${prize.name}`, success: true};
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar el paquete de premios:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    async setWinPrizes(game,typePrize,prize,userId,t){
+        try {
+            // Agregar el premio según el tipo
+            var response = null;
+            const excludedPrizes = [10,11, 98, 99];
+            // console.log(1);
+            // console.log(typePrize);
+            // console.log(prize);
+
+            switch (typePrize) {
+                case 0:
+                    response = await this.saveItem(userId,prize,t);
+                    break;
+                case 1:
+                    response = await this.saveOro(userId,prize,t);
+                    break;
+                case 2:
+                    response = await this.saveCash(userId,prize,t);
+                    break;
+                case 3:
+                    response = await this.saveTicketsCash(userId,prize,t);
+                    break;
+                case 4:
+                    response = await this.saveTicketsOro(userId,prize,t);
+                    break;
+                case 5:
+                    response = await this.saveItemTemporal(userId,prize,t);
+                    break;
+                case 6:
+                    response = await this.savePowerUser(userId,prize,t);
+                    break;
+                case 10:
+                    // console.log('a');
+                    response = await this.saveSetItems(userId,prize,t);
+                    break;
+                case 11:
+                    // console.log(2);
+                    response = await this.saveRewardBox(game,userId,prize,t);
+                    break;
+                case 98:
+                case 99:
+                    response = await this.saveUnclassified(game,userId,prize,typePrize,t);
+                    break;
+                default:
+                    await t.rollback(); // Revertir la transacción en caso de error
+                    response =  { success: false, code: '201', message: 'Tipo de premio no válido' };
+                    break;
+            }
+            // console.log(3);
+
+            if (!excludedPrizes.includes(typePrize)) {
+                await LogRewardsUser.create({  
+                    user:userId,
+                    origen:1,
+                    recompensa:prize.prize,
+                    tipo_recompensa: typePrize,
+                    origen_2: game,
+                    fecha: new Date(), 
+                }, { transaction:t });
+            }
+
+            return response;
+
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al buscar y guardar premio:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    async findMatch(game,user,transaction){
+        try {
+            var match;
+            switch (game) {
+                case 1:
+
+                 // Obtener el userid desde usergameinfo
+                    const userGameInfo = await UserGameInfo.findOne({
+                        attributes: ['id'],
+                        where: { name: user },
+                        transaction // Añadir transacción aquí
+                    });
+
+                    if (!userGameInfo) {
+                        throw new Error('Usuario no encontrados');
+                    }
+
+                    const userId = userGameInfo.id;
+
+                    let newUser = false;
+                    let userCharacters = null;
+                    let characterSelected = null;
+
+                    // Verificar si el usuario ya ha seleccionado un personaje en eventlevelcharacter
+                    const existingEntry = await EventLevelCharacter.findOne({
+                        where: { user: user },
+                        transaction // Añadir transacción aquí
+                    });
+                
+                    if (!existingEntry) {
+                        newUser = true;
+                        // Insertar nuevo registro en eventlevelcharacter
+                        // await EventLevelCharacter.create({ user: user, characterid: null }, { transaction });
+                        userCharacters = await CharacterInfo.findAll({
+                            attributes: ['id','name', 'level', 'Class'],
+                            where: { userid: userId },
+                            transaction // Añadir transacción aquí
+                        });
+                    } else{
+                        // Buscar el personaje específico según el characterid en existingEntry
+                        characterSelected = await CharacterInfo.findOne({
+                            attributes: ['id', 'name', 'level', 'Class'],
+                            where: {
+                                userid: userId,
+                                id: existingEntry.characterid
+                            },
+                            transaction // Añadir transacción aquí
+                        });
+                    }
+
+                    const niveles = Array.from({ length: 6 }, (_, index) => {
+                        if (index === 9) {
+                            return 99;
+                        } else {
+                            return (index + 1) * 5;
+                        }
+                    });
+
+                    // console.log(levelsSuperados);
+                    // console.log(niveles);
+
+                    // Crear array de partida
+                    let nuevaPartidaArray;
+
+                    if (characterSelected) {
+                        // Verificar solo el nivel del personaje seleccionado
+                        const characterLevel = characterSelected.level;
+                        nuevaPartidaArray = niveles.map(nivel => characterLevel >= nivel ? false : true);
+                    } else {
+                        // Configurar todo el array con true
+                        nuevaPartidaArray = Array(niveles.length).fill(true);
+                    }
+
+                    match = await Matches.findOne({
+                        attributes: ['id','partida', 'premios_obtenidos'],
+                        where: {
+                          user: user,
+                          game: game,
+                          estado: 1,
+                        },
+                        transaction // Añadir transacción aquí
+                    });
+
+                    if (match) {
+                         // Actualizar partida existente
+                        // const partidaActual = JSON.parse(match.partida);
+                        const partidaActualizada = nuevaPartidaArray;//partidaActual.map((estado, index) => levelsSuperados.some(l => l >= niveles[index]) ? false : estado);
+
+                        await Matches.update(
+                            { partida: JSON.stringify(partidaActualizada) },
+                            { where: { id: match.id }, transaction }
+                        );
+
+                        return {
+                          mt: partidaActualizada,
+                          _pws: JSON.parse(match.premios_obtenidos),
+                          new: newUser,
+                          uch:userCharacters,
+                          chs:characterSelected,
+                        };
+
+                      } else {
+                        const nuevaPartida = {
+                          user: user,
+                          partida: JSON.stringify(nuevaPartidaArray),
+                          premios_obtenidos: JSON.stringify(Array(10).fill(null)),
+                          game: game,
+                          estado: 1
+                        };
+
+                        match = await Matches.create(nuevaPartida, { transaction });
+
+                        return {
+                            mt: nuevaPartidaArray,
+                            _pws: JSON.parse(nuevaPartida.premios_obtenidos),
+                            new:newUser,
+                            uch:userCharacters,
+                            chs:characterSelected,
+                        };
+                    }
+                default:
+                    return null;
+            }
+        } catch (error) {
+            await transaction.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al obtener partida:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    async eventLevelVerificator(game,opcion,username,transaction,prize) {
+        try {
+            
+            // Verificar que el usuario se encuentre en ese nivel...
+
+            const nivel = opcion == 9 ? ((opcion + 1) * 10) - 1 : (opcion + 1) * 5;
+
+            // Buscar el userId del usuario dado su username dentro de la transacción
+            const user = await UserGameInfo.findOne({
+                where: { name: username },
+                transaction // Añadir transacción aquí
+            });
+
+            // console.log(user);
+
+            if (!user) {
+                await transaction.rollback(); 
+                return { success: false, code: '200', message: 'No existe el usuario' };
+            }
+
+            const userId = user.id;
+            // console.log(userId);
+
+            // Verificar si el usuario ya ha seleccionado un personaje en eventlevelcharacter
+            const existingEntry = await EventLevelCharacter.findOne({
+                where: { user: username },
+                transaction // Añadir transacción aquí
+            });
+        
+            if (!existingEntry) {
+                await transaction.rollback(); 
+                return { success: false, code: '999', message: '¡El usuario aún no ha seleccionado un personaje!' };
+            }
+
+            // Buscar el personaje específico según el characterid en existingEntry
+            const characterSelected = await CharacterInfo.findOne({
+                attributes: ['id', 'name', 'level', 'Class'],
+                where: {
+                    userid: userId,
+                    id: existingEntry.characterid
+                },
+                transaction // Añadir transacción aquí
+            });
+
+            // Verificar si algún personaje está en el nivel especificado
+            const hasCharacterAtLevel = characterSelected.level >= nivel;
+
+            if (!hasCharacterAtLevel) {
+                await transaction.rollback(); 
+                return { success: false, code: '100', message: 'Tu personaje aún no tiene el nivel requerido para abrir esta carta' };
+            }
+
+            // Verificar que el usuario no intente abrir una carta que ya haya abierto...
+            const match = await Matches.findOne({
+                attributes: ['id', 'partida', 'premios_obtenidos'],
+                where: {
+                    user: username,
+                    game: game, // Asegúrate de tener la variable `game` definida aquí
+                    estado: 1,
+                },
+                transaction
+            });
+
+            // console.log(match);
+            if (match) {
+                const premiosObtenidos = JSON.parse(match.premios_obtenidos);
+    
+                // Verificar si ya ha obtenido premio en el índice especificado
+                if (premiosObtenidos[opcion] !== null) {
+                    await transaction.rollback();
+                    return { success: false, code: '100', message: 'Ya has obtenido un premio en este nivel, no puedes abrir esta carta nuevamente' };
+                }
+
+                const rewards = await RewardsBox.findAll({
+                    where: { game: game, clase: opcion },
+                    transaction
+                });
+    
+                if (!rewards) {
+                    await transaction.rollback();
+                    return { success: false, code: '200', message: 'No se encontraron premios para el paquete especificado' };
+                }
+    
+                let namePrizesBox = '';
+    
+                // Recorrer el arreglo rewards y verificar si reward.multiple es true o false
+                for (const r of rewards) {
+                    const name = r.paquete;
+                    namePrizesBox += `- ${name}\n`;
+                }
+
+                const prizeob = {
+                    id: prize.id,
+                    url: prize.url,
+                    n: namePrizesBox
+                }
+                premiosObtenidos[opcion] = prizeob;
+
+                // Convertir de nuevo a JSON string para actualizar en la base de datos
+                match.premios_obtenidos = JSON.stringify(premiosObtenidos);
+                await match.save({ transaction });
+
+                return {po:premiosObtenidos,success: true};
+            }
+
+            return null;
+        } catch (error) {
+          await transaction.rollback(); // Revertir la transacción en caso de error
+          console.error('Error al verificar:', error);
+          throw new Error('Error interno del servidor');
+        }
+    }
+}
+
+export default new GamesService();

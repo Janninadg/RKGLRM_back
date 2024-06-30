@@ -32,6 +32,7 @@ router.post('/sesAct', EventController.verifyToken);
 
 router.post('/genMch', EventController.setAuthGame); // Juegos solo con token
 router.post('/stMtch', EventController.setPartida); // Juegos que necesitan un token y partida
+router.post('/setCh', EventController.setPersonaje); // Juegos que necesitan un token y partida
 
 
 //Puzzle:

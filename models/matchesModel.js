@@ -1,7 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js'; // Ajusta la ruta a tu archivo de configuración de la base de datos
 
-const TempPumpkins = sequelize.define('temp_pumpkins', {
+const Matches = sequelize.define('matches', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -13,29 +13,26 @@ const TempPumpkins = sequelize.define('temp_pumpkins', {
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
-  calabazas: {
+  partida: {
     type: DataTypes.TEXT('medium'),
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
-  premios: {
+  premios_obtenidos: {
     type: DataTypes.TEXT('medium'),
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
   picked: {
     type: DataTypes.TEXT,
-    allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
   nombres: {
     type: DataTypes.TEXT('medium'),
-    allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
   game: {
     type: DataTypes.INTEGER,
-    allowNull: false,
     defaultValue: 3,
   },
   estado: {
@@ -44,8 +41,8 @@ const TempPumpkins = sequelize.define('temp_pumpkins', {
     defaultValue: 1,
   },
 }, {
-  tableName: 'temp_pumpkins',
+  tableName: 'matches',
   timestamps: false, // Evita la creación automática de campos createdAt y updatedAt
 });
 
-export default TempPumpkins;
+export default Matches;
