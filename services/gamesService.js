@@ -771,7 +771,7 @@ class GamesService {
                         const nuevaPartida = {
                           user: user,
                           partida: JSON.stringify(nuevaPartidaArray),
-                          premios_obtenidos: JSON.stringify(Array(10).fill(null)),
+                          premios_obtenidos: JSON.stringify(Array(6).fill(null)),
                           game: game,
                           estado: 1
                         };
