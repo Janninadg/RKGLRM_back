@@ -2878,7 +2878,7 @@ class EventService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '002', message: 'Token inválido o sesión antigua para este evento...' };
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua para este evento...' };
       }
 
        // Verificar si el usuario ya seleccionó un personaje
@@ -2891,7 +2891,7 @@ class EventService {
 
       if (existingEntry) {
           await t.rollback();
-          return { success: false, code: '003', message: '¡El usuario ya ha seleccionado un personaje!' };
+          return { success: false, code: '200', message: '¡El usuario ya ha seleccionado un personaje!' };
       
       }
 
@@ -2919,6 +2919,11 @@ class EventService {
         },
         transaction:t // Añadir transacción aquí
       });
+
+      if (!characterSelected) {
+          await t.rollback();
+          return { success: false, code: '200', message: 'El personaje que has seleccionado no existe o estás intentando tomar un personaje que no te pertenece' };
+      }
 
       const niveles = Array.from({ length: 6 }, (_, index) => {
         if (index === 9) {
