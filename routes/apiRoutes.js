@@ -4,6 +4,7 @@ import userRoutes from './userRoutes.js';
 import eventRoutes from './eventRoutes.js';
 import controlRoutes from './controlRouter.js';
 import streamersRoutes from './streamersRoutes.js';
+import storeRoutes from './storeRoutes.js';
 import webRoutes from './webRoutes.js';
 
 const router = express.Router();
@@ -27,5 +28,8 @@ router.use('/streamers', streamersRoutes);
 
 // Montar rutas de eventos bajo api/web
 router.use('/web', webRoutes);
+
+// Montar rutas de tienda bajo api/store
+router.use('/store', storeRoutes);
 
 export default router;
