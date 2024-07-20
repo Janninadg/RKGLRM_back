@@ -25,10 +25,17 @@ class StoreController {
 
     async buyItems(req, res, next) {
         try {
-          const { user,token,idstore,amount } = req.body;
+          const { user,token,idstore,amount,ip } = req.body;
     
           const response = await StoreService.buyItems(user,token,idstore,amount);
           //console.log(ranking);
+
+          console.log("---------------------------------------------------------------".blue);
+          console.log("COMPRANDO - FROM IP: ".blue,ip.green);
+          console.log('Usuario:'.blue,user.yellow);
+          console.log('ID Store:'.blue,idstore.yellow);
+          console.log('Amount:'.blue,amount.yellow);
+          console.log("---------------------------------------------------------------".blue);
     
           if (response.success || response.code) {
             return res.status(200).json(response);
