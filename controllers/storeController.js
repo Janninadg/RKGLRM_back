@@ -33,8 +33,8 @@ class StoreController {
           console.log("---------------------------------------------------------------".blue);
           console.log("COMPRANDO - FROM IP: ".blue,ip.green);
           console.log('Usuario:'.blue,user.yellow);
-          console.log('ID Store:'.blue,idstore.yellow);
-          console.log('Amount:'.blue,amount.yellow);
+          console.log('ID Store:'.blue,String(idstore).yellow);
+          console.log('Amount:'.blue,String(amount).yellow);
           console.log("---------------------------------------------------------------".blue);
     
           if (response.success || response.code) {
