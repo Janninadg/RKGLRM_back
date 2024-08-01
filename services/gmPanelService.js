@@ -177,7 +177,7 @@ class GMPanelService {
             //transaction: t, // Asociar la transacción con esta consulta
           });
 
-          if(!sessionToken){
+          if(!userGame){
             //await t.rollback(); // Revertir la transacción en caso de error
             return { success: false, code: '002', message: 'Tu usuario [asociado] no existe' };
           }
