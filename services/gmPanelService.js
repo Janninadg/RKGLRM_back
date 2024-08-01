@@ -1276,9 +1276,9 @@ class GMPanelService {
         
         }
   
-        // Actualizar el nivel de personajes
+        // Actualizar el nivel y experiencia de personajes
         await CharacterInfo.update(
-            { level:level, exp:0 },
+            { level:level.lv, exp:level.ex },
             { where: { id: personajes}, transaction: t }
           );
   
@@ -1302,7 +1302,7 @@ class GMPanelService {
         return {
           success: true,
           code: '000',
-          message:'Se ha cambiado el nivel de los personajes seleccionados correctamente',
+          message:'Se ha cambiado el nivel y experiencia de los personajes seleccionados de manera exitosa',
         };
       
       }
