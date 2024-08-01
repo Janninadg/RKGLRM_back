@@ -1288,8 +1288,22 @@ class GMPanelService {
             userAction:user,
             action: 'Cambiar nivel de personajes',
             user:JSON.stringify(personajes),
-            amount:level,
+            amount:level.lv,
             type:7,
+            date: new Date(),
+          },
+          {
+            transaction: t, // Asociar la transacción con esta operación
+          }
+        );
+
+        await LogPanelGM.create(
+          {
+            userAction:user,
+            action: 'Cambiar experiencia de personajes',
+            user:JSON.stringify(personajes),
+            amount:level.ex,
+            type:8,
             date: new Date(),
           },
           {
