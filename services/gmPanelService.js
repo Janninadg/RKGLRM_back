@@ -169,10 +169,18 @@ class GMPanelService {
             return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
           }
 
+          const userAsociado = await UsersPanel.findOne({
+            attributes: ['asociado'],
+            where: {
+              user: user.user, // Cambia esto para usar el nombre de usuario correcto
+            },
+            //transaction: t, // Asociar la transacción con esta consulta
+          });
+
           const userGame = await UserGameInfo.findOne({
             attributes: ['id'],
             where: {
-              name: user.asociado, // Cambia esto para usar el nombre de usuario correcto
+              name: userAsociado.asociado, // Cambia esto para usar el nombre de usuario correcto
             },
             //transaction: t, // Asociar la transacción con esta consulta
           });
