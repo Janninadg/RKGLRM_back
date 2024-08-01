@@ -177,6 +177,11 @@ class GMPanelService {
             //transaction: t, // Asociar la transacción con esta consulta
           });
 
+          if(!sessionToken){
+            //await t.rollback(); // Revertir la transacción en caso de error
+            return { success: false, code: '002', message: 'Tu usuario [asociado] no existe' };
+          }
+
           const personajes = await CharacterInfo.findAll({
             where: { userid: userGame.id },
             attributes: ['id','name'],
