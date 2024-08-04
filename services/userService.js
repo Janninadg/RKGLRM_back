@@ -497,29 +497,29 @@ class UserService {
       //   }
       // );
 
-      const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
-      const presentIds = pr.i;
+      // const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
+      // const presentIds = pr.i;
       // presentIds.push(8000);
       // presentIds.push(7000);
 
-      const presentRecords = presentIds.map(present_id => ({
-        present_id,
-        user_id: userGameInfo.id,
-        added_time: new Date(),
-      }));
+      // const presentRecords = presentIds.map(present_id => ({
+      //   present_id,
+      //   user_id: userGameInfo.id,
+      //   added_time: new Date(),
+      // }));
 
-      const originRecords = presentIds.map(recompensa => ({
-        user:username,
-        origen:0,
-        recompensa,
-        tipo_recompensa: 0,
-        fecha: new Date(),
-      }));
+      // const originRecords = presentIds.map(recompensa => ({
+      //   user:username,
+      //   origen:0,
+      //   recompensa,
+      //   tipo_recompensa: 0,
+      //   fecha: new Date(),
+      // }));
       
-      await PendingPresents.bulkCreate(presentRecords, { transaction });
+      // await PendingPresents.bulkCreate(presentRecords, { transaction });
 
       //LOGS REWARDS:
-      await LogRewardsUser.bulkCreate(originRecords, { transaction });
+      // await LogRewardsUser.bulkCreate(originRecords, { transaction });
       // await LogRewardsUser.create({  
       //   user:username,
       //   origen:0,
@@ -555,7 +555,8 @@ class UserService {
 
       await transaction.commit();
   
-      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro + '+ pr.m +' de recompensa por registrarte!', code: '000' };
+      // return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro + '+ pr.m +' de recompensa por registrarte!', code: '000' };
+      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro de recompensa por registrarte!', code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);
