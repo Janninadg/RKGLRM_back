@@ -3,19 +3,19 @@ const setPresentsReward = (character) => {
         switch (character) {
             case 0:
               //Swordman
-              return {i:[14011, 14012, 14013, 14014, 14015, 14016],m:'un Set de Swordman'};
+              return {i:[1008, 1108, 1208, 1308, 1408, 1508],m:'un Set Knight de Swordman'};
             case 1:
               //Archer
-              return {i:[14017, 14018, 14019, 14020, 14021, 14022],m:'un Set de Archer'};;
+              return {i:[2008, 2108, 2208, 2308, 2408, 2508],m:'un Set Knight de Archer'};;
             case 2:
               //Black
-              return {i:[14023, 14024, 14025, 14026, 14027, 14028],m:'un Set de Black'};;
+              return {i:[3008, 3108, 3208, 3308, 3408, 3508],m:'un Set Knight de Black'};;
             case 3:
               //Mage
-              return {i:[14029, 14030, 14031, 14032, 14033, 14034],m:'un Set de Mage'};;
+              return {i:[4008, 4108, 4208, 4308, 4408, 4508],m:'un Set Knight de Mage'};;
             case 4:
               //Ninja
-              return {i:[14035, 14036, 14037, 14038, 14039, 14040],m:'un Set de Ninja'};;
+              return {i:[5008, 5108, 5208, 5308, 5408, 5508],m:'un Set Knight de Ninja'};;
             default:
               return null;
           }
