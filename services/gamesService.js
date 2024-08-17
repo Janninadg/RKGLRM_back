@@ -716,8 +716,8 @@ class GamesService {
                         });
                     }
 
-                    const niveles = Array.from({ length: 6 }, (_, index) => {
-                        if (index === 9) {
+                    const niveles = Array.from({ length: 11 }, (_, index) => {
+                        if (index === 20) {
                             return 99;
                         } else {
                             return (index + 1) * 5;
@@ -751,6 +751,21 @@ class GamesService {
 
                     if (match) {
                          // Actualizar partida existente
+
+                        // Convertir premios_obtenidos a un array
+                        let premiosObtenidos = JSON.parse(match.premios_obtenidos);
+
+                        // Verificar si la longitud es menor a 11
+                        if (premiosObtenidos.length < 11) {
+                            // Agregar null hasta que la longitud sea 11
+                            premiosObtenidos = [...premiosObtenidos, ...Array(11 - premiosObtenidos.length).fill(null)];
+                            
+                            // Actualizar el campo premios_obtenidos en la base de datos
+                            await Matches.update(
+                                { premios_obtenidos: JSON.stringify(premiosObtenidos) },
+                                { where: { id: match.id }, transaction }
+                            );
+                        }
                         // const partidaActual = JSON.parse(match.partida);
                         const partidaActualizada = nuevaPartidaArray;//partidaActual.map((estado, index) => levelsSuperados.some(l => l >= niveles[index]) ? false : estado);
 
@@ -761,7 +776,7 @@ class GamesService {
 
                         return {
                           mt: partidaActualizada,
-                          _pws: JSON.parse(match.premios_obtenidos),
+                          _pws: premiosObtenidos,
                           new: newUser,
                           uch:userCharacters,
                           chs:characterSelected,
@@ -771,7 +786,7 @@ class GamesService {
                         const nuevaPartida = {
                           user: user,
                           partida: JSON.stringify(nuevaPartidaArray),
-                          premios_obtenidos: JSON.stringify(Array(6).fill(null)),
+                          premios_obtenidos: JSON.stringify(Array(11).fill(null)),
                           game: game,
                           estado: 1
                         };
@@ -801,7 +816,7 @@ class GamesService {
             
             // Verificar que el usuario se encuentre en ese nivel...
 
-            const nivel = opcion == 9 ? ((opcion + 1) * 10) - 1 : (opcion + 1) * 5;
+            const nivel = opcion == 20 ? ((opcion + 1) * 10) - 1 : (opcion + 1) * 5;
 
             // Buscar el userId del usuario dado su username dentro de la transacción
             const user = await UserGameInfo.findOne({
