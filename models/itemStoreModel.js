@@ -43,6 +43,11 @@ const ItemStore = sequelize.define('itemstore', {
     type: DataTypes.INTEGER(11),
     allowNull: false
   },
+  show: {
+    type: DataTypes.TINYINT(2),
+    allowNull: false,
+    defaultValue: 1
+  },
   fecha: {
     type: DataTypes.DATE,
     allowNull: false,

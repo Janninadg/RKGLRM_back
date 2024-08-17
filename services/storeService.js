@@ -105,6 +105,11 @@ class StoreService {
                 await t.rollback();
                 return { success: false, code: '200', message: 'Item no encontrado' };
             }
+
+            if (item.show === 0){
+                await t.rollback();
+                return { success: false, code: '200', message: 'El item ya no se encuentra disponible. Actualiza la tienda.' };
+            }
     
             if (item.stockLimit === 1 && item.stock < amount) {
                 await t.rollback();
@@ -306,6 +311,9 @@ class StoreService {
     async getItems() {
         try {
             const items = await ItemStore.findAll({
+                where:{
+                    show:1,
+                },
                 order: [['id', 'ASC']],
             });
 
