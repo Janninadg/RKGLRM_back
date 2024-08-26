@@ -31,6 +31,8 @@ import CharacterInfo from '../models/characterInfo.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
 import Matches from '../models/matchesModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
+import EventPoint from '../models/eventPointsModel.js';
+import colors from "colors";
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -929,16 +931,39 @@ class EventService {
       }
 
       var payment;
+      var typem;
+      var ticketsPrice;
+      var origen;
+      var tiporec;
 
       switch (pay) {
         case '_vactdc001':
           payment = 1;
+          typem = 'cash';
+          ticketsPrice = 1000;
+          origen = 4;
+          tiporec = 3;
           break;
         case '_ncptft002':
+          typem = 'oro';
           payment = 2;
+          ticketsPrice = 2000;
+          origen = 5;
+          tiporec = 4;
+          break;
+        case '_epvtcg003':
+          typem = 'puntos de evento';
+          payment = 3;
+          ticketsPrice = 30;
+          origen = 8;
+          tiporec = 12;
           break;
         default:
           payment = null;
+          typem = 'NULL';
+          ticketsPrice = 0;
+          origen = 0;
+          tiporec = 0;
           break;
       }
 
@@ -949,7 +974,7 @@ class EventService {
 
       var currencyAmount;
       var amount;
-      var typem = payment === 1 ? 'cash' : 'oro';
+      // var typem = payment === 1 ? 'cash' : 'oro';
       
       if(payment===1){
         currencyAmount = await Cash.findOne({
@@ -960,7 +985,7 @@ class EventService {
           transaction: t,
         });
         amount = currencyAmount.cash;
-      } else {
+      } else if(payment===2) {
         currencyAmount = await UserGameInfo.findOne({
           attributes: ['gold'],
           where: {
@@ -969,14 +994,22 @@ class EventService {
           transaction: t,
         });
         amount = currencyAmount.gold;
-      } 
-  
+      } else{
+        currencyAmount = await EventPoint.findOne({
+          // attributes: ['Points'],
+          where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), userId),
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        amount = currencyAmount.Points;
+      }
+  // console.log('a');
 
-      const ticketsPrice = payment === 1 ? 1000 : 2000; // Precio de un ticket en cash u oro
+      // const ticketsPrice = payment === 1 ? 1000 : 2000; // Precio de un ticket en cash u oro
   
       if (!currencyAmount || amount < ticketsPrice * ticketCount) {
         await t.rollback();
-        return { success: false, code: '001', message: `No tienes suficiente ${typem} para comprar los tickets`};
+        return { success: false, code: '001', message: `No tienes suficiente(s) ${typem} para esta compra`};
       }
   
       if(payment === 1){
@@ -989,7 +1022,7 @@ class EventService {
           await t.rollback();
           return { success: false, code: '100', message: 'Error al realizar la compra de tickets de cash' };
         }
-      } else{
+      } else if (payment === 2){
         const [updatedTicketCount, updatedCash] = await Promise.all([
           TicketOro.increment('tickets', { by: ticketCount, where: { id: userId }, transaction: t }),
           UserGameInfo.decrement('gold', { by: ticketsPrice * ticketCount, where: { name: userId }, transaction: t }),
@@ -1000,13 +1033,34 @@ class EventService {
           return { success: false, code: '100', message: 'Error al realizar la compra de tickets de oro' };
         }
 
-      } 
+      } else{
+        // Obtener los puntos del usuario y luego actualizarlo
+
+        // Actualizar los puntos y guardar+
+        // console.log(currencyAmount);
+        currencyAmount.Points -= ticketsPrice * ticketCount;
+        await currencyAmount.save({ transaction: t });
+        // console.log(1);
+        // Actualizar los tickets
+        const updatedTicketCount = await Ticket.increment('tickets', {
+          by: ticketCount,
+          where: { id: userId },
+          transaction: t,
+        });
+        // console.log(2);
+
+        if (updatedTicketCount[0] === 0 || currencyAmount.Points < 0) {
+          await t.rollback();
+          return { success: false, code: '100', message: 'Error al realizar la compra de giros' };
+        }
+
+      }
 
       await LogRewardsUser.create({  
         user:userId,
-        origen:payment ? 4 : 5,
+        origen:origen,
         recompensa:ticketCount,
-        tipo_recompensa: payment ? 3 : 4,
+        tipo_recompensa: tiporec,
         //origen_2: type,
         fecha: new Date(), 
       }, { transaction: t });
@@ -1033,7 +1087,7 @@ class EventService {
       console.log(user2);
       console.log(orderPrize);
       console.log(idRoulette2);*/
-      console.log("Redeem validate:", verifyPacketEqual);
+      console.log("Re-verificación:".magenta, verifyPacketEqual ? String(verifyPacketEqual).green :  String(verifyPacketEqual).red);
       const banInfo = await verifyPacketAndBan(userId, user2, paramsString, verifyPacketEqual, t, req);
   
       if (banInfo) {
@@ -1093,8 +1147,21 @@ class EventService {
       }
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      const prizesGame = await gamesService.getPrizeByGame(type,opcion,t);
-  
+      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,t);
+
+      if(GameRes.code){
+        console.log('Win:'.magenta,'false'.red);
+        return GameRes;
+      }
+
+      const prizesGame = GameRes.all;
+
+      if(!GameRes.win){
+        console.log('Win:'.magenta,'false'.red);
+        await t.commit(); // Revertir la transacción en caso de error
+        return { success: false, code: '400', message: '¡Perdiste! Se te retornará el 50% del costo del giro, suerte para la próxima :)' };
+      }
+
       if (!prizesGame) {
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '200', message: 'No se encontró premios para este juego' };
@@ -1145,7 +1212,6 @@ class EventService {
          * 
          */
         case 1:
-
           // Verificar modalidad:
 
           if(modalidad > 0){
@@ -1164,108 +1230,112 @@ class EventService {
 
           break;
         //Ruleta
-        // case 0:
-        //   var userTickets;
-        //   //var slotsAvaible;
-        //   var typename;
-        //   //Acciones según modalidad:
-        //   switch (modalidad) {
-        //     //Cash
-        //     case 1:
+        case 3:
+          var userTickets;
+          //var slotsAvaible;
+          var typename;
+          //Acciones según modalidad:
+          switch (modalidad) {
+            //Cash
+            case 1:
 
-        //       typename = 'cash';
+              typename = 'eventpoints';
 
-        //       userTickets = await Ticket.findOne({
-        //         attributes: ['tickets'],
-        //         where: {
-        //           id: userId,
-        //         },
-        //         transaction: t, // Asociar la transacción con esta consulta
-        //       });
+              userTickets = await Ticket.findOne({
+                // attributes: ['tickets'],
+                where: {
+                  id: userId,
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+              });
 
-        //       // Decrementar el ticket del usuario
-        //       await Ticket.decrement('tickets', {
-        //         by: 1,
-        //         where: {
-        //           id: userId,
-        //         },
-        //         transaction: t, // Asociar la transacción con esta operación
-        //       });
+              // Decrementar el ticket del usuario
+              await Ticket.decrement('tickets', {
+                by: 1,
+                where: {
+                  id: userId,
+                },
+                transaction: t, // Asociar la transacción con esta operación
+              });
 
-        //       //slotsAvaible = true;
+              //slotsAvaible = true;
 
-        //       break;
-        //     //Oro
-        //     case 2:
-        //       typename = 'oro';
+              break;
+            //Oro
+            // case 2:
+            //   typename = 'oro';
 
-        //       if(prizesGame.type == 0){
-        //         typePrize = 5;
-        //       }
+            //   if(prizesGame.type == 0){
+            //     typePrize = 5;
+            //   }
 
-        //       const usergetId = await UserGameInfo.findOne({
-        //         attributes:['id'],
-        //         where:{
-        //           name: userId
-        //         },
-        //         transaction: t, // Asociar la transacción con esta consulta
-        //       });
+            //   const usergetId = await UserGameInfo.findOne({
+            //     attributes:['id'],
+            //     where:{
+            //       name: userId
+            //     },
+            //     transaction: t, // Asociar la transacción con esta consulta
+            //   });
 
-        //       if (!usergetId) {
-        //         await t.rollback(); // Revertir la transacción en caso de error
-        //         return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-        //       }
+            //   if (!usergetId) {
+            //     await t.rollback(); // Revertir la transacción en caso de error
+            //     return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
+            //   }
               
 
-        //       const slots = await UserItemInfo.findOne({
-        //         attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
-        //         //group: ['name'],
-        //         where: {
-        //           userid: usergetId.id,
-        //           slot: {
-        //             [Sequelize.Op.ne]: null,
-        //           },
-        //         },
-        //         transaction: t, // Asociar la transacción con esta consulta
-        //       });
+            //   const slots = await UserItemInfo.findOne({
+            //     attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
+            //     //group: ['name'],
+            //     where: {
+            //       userid: usergetId.id,
+            //       slot: {
+            //         [Sequelize.Op.ne]: null,
+            //       },
+            //     },
+            //     transaction: t, // Asociar la transacción con esta consulta
+            //   });
 
-        //       slotsAvaible = (90-slots.dataValues.slots) === 0  ? false : true; 
+            //   slotsAvaible = (90-slots.dataValues.slots) === 0  ? false : true; 
 
-        //       //console.log(slotsAvaible);
+            //   //console.log(slotsAvaible);
 
-        //       userTickets = await TicketOro.findOne({
-        //         attributes: ['tickets'],
-        //         where: {
-        //           id: userId,
-        //         },
-        //         transaction: t, // Asociar la transacción con esta consulta
-        //       });
+            //   userTickets = await TicketOro.findOne({
+            //     attributes: ['tickets'],
+            //     where: {
+            //       id: userId,
+            //     },
+            //     transaction: t, // Asociar la transacción con esta consulta
+            //   });
 
-        //       // Decrementar el ticket del usuario
-        //       await TicketOro.decrement('tickets', {
-        //         by: 1,
-        //         where: {
-        //           id: userId,
-        //         },
-        //         transaction: t, // Asociar la transacción con esta operación
-        //       });
-        //       break;
-        //     default:
-        //       await t.rollback(); 
-        //       return { success: false, code: '001', message: 'No existe este tipo de modalidad para este juego' };
-        //       break;
-        //   }
+            //   // Decrementar el ticket del usuario
+            //   await TicketOro.decrement('tickets', {
+            //     by: 1,
+            //     where: {
+            //       id: userId,
+            //     },
+            //     transaction: t, // Asociar la transacción con esta operación
+            //   });
+            //   break;
+            default:
+              await t.rollback(); 
+              return { success: false, code: '001', message: 'No existe este tipo de modalidad para este juego' };
+              break;
+          }
+
+          // Combina los valores de params con los nuevos datos
+          Object.assign(params, GameRes.params);
           
-        //   if (!userTickets || userTickets.tickets < 1) {
-        //     await t.rollback(); // Revertir la transacción en caso de error
-        //     if(!userTickets || userTickets.tickets < 1){
-        //       return { success: false, code: '001', message:`No tiene tickets de ${typename} suficientes para girar la ruleta` };
-        //     } else {
-        //       return { success: false, code: '001', message: 'No tiene slots disponbiles para girar la ruleta de oro' };
-        //     }
-        //   }
+          if (!userTickets || userTickets.tickets < 1) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            if(!userTickets || userTickets.tickets < 1){
+              return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
+            } else {
+              return { success: false, code: '001', message: 'No tiene slots disponbiles para girar la ruleta de oro' };
+            }
+          }
           
-        //   break;
+          break;
         // //Countdown
         // case 1:
 
@@ -1443,6 +1513,8 @@ class EventService {
           transaction: t, // Asociar la transacción con esta operación
         }
       );
+
+      console.log('Win:'.magenta,'true'.green);
 
       // const pr = await this.getAllPrizes(type,t);
       // _pwb:prizesGame.clase,pr

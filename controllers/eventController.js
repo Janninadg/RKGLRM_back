@@ -100,11 +100,14 @@ class EventController {
 
   async redeemTicketAndReward(req, res) {
     try {
-
-      console.log("REDEEM PRIZES - FROM IP: ".blue,req.clientIp.green);
+      
+      // console.log("REDEEM PRIZES - FROM IP: ".blue,req.clientIp.green);
 
       //enviar otro key para comparar...
-      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
+      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ,ip } = req.body;
+
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("JUGANDO.... - FROM IP: ".blue,ip.magenta);
 
       //const signature = K2tFvE;
 
@@ -120,7 +123,7 @@ class EventController {
       //console.log("DATA:",W4aRzY);
       //console.log(signature);
       //console.log("VER:",ver);
-      console.log("HASH:",isDataIntegrityValid);
+      console.log("Integridad del paquete:".magenta,isDataIntegrityValid ? String(isDataIntegrityValid).green :  String(isDataIntegrityValid).red);
 
       const key = TuVjKl;
       const key2 = decrypt(qF7z2N,key);
@@ -129,6 +132,18 @@ class EventController {
 
       const id = decrypt(EeF789,key);
       const id2 = decrypt(decrypt(GhIjKl,key),key);
+      console.log('Usuario:'.blue,id.yellow);
+
+      switch (type) {
+        case 1:
+          console.log('Evento:'.blue,'Cartas de nivel'.red);
+          break;
+        case 3: 
+          console.log('Evento:'.blue,'Ruleta'.red);
+          break;
+        default:
+          break;
+      }
 
       const token = decrypt(LLODKF,key);
 
@@ -141,6 +156,8 @@ class EventController {
       const paramsString = `${EeF789}-${GhIjKl}-${TuVjKl}-${qF7z2N}-${f4rDnT}-${BSSIMO}-${LLODKF}-${FLGMDN}-${MTORLD}`;
 
       const result = await EventService.playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2, req);
+
+      console.log("---------------------------------------------------------------".magenta);
 
       if (result.success || result.code) {
         return res.status(200).json(result);

@@ -29,28 +29,29 @@ import Ticket from '../models/ticketsModel.js';
 import RewardsBox from '../models/rewardsBoxModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import UnclassifiedPrizes from '../models/unclassifiedPrizesModel.js';
+import EventPoint from '../models/eventPointsModel.js';
 
 class GamesService {
 
-    async getPrizeByGame(game,clase,transaction) {
+    async getPrizeByGame(game,clase,user,transaction) {
         try {
             switch (game) {
                 case 1:
-                    return (
-                        await PrizesGame.findOne({
-                            attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
-                            where: {
-                            orderPrize: clase,
-                            // clase: clase,
-                            type_game: game,
-                            },
-                            order: [['orderPrize', 'ASC']],
-                            transaction, // Asociar la transacción con esta consulta
-                        })
-                    );
-                default:
+                    const prizeCard = await PrizesGame.findOne({
+                        attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
+                        where: {
+                        orderPrize: clase,
+                        // clase: clase,
+                        type_game: game,
+                        },
+                        order: [['orderPrize', 'ASC']],
+                        transaction, // Asociar la transacción con esta consulta
+                    });
+
+                    return {all: prizeCard, win:true};
+                case 3:
                     const allPrizes = await PrizesGame.findAll({
-                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
+                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users','url'],
                         where: {
                         //orderPrize: orderPrize,
                         type_game: game,
@@ -58,6 +59,51 @@ class GamesService {
                         order: [['orderPrize', 'ASC']],
                         transaction, // Asociar la transacción con esta consulta
                     })
+
+                    if(Math.random() < 0.5) {
+                        const returnEvP = await EventPoint.findOne({
+                            // attributes: ['Points'],
+                            where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+                            transaction,
+                            lock: transaction.LOCK.UPDATE,
+                          });
+
+                        // await EventPoint.increment('Points', { 
+                        //     by: 30 * 0.5,
+                        //     where: sequelize.where(
+                        //         sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
+                        //         user
+                        //       ),
+                        // });
+                        returnEvP.Points += 30 * 0.5;
+                        await returnEvP.save({ transaction });
+
+                        const userTickets = await Ticket.findOne({
+                            // attributes: ['tickets'],
+                            where: {
+                              id: user,
+                            },
+                            transaction, // Asociar la transacción con esta consulta
+                            lock: transaction.LOCK.UPDATE,
+                          });
+
+                        // Decrementar el ticket del usuario
+                        await Ticket.decrement('tickets', {
+                            by: 1,
+                            where: {
+                            id: user,
+                            },
+                            transaction // Asociar la transacción con esta operación
+                        });
+
+                        // await t.rollback(); // Revertir la transacción en caso de error
+                        if(!userTickets || userTickets.tickets < 1){
+                            await transaction.rollback(); // Revertir la transacción en caso de error
+                            return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
+                        }
+
+                        return {all: null, win:false};
+                    }
 
                     // Realizar el calculo de probabilidad:
                     const randomProb = Math.random();
@@ -75,7 +121,41 @@ class GamesService {
                         }
                     }
 
-                    return allPrizes[selectedItem];
+                    const params = {
+                        _pw:selectedItem,
+                        _pwb:allPrizes[selectedItem].clase,
+                        pr: allPrizes
+                    }
+
+                    return {all: allPrizes[selectedItem], win:true,params};
+                default:
+                    // const allPrizes = await PrizesGame.findAll({
+                    //     attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
+                    //     where: {
+                    //     //orderPrize: orderPrize,
+                    //     type_game: game,
+                    //     },
+                    //     order: [['orderPrize', 'ASC']],
+                    //     transaction, // Asociar la transacción con esta consulta
+                    // })
+
+                    // // Realizar el calculo de probabilidad:
+                    // const randomProb = Math.random();
+                    // let cumulativeProb = 0;
+                    // let selectedItem = 0;
+
+                    // //console.log(allPrizes.length);
+
+                    // for (let i = 0; i < allPrizes.length; i++) {
+                    //     //console.log(allPrizes[i]);
+                    //     cumulativeProb += allPrizes[i].probability;
+                    //     if (randomProb <= cumulativeProb) {
+                    //     selectedItem = i;
+                    //     break;
+                    //     }
+                    // }
+
+                    return null;
             }
         } catch (error) {
             await transaction.rollback(); // Revertir la transacción en caso de error

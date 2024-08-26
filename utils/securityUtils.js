@@ -33,7 +33,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
           }
         }
 
-        console.log("CHECK IF USER IS BAN:".blue,userId.yellow);
+        // console.log("CHECK IF USER IS BAN:".blue,userId.yellow);
 
         const existingPacket = await TrackingPacket.findOne({
             attributes: ['user'],
