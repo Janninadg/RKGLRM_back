@@ -954,7 +954,7 @@ class EventService {
         case '_epvtcg003':
           typem = 'puntos de evento';
           payment = 3;
-          ticketsPrice = 30;
+          ticketsPrice = 20;
           origen = 8;
           tiporec = 12;
           break;
