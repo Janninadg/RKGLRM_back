@@ -75,7 +75,7 @@ class GamesService {
                         //         user
                         //       ),
                         // });
-                        returnEvP.Points += 30 * 0.5;
+                        returnEvP.Points += 20 * 0.5;
                         await returnEvP.save({ transaction });
 
                         const userTickets = await Ticket.findOne({
