@@ -975,6 +975,8 @@ class EventService {
       var currencyAmount;
       var amount;
       // var typem = payment === 1 ? 'cash' : 'oro';
+
+      const params = {};
       
       if(payment===1){
         currencyAmount = await Cash.findOne({
@@ -1049,6 +1051,8 @@ class EventService {
         });
         // console.log(2);
 
+        params['ep'] = currencyAmount.Points;
+
         if (updatedTicketCount[0] === 0 || currencyAmount.Points < 0) {
           await t.rollback();
           return { success: false, code: '100', message: 'Error al realizar la compra de giros' };
@@ -1066,7 +1070,9 @@ class EventService {
       }, { transaction: t });
   
       await t.commit();
-      return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa'};
+
+     
+      return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa',params};
     } catch (error) {
       await t.rollback();
       throw new Error('Error al realizar la compra de tickets');
@@ -1159,7 +1165,7 @@ class EventService {
       if(!GameRes.win){
         console.log('Win:'.magenta,'false'.red);
         await t.commit(); // Revertir la transacción en caso de error
-        return { success: false, code: '400', message: '¡Perdiste! Se te retornará el 50% del costo del giro, suerte para la próxima :)' };
+        return { success: false, code: '400',params: GameRes.params, message: '¡Perdiste! Se te retornará el 50% del costo del giro, suerte para la próxima :)' };
       }
 
       if (!prizesGame) {

@@ -60,7 +60,7 @@ class GamesService {
                         transaction, // Asociar la transacción con esta consulta
                     })
 
-                    if(Math.random() < 0.5) {
+                    if(Math.random() < 0.7) {
                         const returnEvP = await EventPoint.findOne({
                             // attributes: ['Points'],
                             where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
@@ -102,7 +102,15 @@ class GamesService {
                             return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
                         }
 
-                        return {all: null, win:false};
+                        const lastClass = allPrizes.reduce((max, item) => {
+                            return item.clase > max ? item.clase : max;
+                          }, 0); // Iniciar con 0 o cualquier otro valor mínimo válido
+
+                        const params = {
+                            ep: returnEvP.Points,
+                            _pwb:lastClass +1,
+                        }
+                        return {all: null, win:false,params};
                     }
 
                     // Realizar el calculo de probabilidad:
