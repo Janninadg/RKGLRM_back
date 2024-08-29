@@ -1384,6 +1384,7 @@ class GMPanelService {
   
         if(!sessionToken){
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Sesión antigua'.red);
           return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
         }
   
@@ -1399,6 +1400,7 @@ class GMPanelService {
   
         if(!existGM){
           await t.rollback();
+          console.log("!![GM Panel]".red,' Ya no es GM'.red);
           return {
             success: false,
             code: '001',
@@ -1443,7 +1445,7 @@ class GMPanelService {
         );
   
         await t.commit();
-        
+        console.log("[GM Panel]".green,' Exito'.green);
         return {
           success: true,
           code: '000',
