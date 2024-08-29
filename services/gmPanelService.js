@@ -885,6 +885,7 @@ class GMPanelService {
     
         if (!itemData) {
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Item ID ingresado no existe'.red);
           return { success: false, code: '003',message:'¡El item ID ingresado no existe!' };
         }
         //console.log(1);
