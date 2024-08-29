@@ -23,11 +23,14 @@ class EventController {
   async getTickets(req, res) {
 
     try {
-      console.log("TICKETS USER - FROM IP: ".blue,req.clientIp.green);
       const {b7Yx9Q,v8Lw2Z} = req.body;
 
       const userId = decrypt(v8Lw2Z,b7Yx9Q);    
-      console.log('USER:'.blue,userId.yellow);
+
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("GET TICKETS (GIROS) - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,userId.yellow);
+      console.log("---------------------------------------------------------------".magenta);
 
       const result = await EventService.getTickets(userId);
 
@@ -353,16 +356,12 @@ class EventController {
   async buyTickets(req, res) {
     try {
 
-      console.log("BUY TICKETS - FROM IP: ".blue,req.clientIp.green);
-
       const { y6uGvQ, I3eSkR } = req.body;
 
       // Calcula un resumen de los datos recibidos
       const receivedDataHash = calculateDataHash(y6uGvQ);
       // Compara el resumen de los datos recibidos con el resumen incluido en los datos
       const isDataIntegrityValid = receivedDataHash === I3eSkR;
-
-      console.log("HASH:",isDataIntegrityValid);
 
       const { qF7z2N, W4aRzY, j1xYbZ ,CCIOMD,TKDNS } = y6uGvQ;
 
@@ -377,6 +376,12 @@ class EventController {
       const typePay = decrypt(CCIOMD,key);
       const token = decrypt(TKDNS,key);
 
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("BUY TICKETS (GIROS) - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,userId.yellow);
+      // console.log("HASH:",isDataIntegrityValid);
+      console.log("Integridad del paquete:".magenta,isDataIntegrityValid ? String(isDataIntegrityValid).green :  String(isDataIntegrityValid).red);
+
       //const typePay = decrypt(CCIOMD,key) === 'cash' ? 1 : (decrypt(CCIOMD,key) === 'gold' ? 2 : null);
 
       //onsole.log(typePay);
@@ -386,6 +391,7 @@ class EventController {
 
       const result = await EventService.buyTickets(typePay,isDataIntegrityValid,paramsString,userId,ticketCount,token,req);
   
+      console.log("---------------------------------------------------------------".magenta);
       if (result.success || result.code) {
         return res.status(200).json(result);
       } else {
@@ -437,10 +443,23 @@ class EventController {
   async setAuthGame(req, res) {
     try {
 
-      console.log("SET GAME AUTH - FROM IP: ".blue,req.clientIp.green);
-
       //enviar otro key para comparar...
       const { token,user,game } = req.body;
+
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("SET TOKEN DE JUEGO - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,user.yellow);
+      switch (game) {
+        case 1:
+          console.log('Evento:'.blue,'Cartas de nivel'.red);
+          break;
+        case 3: 
+          console.log('Evento:'.blue,'Ruleta'.red);
+          break;
+        default:
+          break;
+      }
+      console.log("---------------------------------------------------------------".magenta);
 
       const result = await EventService.setAuthGame(token,user,game);
 

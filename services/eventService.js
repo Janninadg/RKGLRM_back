@@ -894,7 +894,7 @@ class EventService {
 
       const verifyPacketEqual = (isDataIntegrityValid);
       const banInfo = await verifyPacketAndBan(userId,userId, paramsString, verifyPacketEqual, t, req);
-      console.log(banInfo);
+      // console.log(banInfo);
       if (banInfo) {
         await t.rollback(); // Revertir la transacción en caso de error
         return banInfo;
@@ -927,6 +927,7 @@ class EventService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log('[ERROR]'.red,'Sesión antigua'.red);
         return { success: false, code: '005', message: 'Token inválido o sesión antigua para generar esta compra...' };
       }
 
@@ -943,6 +944,7 @@ class EventService {
           ticketsPrice = 1000;
           origen = 4;
           tiporec = 3;
+          console.log('Medio de pago:'.blue,'Cash'.yellow);
           break;
         case '_ncptft002':
           typem = 'oro';
@@ -950,6 +952,7 @@ class EventService {
           ticketsPrice = 2000;
           origen = 5;
           tiporec = 4;
+          console.log('Medio de pago:'.blue,'Oro'.yellow);
           break;
         case '_epvtcg003':
           typem = 'puntos de evento';
@@ -957,6 +960,7 @@ class EventService {
           ticketsPrice = 20;
           origen = 8;
           tiporec = 12;
+          console.log('Medio de pago:'.blue,'Puntos de evento'.yellow);
           break;
         default:
           payment = null;
@@ -969,6 +973,7 @@ class EventService {
 
       if(payment === null){
         await t.rollback();
+        console.log('[ERROR]'.red,'Medio de pago inválido'.red);
         return { success: false, code: '100', message: 'El tipo de pago seleccionado no es válido' };
       }
 
@@ -1011,6 +1016,7 @@ class EventService {
   
       if (!currencyAmount || amount < ticketsPrice * ticketCount) {
         await t.rollback();
+        console.log('[ERROR]'.red,'Saldo insuficiente'.red);
         return { success: false, code: '001', message: `No tienes suficiente(s) ${typem} para esta compra`};
       }
   
@@ -1070,6 +1076,8 @@ class EventService {
       }, { transaction: t });
   
       await t.commit();
+
+      console.log('[EXITO]'.green,'Compra exitosa'.green);
 
      
       return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa',params};
