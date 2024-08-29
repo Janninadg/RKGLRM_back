@@ -32,8 +32,6 @@ class GMPanelController {
       async banUsers(req, res) {
         try {
     
-          console.log("BAN USERS - FROM IP: ".blue,req.clientIp.green);
-    
           //enviar otro key para comparar...
           const { IDODUI,/*K2tFvE,T7hLpW,*/jMdiOl } = req.body;
     
@@ -60,6 +58,8 @@ class GMPanelController {
           const token = decrypt(IUR99L,key);
     
           const paramsString = `${OPPSLd}-${TYOsmD}-${ATLSMd}-${IUR99L}`;
+
+          console.log("[GM Panel]".green,' Baneo de usuarios'.green);
     
           const result = await GMPanelService.banUsers(token,data,user,isDataIntegrityValid,paramsString, req);
     
@@ -76,8 +76,6 @@ class GMPanelController {
 
       async recargaCash(req, res) {
         try {
-    
-          console.log("RECARGA CASH/ORO - FROM IP: ".blue,req.clientIp.green);
     
           //enviar otro key para comparar...
           const { IDODUI,/*K2tFvE,T7hLpW,*/jMdiOl } = req.body;
@@ -96,7 +94,7 @@ class GMPanelController {
           //console.log("DATA:",W4aRzY);
           //console.log(signature);
           //console.log("VER:",ver);
-          console.log("HASH:",isDataIntegrityValid);
+          // console.log("HASH:",isDataIntegrityValid);
     
           const key = SIDMCS;
           const data = JSON.parse(decrypt(O0gDPD,key));
@@ -105,6 +103,8 @@ class GMPanelController {
           const token = decrypt(MUDKFF,key);
     
           const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green,' Recarga/Descuento'.white,(' - Admin: '+user).white);
     
           const result = await GMPanelService.recargaCash(token,data,user,isDataIntegrityValid,paramsString, req);
     
