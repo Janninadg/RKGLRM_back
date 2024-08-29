@@ -8,7 +8,7 @@ const signToken = async (user,sessionActive) => {
   const selectedKey = config.jwtSecret[randomIndex];
 
   const sign = promisify(jwt.sign);
-  console.log("USER TOKEN:",user);
+  // console.log("USER TOKEN:",user);
 
   const payload = { id: user };
 
@@ -24,9 +24,9 @@ const signToken = async (user,sessionActive) => {
 };
 
 const verifyToken = async (token) => {
-  console.log("TOKEN VERIFY TOKEN:",token);
+  // console.log("TOKEN VERIFY TOKEN:",token);
   const verify = promisify(jwt.verify);
-  console.log("TOKEN VERIFY FUNCTION:",verify);
+  // console.log("TOKEN VERIFY FUNCTION:",verify);
  
   for (const secretKey of config.jwtSecret) {
     try {
