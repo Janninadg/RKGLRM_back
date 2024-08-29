@@ -1327,7 +1327,7 @@ class GMPanelService {
     
 
       //Insertar en LOG PANEL
-      const originRecordsPanel = members.map(u => ({
+      const originRecordsPanel = usuarios.map(u => ({
           userAction:user,
           action: 'Dar días de Power User',
           user: u,
@@ -1361,7 +1361,7 @@ class GMPanelService {
     }
       catch (error) {
         await t.rollback();
-        console.log("!![GM Panel]".green,' Error exception'.green);
+        console.log("!![GM Panel]".red,' Error exception'.red);
         console.log(error);
         throw new Error('Error al otorgar dias de power user');
     }
