@@ -25,6 +25,7 @@ import LogStream from '../models/logStreamsModel.js';
 import LogExchange from '../models/logExchanges.js';
 import TempCupon from '../models/tempCupones.js';
 import { obtenerCuponesGenerados, obtenerLogsCupones, obtenerLogsExchanges, obtenerLogsGM, obtenerLogsRecompensas, obtenerLogsStreamers } from '../utils/panelUtils.js';
+import EventPoint from '../models/eventPointsModel.js';
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -87,6 +88,13 @@ class GMPanelService {
                 attributes: ['cash'],
               });
 
+              //Obtener event points
+              const eventPoints = await EventPoint.findOne({
+                where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user.name),
+                attributes: ['Points'],
+              });
+
+
               //console.log(cashUser);
 
               // Agregar la información completa del usuario
@@ -96,6 +104,7 @@ class GMPanelService {
                   personajes: characterNames,
                   gold: user.gold,
                   cash: cashUser === null ? 0 :cashUser.cash,
+                  ep: eventPoints === null ? 0:eventPoints.Points,
               });
           }
 
@@ -106,6 +115,7 @@ class GMPanelService {
                 personajes: user.personajes,
                 gold:user.gold,
                 cash:user.cash,
+                ep:user.ep,
             }));
         
             return {success:true,code:'000',message:'ok',_lu:usersWithIndex};
@@ -463,6 +473,7 @@ class GMPanelService {
 
         const cash = Number(data.c);
         const oro = Number(data.o);
+        const eventPoints = Number(data.ep);
         const users = data._lu;
         const tipo = data.trx;
 
@@ -488,9 +499,11 @@ class GMPanelService {
 
         var usersNoGold = [];
         var usersNoCash = [];
+        var usersNoPoints = [];
 
         var lowOro = [];
         var lowCash = [];
+        var lowEventPoints = [];
 
         for (const u of users) {
 
@@ -517,6 +530,17 @@ class GMPanelService {
 
           if(!userCash){
             usersNoCash.push(u.name);
+          }
+
+          const userEventPoints = await EventPoint.findOne({
+            // attributes: ['Points'],
+            where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), u.name),
+            transaction: t,
+            // lock: t.LOCK.UPDATE,
+          });
+
+          if(!userEventPoints){
+            usersNoPoints.push(u.name);
           }
 
           // Actualizar el cash en Cash
@@ -557,7 +581,7 @@ class GMPanelService {
                 action: tipo === 1 ?'Recarga Cash':'Descuento Cash',
                 user: u.name,
                 amount: cash,
-                type: 2,
+                type: tipo === 1 ?2:10,
                 date: new Date(),
               },
               {
@@ -618,7 +642,83 @@ class GMPanelService {
                 action: tipo === 1 ? 'Recarga Gold' : 'Descuento Gold',
                 user: u.name,
                 amount: oro,
-                type: 1,
+                type: tipo === 1 ? 1:9,
+                date: new Date(),
+              },
+              {
+                transaction: t, // Asociar la transacción con esta operación
+              }
+            );
+          }
+
+          if(eventPoints>0){
+
+            if(tipo === 1){   
+              // console.log(eventPoints);
+              await EventPoint.increment(
+                'Points',
+                { by: eventPoints,  where: {
+                  [Op.and]: [
+                    sequelize.where(
+                      sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
+                      u.name
+                    )
+                  ]
+                }, transaction: t }
+              );
+              // console.log(2123);
+            } else {
+              //Descuento...
+              const eg = await EventPoint.findOne({
+                attributes: ['User', 'Points'],
+                where: {
+                  [Op.and]: [
+                    sequelize.where(
+                      sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
+                      u.name // Aquí comparas con el nombre correcto
+                    ),
+                    {
+                      Points: {
+                        [Op.lte]: eventPoints - 1, // Verifica que Points sea menor o igual a eventPoints - 1
+                      },
+                    },
+                  ],
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+              });
+
+              if (eg) {
+                lowEventPoints.push(u.name);
+              } else{
+                await EventPoint.decrement(
+                  'Points',
+                  { by: eventPoints, where: {
+                    [Op.and]: [
+                      sequelize.where(
+                        sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
+                        u.name
+                      )
+                    ]
+                  }, transaction: t }
+                );
+              }
+            }
+
+            await LogRewardsUser.create({  
+              user:u.name,
+              origen:tipo === 1 ? 2 : 3,
+              recompensa:tipo === 1 ? eventPoints: (eventPoints*-1),
+              tipo_recompensa: 13,
+              fecha: new Date(), 
+            }, { transaction:t });
+
+            await LogPanelGM.create(
+              {
+                userAction:user,
+                action: tipo === 1 ? 'Recarga Puntos de Evento' : 'Descuento Puntos de Evento',
+                user: u.name,
+                amount: eventPoints,
+                type:  tipo === 1 ? 11 : 12,
                 date: new Date(),
               },
               {
@@ -645,6 +745,12 @@ class GMPanelService {
           return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCash)+' no tienen Cash suficiente para ser descontado' };
         }
 
+        
+        if(lowEventPoints.length > 0){
+          await t.rollback(); // Revertir la transacción en caso de error
+          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowEventPoints)+' no tienen Puntos de evento suficiente para ser descontado' };
+        }
+
         if (usersNoGold.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
           return { success: false, code: '002', message: 'Usuario(s) '+JSON.stringify(usersNoGold)+' no encontrado [GOLD: Comunicar con algún administrador]' };
@@ -654,6 +760,11 @@ class GMPanelService {
         if (usersNoCash.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
           return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoCash)+' no encontrado [CASH: Comunicar con algún administrador]' };
+        }
+
+        if (usersNoPoints.length > 0) {
+          await t.rollback(); // Revertir la transacción en caso de error
+          return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoPoints)+' no encontrado [EVENT POINTS: Comunicar con algún administrador]' };
         }
         
 
