@@ -1361,6 +1361,8 @@ class GMPanelService {
     }
       catch (error) {
         await t.rollback();
+        console.log("!![GM Panel]".green,' Error exception'.green);
+        console.log(error);
         throw new Error('Error al otorgar dias de power user');
     }
   }

@@ -252,9 +252,9 @@ class GMPanelController {
       async giftPowerUser(req, res, next) {
         try {
           const { user,token,dias,usuarios } = req.body;
-
-          const response = await GMPanelService.giftPowerUser(user,token,dias,usuarios );
           console.log("[GM Panel]".green,' Regalar Power Use'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.giftPowerUser(user,token,dias,usuarios );
+          
           //console.log(response);
 
           if (response.success || response.code) {
