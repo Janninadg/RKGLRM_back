@@ -9,15 +9,15 @@ class GMPanelController {
         try {
           const { cmVSmm, USIDpk } = req.body;
 
-          console.log("VERIFY IS GM - FROM IP: ".blue,req.clientIp.green);
+          // console.log("VERIFY IS GM - FROM IP: ".blue,req.clientIp.green);
     
           const user = decrypt(USIDpk,cmVSmm);
 
-          console.log('USER:'.blue,user.yellow);
+          // console.log('USER:'.blue,user.yellow);
     
           const result = await GMPanelService.verifyIsGM(user);
 
-          console.log('¿IS GM?:'.blue,result.yellow);
+          // console.log('¿IS GM?:'.blue,result.yellow);
     
           const OPSKDa = generateKey();
           const ITDKLS = encrypt(result,OPSKDa);
@@ -59,7 +59,7 @@ class GMPanelController {
     
           const paramsString = `${OPPSLd}-${TYOsmD}-${ATLSMd}-${IUR99L}`;
 
-          console.log("[GM Panel]".green,' Baneo de usuarios'.green);
+          console.log("[GM Panel]".green,' Baneo'.white,(' - Admin: '+user).white);
     
           const result = await GMPanelService.banUsers(token,data,user,isDataIntegrityValid,paramsString, req);
     
@@ -122,7 +122,7 @@ class GMPanelController {
       async setCupon(req, res) {
         try {
     
-          console.log("GENERAR CUPON - FROM IP: ".blue,req.clientIp.green);
+          // console.log("GENERAR CUPON - FROM IP: ".blue,req.clientIp.green);
     
           //enviar otro key para comparar...
           const { IDODUI,/*K2tFvE,T7hLpW,*/jMdiOl } = req.body;
@@ -141,13 +141,15 @@ class GMPanelController {
           //console.log("DATA:",W4aRzY);
           //console.log(signature);
           //console.log("VER:",ver);
-          console.log("HASH:",isDataIntegrityValid);
+          // console.log("HASH:",isDataIntegrityValid);
     
           const key = ODALSC;
           const data = JSON.parse(decrypt(IUIDSD,key));
     
           const token = decrypt(MDIO3e,key);
           const user = decrypt(cJDKIO,key);
+
+          console.log("[GM Panel]".green,' Generar cupón'.white,(' - Admin: '+user).white);
     
           const paramsString = `${ODALSC}-${IUIDSD}-${cJDKIO}-${MDIO3e}`;
     
@@ -166,11 +168,13 @@ class GMPanelController {
 
       async login(req, res, next) {
 
-        console.log("LOGIN - FROM IP: ".blue,req.clientIp.green);
-        console.log("LOGIN - FROM IPv4: ".blue,req.socket.remoteAddress.green);
+        // console.log("LOGIN - FROM IP: ".blue,req.clientIp.green);
+        // console.log("LOGIN - FROM IPv4: ".blue,req.socket.remoteAddress.green);
     
         const { user,pass } = req.body;
-        console.log('USER:'.blue,user.yellow);
+        // console.log('USER:'.blue,user.yellow);
+
+        console.log("[GM Panel] LOGIN".green,(' - Admin: '+user).white);
     
         try {
           const userres = await GMPanelService.login(req,user, pass);
@@ -187,11 +191,10 @@ class GMPanelController {
 
       async logout(req, res, next) {
 
-        console.log("LOGOUT - FROM IP: ".blue,req.clientIp.green);
-        console.log("LOGOUT - FROM IPv4: ".blue,req.socket.remoteAddress.green);
-    
         const { user,token } = req.body;
-        console.log('USER:'.blue,user.yellow);
+        // console.log('USER:'.blue,user.yellow);
+
+        console.log("[GM Panel] LOGOUT".red,(' - Admin: '+user).white);
     
         try {
           const userres = await GMPanelService.logout(user, token);
@@ -211,6 +214,8 @@ class GMPanelController {
           const { user,token } = req.body;
 
           const users = await GMPanelService.getUserstoBan(user,token);
+
+          console.log("[GM Panel]".green,' Get user data'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (users.success || users.code) {
@@ -231,6 +236,8 @@ class GMPanelController {
           const response = await GMPanelService.getUsersName(user,token);
           //console.log(ranking);
 
+          console.log("[GM Panel]".green,' Get users name'.white,(' - Admin: '+user).white);
+
           if (response.success || response.code) {
             return res.status(200).json(response);
           } else {
@@ -247,6 +254,7 @@ class GMPanelController {
           const { user,token,dias,usuarios } = req.body;
 
           const response = await GMPanelService.giftPowerUser(user,token,dias,usuarios );
+          console.log("[GM Panel]".green,' Regalar Power Use'.white,(' - Admin: '+user).white);
           //console.log(response);
 
           if (response.success || response.code) {
@@ -265,6 +273,7 @@ class GMPanelController {
           const { user,token } = req.body;
 
           const response = await GMPanelService.getPersonajes(user,token);
+          console.log("[GM Panel]".green,' Obtener personajes propios'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -283,6 +292,7 @@ class GMPanelController {
           const { user,token,level,personajes } = req.body;
 
           const response = await GMPanelService.setLevel(user,token,level,personajes );
+          console.log("[GM Panel]".green,' Modificar nivel y exp de personaje'.white,(' - Admin: '+user).white);
           //console.log(response);
 
           if (response.success || response.code) {
@@ -301,6 +311,7 @@ class GMPanelController {
           const { user,token } = req.body;
 
           const response = await GMPanelService.getClanes(user,token);
+          console.log("[GM Panel]".green,' Obtener clanes'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -317,6 +328,7 @@ class GMPanelController {
       async createClan(req, res, next) {
         try {
           const { user,token,clan,master,members } = req.body;
+          console.log("[GM Panel]".green,' Crear clan'.white,(' - Admin: '+user).white);
 
           const response = await GMPanelService.createClan(user,token,clan,master,members);
           //console.log(ranking);
@@ -337,6 +349,8 @@ class GMPanelController {
           const { user,token,idClan,members } = req.body;
 
           const response = await GMPanelService.addMembers(user,token,idClan,members);
+
+          console.log("[GM Panel]".green,' Añadir miembros a clan'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -355,6 +369,8 @@ class GMPanelController {
           const { user,token, } = req.body;
 
           const response = await GMPanelService.getLogs(user,token);
+
+          console.log("[GM Panel]".green,' Obtener logs'.white,(' - Admin: '+user).white);
           //console.log(response);
 
           if (response.success || response.code) {

@@ -60,6 +60,7 @@ class GMPanelService {
 
           if(!sessionToken){
             //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Sesión antigua'.red);
             return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
           }
 
@@ -176,6 +177,7 @@ class GMPanelService {
 
           if(!sessionToken){
             //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Sesión antigua'.red);
             return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
           }
 
@@ -197,6 +199,7 @@ class GMPanelService {
 
           if(!userGame){
             //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Usuario asociado no existe'.red);
             return { success: false, code: '002', message: 'Tu usuario [asociado] no existe' };
           }
 
@@ -207,6 +210,7 @@ class GMPanelService {
 
           //const namesArray = users.map(user => user.name);
         
+            console.log("[GM Panel]".green,' Exito'.green);
             return {success:true,code:'000',message:'ok',_lpr:personajes};
     
           //return users;
@@ -434,7 +438,7 @@ class GMPanelService {
         const verifyPacketEqual = (isDataIntegrityValid); //&& (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
         const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
 
-        console.log(banInfo);
+        // console.log(banInfo);
 
         if (banInfo) {
           await t.rollback(); // Revertir la transacción en caso de error
@@ -468,6 +472,7 @@ class GMPanelService {
 
         if(!sessionToken){
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Sesión antigua'.red);
           return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
         }
 
@@ -489,6 +494,7 @@ class GMPanelService {
 
         if(!existGM){
           await t.rollback();
+          console.log("!![GM Panel]".red,' Ya no es GM'.red);
           return {
             success: false,
             code: '001',
@@ -729,47 +735,55 @@ class GMPanelService {
 
         }
 
-        if(lowCash.length > 0 && lowOro.length>0){
-          const low = lowCash.concat(lowOro);
-          await t.rollback(); // Revertir la transacción en caso de error
-          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(low)+' no tienen suficiente Cash u Oro para descontar' };
-        }
+        // if(lowCash.length > 0 && lowOro.length>0){
+        //   const low = lowCash.concat(lowOro);
+        //   await t.rollback(); // Revertir la transacción en caso de error
+        //   console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de cash de usuarios');
+        //   return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(low)+' no tienen suficiente Cash u Oro para descontar' };
+        // }
 
         if(lowOro.length > 0){
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de oro de usuarios'.red);
           return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowOro)+' no tienen Gold suficiente para ser descontado' };
         }
 
         if(lowCash.length > 0){
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de cash de usuarios'.red);
           return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCash)+' no tienen Cash suficiente para ser descontado' };
         }
 
         
         if(lowEventPoints.length > 0){
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de puntos de evento de usuarios'.red);
           return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowEventPoints)+' no tienen Puntos de evento suficiente para ser descontado' };
         }
 
         if (usersNoGold.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel- GOLD]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCash).magenta);
           return { success: false, code: '002', message: 'Usuario(s) '+JSON.stringify(usersNoGold)+' no encontrado [GOLD: Comunicar con algún administrador]' };
         }
 
         
         if (usersNoCash.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel- CASH]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCash).magenta);
           return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoCash)+' no encontrado [CASH: Comunicar con algún administrador]' };
         }
 
         if (usersNoPoints.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel- EVENT POINT]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoPoints).magenta);
           return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoPoints)+' no encontrado [EVENT POINTS: Comunicar con algún administrador]' };
         }
         
 
         await t.commit();
         
+        console.log("[GM Panel]".green,' Exito'.green);
         return {
           success: true,
           code: '000',
@@ -792,7 +806,7 @@ class GMPanelService {
       const verifyPacketEqual = (isDataIntegrityValid); //&& (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
       const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
 
-      console.log(banInfo);
+      // console.log(banInfo);
 
       if (banInfo) {
         await t.rollback(); // Revertir la transacción en caso de error
@@ -826,6 +840,7 @@ class GMPanelService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
         return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
 
@@ -847,6 +862,7 @@ class GMPanelService {
 
       if(!existGM){
         await t.rollback();
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
         return {
           success: false,
           code: '001',
@@ -903,7 +919,7 @@ class GMPanelService {
       );
 
       await t.commit();
-      
+      console.log("[GM Panel]".green,' Exito'.green);
       return {
         success: true,
         code: '000',
@@ -1251,6 +1267,7 @@ class GMPanelService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
         return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
 
@@ -1266,6 +1283,7 @@ class GMPanelService {
 
       if(!existGM){
         await t.rollback();
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
         return {
           success: false,
           code: '001',
@@ -1333,7 +1351,7 @@ class GMPanelService {
 
 
       await t.commit();
-      
+      console.log("[GM Panel]".green,' Exito'.green);
       return {
         success: true,
         code: '000',
@@ -1472,10 +1490,12 @@ class GMPanelService {
 
         // Devolver el objeto con toda la información del usuario, el token y el código 2
         await t.commit();
+        console.log("[GM Panel]".green,' Success Login'.green);
         return { _u: user, auth:token, code: '000',message:'Has iniciado sesión correctamente',success:true };
       } else {
         // Si las credenciales son incorrectas, retornar 3 (credenciales incorrectas)
         await t.rollback();
+        console.log("!![GM Panel]".red,' Credenciales incorrectas'.red);
         return { success:false,message:'Credenciales incorrectas',code: '100' };
       }
     } catch (error) {
@@ -1514,6 +1534,7 @@ class GMPanelService {
 
         // Confirma la transacción si todo se ejecutó correctamente
         await t.commit();
+        console.log("[GM Panel]".green,' Success Logout'.green);
         return {sucess:true, code:'000',message:'Cerrando sesión...'}
       }
     } catch (error) {
