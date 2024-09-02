@@ -17,7 +17,8 @@ const obtenerLogsGM = async () => {
   try {
     // Obtener todos los datos de la tabla LogPanelGM excepto la columna action
     const logGMData = await LogPanelGM.findAll({
-        attributes: { exclude: ['action'] }
+        attributes: { exclude: ['action'], },
+        order: [['date', 'ASC']],
     });
   
     // Obtener el nombre correspondiente al tipo de cada registro en la columna type
