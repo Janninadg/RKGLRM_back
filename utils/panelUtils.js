@@ -169,7 +169,9 @@ try {
 const obtenerLogsRecompensas = async () => {
     try {
       // Obtener todos los datos de la tabla LogPanelGM excepto la columna action
-      const logRewardsData = await LogRewardsUser.findAll();
+      const logRewardsData = await LogRewardsUser.findAll({
+        order: [['fecha', 'ASC']],
+    });
     
       // Obtener el nombre correspondiente al tipo de cada registro en la columna type
       const typeRewardName = {};
