@@ -174,7 +174,7 @@ class UserController {
   }
 
   async registerUser(req, res, next) {
-    const { uYz3Tk, mS5bAt, iGqP1O, vFwR9Z,chrw,ip } = req.body;
+    const { uYz3Tk, mS5bAt, iGqP1O, vFwR9Z,chrw,ap,ip } = req.body;
 
     const username = decrypt(mS5bAt,uYz3Tk);
     const password = decrypt(iGqP1O,uYz3Tk);
@@ -188,7 +188,7 @@ class UserController {
 
   
     try {
-      const result = await UserService.registerUser(req,username, password, phoneNumber,chrw,ip);
+      const result = await UserService.registerUser(req,username,ap, password, phoneNumber,chrw,ip);
 
       console.log('¿Success? :'.blue,result.success);
       console.log("---------------------------------------------------------------".blue);

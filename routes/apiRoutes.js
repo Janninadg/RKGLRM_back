@@ -5,7 +5,9 @@ import eventRoutes from './eventRoutes.js';
 import controlRoutes from './controlRouter.js';
 import streamersRoutes from './streamersRoutes.js';
 import storeRoutes from './storeRoutes.js';
+import marketRoutes from './marketRoutes.js';
 import webRoutes from './webRoutes.js';
+import refineriaRoutes from './refineriaRoutes.js';
 
 const router = express.Router();
 
@@ -31,5 +33,11 @@ router.use('/web', webRoutes);
 
 // Montar rutas de tienda bajo api/store
 router.use('/store', storeRoutes);
+
+// Montar rutas de tienda bajo api/market
+router.use('/market', marketRoutes);
+
+// Montar rutas de tienda bajo api/market
+router.use('/refineria', refineriaRoutes);
 
 export default router;

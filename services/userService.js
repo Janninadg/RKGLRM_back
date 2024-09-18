@@ -410,7 +410,7 @@ class UserService {
     }
   }
   
-  async registerUser(req,username, password, phoneNumber,character,ip) {
+  async registerUser(req,username,apodo, password, phoneNumber,character,ip) {
     const transaction = await sequelize.transaction();
   
     try {
@@ -434,6 +434,7 @@ class UserService {
         {
           id: username,
           password,
+          apodo,
           e_mail: phoneNumber,
         },
         { transaction }
