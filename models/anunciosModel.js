@@ -25,9 +25,13 @@ const Anuncio = sequelize.define('anuncios', {
     allowNull: true
   },
   imagen: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
+    type: DataTypes.TEXT,
+    allowNull: false,
     defaultValue:'/pictures/rakxmas.png',
+  },
+  category: {
+    type: DataTypes.STRING(50),
+    allowNull: false
   },
   fecha: {
     type: DataTypes.DATE,

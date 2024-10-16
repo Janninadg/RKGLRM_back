@@ -4,7 +4,7 @@ import UserGameInfo from '../models/userGameInfoModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
 import TempPrize from '../models/tempPrizes.js'
 import PrizesGame from '../models/prizesGamesModel.js';
-import { Sequelize, useInflection } from 'sequelize';
+import { Sequelize, Op, fn, col } from 'sequelize';
 import sequelize from '../config/database.js';
 import { verifyPacketAndBan } from '../utils/securityUtils.js';
 import { encrypt,generateKey } from '../helpers/encryption.js';
@@ -33,6 +33,7 @@ import Matches from '../models/matchesModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
 import EventPoint from '../models/eventPointsModel.js';
 import colors from "colors";
+import EventsReview from '../models/eventsReviewModel.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -1136,6 +1137,7 @@ class EventService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log('Win:'.magenta,'false'.red);
         return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
       }
 
@@ -1149,7 +1151,8 @@ class EventService {
       const gameActive = await Evento.findOne({
             where: {
                 id: type,
-                show: 1
+                show: 1,
+                estado: 1
             },
             transaction: t
         });
@@ -1157,7 +1160,25 @@ class EventService {
       // Revertir la transacción en caso de error
       if(!gameActive){
         await t.rollback();
+        console.log('Win:'.magenta,'false'.red);
         return { success: false, code: '999', message:`Este evento ya ha concluido. ¡Por favor, actualice la página!` };
+      }
+
+      // Verificar token (todos los juegos sin partida):
+      const tokenCount = await GameAuth.findOne({
+        attributes: ['token'],
+        where: {
+          token: tknGame,
+          user: userId,
+          type_game: type,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!tokenCount){
+        await t.rollback(); // Revertir la transacción en caso de error
+         console.log('Win:'.magenta,'false'.red);
+        return { success: false, code: '999', message: 'Has abierto el juego en otra pestaña...' };
       }
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
@@ -1173,7 +1194,7 @@ class EventService {
       if(!GameRes.win){
         console.log('Win:'.magenta,'false'.red);
         await t.commit(); // Revertir la transacción en caso de error
-        return { success: false, code: '400',params: GameRes.params, message: '¡Perdiste! Se te retornará el 50% del costo del giro, suerte para la próxima :)' };
+        return { success: false, code: '400',params: GameRes.params, message: GameRes.ms };
       }
 
       if (!prizesGame) {
@@ -1186,22 +1207,6 @@ class EventService {
 
       var typePrize = prizesGame.type;
       // var cofres; //solo para juego 5 y 6
-
-      // Verificar token (todos los juegos sin partida):
-      const tokenCount = await GameAuth.findOne({
-        attributes: ['token'],
-        where: {
-          token: tknGame,
-          user: userId,
-          type_game: type,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!tokenCount){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '999', message: 'Has abierto el juego en otra pestaña...' };
-      }
 
       // Verificar si el premio excedio el limite :( :
 
@@ -1225,7 +1230,7 @@ class EventService {
          * opcion: lvl
          * 
          */
-        case 1:
+        case 3:
           // Verificar modalidad:
 
           if(modalidad > 0){
@@ -1244,7 +1249,7 @@ class EventService {
 
           break;
         //Ruleta
-        case 3:
+        case 2:
           var userTickets;
           //var slotsAvaible;
           var typename;
@@ -1276,133 +1281,76 @@ class EventService {
               //slotsAvaible = true;
 
               break;
-            //Oro
-            // case 2:
-            //   typename = 'oro';
-
-            //   if(prizesGame.type == 0){
-            //     typePrize = 5;
-            //   }
-
-            //   const usergetId = await UserGameInfo.findOne({
-            //     attributes:['id'],
-            //     where:{
-            //       name: userId
-            //     },
-            //     transaction: t, // Asociar la transacción con esta consulta
-            //   });
-
-            //   if (!usergetId) {
-            //     await t.rollback(); // Revertir la transacción en caso de error
-            //     return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-            //   }
-              
-
-            //   const slots = await UserItemInfo.findOne({
-            //     attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
-            //     //group: ['name'],
-            //     where: {
-            //       userid: usergetId.id,
-            //       slot: {
-            //         [Sequelize.Op.ne]: null,
-            //       },
-            //     },
-            //     transaction: t, // Asociar la transacción con esta consulta
-            //   });
-
-            //   slotsAvaible = (90-slots.dataValues.slots) === 0  ? false : true; 
-
-            //   //console.log(slotsAvaible);
-
-            //   userTickets = await TicketOro.findOne({
-            //     attributes: ['tickets'],
-            //     where: {
-            //       id: userId,
-            //     },
-            //     transaction: t, // Asociar la transacción con esta consulta
-            //   });
-
-            //   // Decrementar el ticket del usuario
-            //   await TicketOro.decrement('tickets', {
-            //     by: 1,
-            //     where: {
-            //       id: userId,
-            //     },
-            //     transaction: t, // Asociar la transacción con esta operación
-            //   });
-            //   break;
             default:
               await t.rollback(); 
-              return { success: false, code: '001', message: 'No existe este tipo de modalidad para este juego' };
+              return { success: false, code: '200', message: 'No existe este tipo de modalidad para este juego' };
               break;
           }
 
           // Combina los valores de params con los nuevos datos
           Object.assign(params, GameRes.params);
           
-          if (!userTickets || userTickets.tickets < 1) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            if(!userTickets || userTickets.tickets < 1){
-              return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
-            } else {
-              return { success: false, code: '001', message: 'No tiene slots disponbiles para girar la ruleta de oro' };
+          break;
+        //Countdown
+        case 1:
+
+          //modalidad:
+
+          if(modalidad > 0){
+            await t.rollback(); 
+            return { success: false, code: '200', message: 'No existe este tipo de modalidad para este juego' };
+          }
+          //Verificaciones
+
+          //Verificar tiempo de redencion
+
+          // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
+          const lastDate = await TempPrize.findOne({
+            attributes: ['fecha'],
+            where: {
+              game: type,
+              user: userId
+            },
+            order: [['fecha', 'DESC']],
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          const vdat = new Date();
+
+          if(lastDate){
+            console.log("TIME : %s - %d".magenta,userId,(vdat-lastDate.fecha)/1000); //dif seg
+
+            var timedif = (vdat-lastDate.fecha)/1000;
+            var veriTime;
+
+            // console.log(opcion);
+
+            if(opcion === 0){
+              veriTime = 290;
+            } 
+            // else if (opcion === 1){
+            //   veriTime = 120;
+            // } 
+            else{
+              await t.rollback(); 
+              return { success: false, code: '200', message: 'No existe esta opción en el juego' };
+            }
+            // 5 min 300 seg
+            // 3 min 180 seg
+
+            console.log("USER TIME: ".magenta,(timedif >= veriTime));
+
+            if(timedif < veriTime){
+              await t.rollback(); 
+              console.log('Win:'.magenta,'false'.red);
+              return { success: false, code: '100', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos ¡Evita ser sancionado!' };
             }
           }
-          
+
+           // Combina los valores de params con los nuevos datos
+           Object.assign(params, GameRes.params);
+
           break;
-        // //Countdown
-        // case 1:
-
-        //   //modalidad:
-
-        //   if(modalidad > 0){
-        //     await t.rollback(); 
-        //     return { success: false, code: '001', message: 'No existe este tipo de modalidad para este juego' };
-        //   }
-        //   //Verificaciones
-
-        //   //Verificar tiempo de redencion
-
-        //   // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-        //   const lastDate = await TempPrize.findOne({
-        //     attributes: ['fecha'],
-        //     where: {
-        //       game: type,
-        //       user: userId
-        //     },
-        //     order: [['fecha', 'DESC']],
-        //     transaction: t, // Asociar la transacción con esta consulta
-        //   });
-
-        //   const vdat = new Date();
-
-        //   if(lastDate){
-        //     console.log("TIME : %s - %d",userId,(vdat-lastDate.fecha)/1000); //dif seg
-
-        //     var timedif = (vdat-lastDate.fecha)/1000;
-        //     var veriTime;
-
-        //     if(opcion === 0){
-        //       veriTime = 300;
-        //     } else if (opcion === 1){
-        //       veriTime = 120;
-        //     } else{
-        //       await t.rollback(); 
-        //       return { success: false, code: '001', message: 'No existe esta opción en el juego' };
-        //     }
-        //     // 5 min 300 seg
-        //     // 3 min 180 seg
-
-        //     console.log("USER TIME: ",timedif >= veriTime);
-
-        //     if(timedif < veriTime){
-        //       await t.rollback(); 
-        //       return { success: false, code: '001', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos ¡Evita ser sancionado!' };
-        //     }
-        //   }
-
-
-        //   break;
         // //Countdown
         // case 5:
         //   //Verificar piezas:
@@ -2306,20 +2254,6 @@ class EventService {
             }
           );
 
-          // Insertar el premio en temp_prizes
-          const res = await TempPrize.create(
-            {
-              user: user,
-              type: typePrize,
-              prize: cuponPrize.id_prize,
-              game: 2,
-              fecha: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
-
           //console.log(res);
 
           message = `Has obtenido un(a) ${cuponPrize.name_prize}`;
@@ -2345,19 +2279,6 @@ class EventService {
             { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
           );
 
-          // Insertar el premio en temp_prizes
-          await TempPrize.create(
-            {
-              user: user,
-              type: typePrize,
-              prize: cuponPrize.id_prize,
-              game: 2,
-              fecha: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
           message = `Has obtenido ${cuponPrize.id_prize} de Oro`;
           break;
         case 2:
@@ -2381,19 +2302,6 @@ class EventService {
             { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
           );
 
-          // Insertar el premio en temp_prizes
-          await TempPrize.create(
-            {
-              user: user,
-              type: typePrize,
-              prize: cuponPrize.id_prize,
-              game: 2,
-              fecha: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
           message = `Has obtenido ${cuponPrize.id_prize} de Cash`;
           break;
         case 3:
@@ -2403,19 +2311,6 @@ class EventService {
             { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
           );
 
-          // Insertar el premio en temp_prizes
-          await TempPrize.create(
-            {
-              user: user,
-              type: typePrize,
-              prize: cuponPrize.id_prize,
-              game: 2,
-              fecha: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
           message = `Has obtenido ${cuponPrize.id_prize} ticket(s) de cash`;
           break;
         case 4:
@@ -2425,19 +2320,6 @@ class EventService {
               { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
             );
     
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: cuponPrize.id_prize,
-                game: 2,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
             message = `Has obtenido ${cuponPrize.id_prize} ticket(s) de oro`;
             break;
         case 5:
@@ -2486,19 +2368,6 @@ class EventService {
             return { success: false, code: '003', message: 'No tiene slots disponbiles para canjear el premio' };
           }
 
-          // Insertar el premio en temp_prizes
-          await TempPrize.create(
-            {
-              user: user,
-              type: typePrize,
-              prize: cuponPrize.id_prize,
-              game: 2,
-              fecha: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
 
           //Si tiene, guardar el premio temporal en useriteminfo
           await UserItemInfo.create(
@@ -2538,8 +2407,7 @@ class EventService {
 
       await LogRewardsUser.create({  
         user:user,
-        origen:1,
-        origen_2:2,
+        origen:13,
         recompensa:cuponPrize.id_prize,
         tipo_recompensa: typePrize,
         fecha: new Date(), 
@@ -2936,10 +2804,58 @@ class EventService {
       const eventos = await Evento.findAll({
         where:{
           estado:1,
-        }
+        },
+        order: [
+          ['inicio', 'DESC'], // Ordenar los comentarios del más reciente al más antiguo
+        ],
       });
+
+      // Obtener la fecha actual
+      const fechaActual = new Date();
      
-      return eventos;
+      // 2. Para cada evento, obtener el promedio de puntos
+      const eventosConPuntuacionYReviews = await Promise.all(
+        eventos.map(async (evento) => {
+          // Obtener el promedio de puntos para este evento
+          const promedioPuntos = await EventsReview.findOne({
+            where: {
+              evento: evento.id,
+            },
+            attributes: [
+              [fn('AVG', col('points')), 'averagePoints'] // Calculamos el promedio
+            ]
+          });
+
+          // Obtener todos los reviews de este evento
+          const reviews = await EventsReview.findAll({
+            where: {
+              evento: evento.id,
+            },
+            attributes: ['id', 'apodo', 'review', 'points', 'fecha'], // Solo obtenemos los campos necesarios
+            order: [
+              ['fecha', 'DESC'], // Ordenar los comentarios del más reciente al más antiguo
+            ],
+          });
+
+          // Comprobar si la fecha de inicio del evento es dentro de la última semana
+          const fechaInicio = new Date(evento.inicio); // Asegúrate de que la columna sea correcta
+          const diferenciaTiempo = fechaActual - fechaInicio;
+          const diasDiferencia = diferenciaTiempo / (1000 * 60 * 60 * 24); // Convertir milisegundos a días
+
+          // Si el evento empezó hace menos de una semana, es "nuevo"
+          const isNew = diasDiferencia <= 7;
+      
+          // Devolver el evento con el promedio de puntos y los reviews
+          return {
+            ...evento.toJSON(),
+            pointsaverage: Number(promedioPuntos?.dataValues?.averagePoints) || 0, // Si no hay puntuación, 0
+            reviews: reviews.map(review => review.toJSON()), // Convertimos los reviews a objetos JSON
+            isNew,
+          };
+        })
+      );
+
+      return eventosConPuntuacionYReviews;
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {

@@ -11,7 +11,7 @@ import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
 import Cupon from '../models/cuponesModel.js';
 import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamers.js';
+import Streamer from '../models/streamersModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import Linksgame from '../models/linksGameModel.js';
 import Anuncio from '../models/anunciosModel.js';
@@ -35,8 +35,50 @@ class GamesService {
 
     async getPrizeByGame(game,clase,user,transaction) {
         try {
+            let allP;
+            let rP;
+            let cP;
+            let sI;
+            let params = {};
+
             switch (game) {
                 case 1:
+                    if(Math.random() < 0.4) {
+                        return {all: null, win:false,params,ms:'Mejor suerte la próxima vez. No has recibido nada esta vez.'};
+                    }
+
+                    allP = await PrizesGame.findAll({
+                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
+                        where: {
+                        //orderPrize: orderPrize,
+                        type_game: game,
+                        },
+                        order: [['orderPrize', 'ASC']],
+                        transaction, // Asociar la transacción con esta consulta
+                    })
+
+                    // Realizar el calculo de probabilidad:
+                    rP = Math.random();
+                    cP = 0;
+                    sI = 0;
+
+                    //console.log(allPrizes.length);
+
+                    for (let i = 0; i < allP.length; i++) {
+                        //console.log(allPrizes[i]);
+                        cP += allP[i].probability;
+                        if (rP <= cP) {
+                            sI = i;
+                        break;
+                        }
+                    }
+
+                    Object.assign(params, {
+                        _pw:sI,
+                    });
+
+                    return {all: allP[sI], win:true,params};
+                case 3:
                     const prizeCard = await PrizesGame.findOne({
                         attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
                         where: {
@@ -49,7 +91,7 @@ class GamesService {
                     });
 
                     return {all: prizeCard, win:true};
-                case 3:
+                case 2:
                     const allPrizes = await PrizesGame.findAll({
                         attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users','url'],
                         where: {
@@ -106,11 +148,12 @@ class GamesService {
                             return item.clase > max ? item.clase : max;
                           }, 0); // Iniciar con 0 o cualquier otro valor mínimo válido
 
-                        const params = {
+                        Object.assign(params, {
                             ep: returnEvP.Points,
                             _pwb:lastClass +1,
-                        }
-                        return {all: null, win:false,params};
+                        });
+
+                        return {all: null, win:false,params,ms: '¡Perdiste! Se te retornará el 50% del costo del giro, suerte para la próxima :)'};
                     }
 
                     // Realizar el calculo de probabilidad:
@@ -129,15 +172,15 @@ class GamesService {
                         }
                     }
 
-                    const params = {
+                    Object.assign(params, {
                         _pw:selectedItem,
                         _pwb:allPrizes[selectedItem].clase,
                         pr: allPrizes
-                    }
+                    });
 
                     return {all: allPrizes[selectedItem], win:true,params};
                 default:
-                    // const allPrizes = await PrizesGame.findAll({
+                    // const allP = await PrizesGame.findAll({
                     //     attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
                     //     where: {
                     //     //orderPrize: orderPrize,
@@ -148,17 +191,17 @@ class GamesService {
                     // })
 
                     // // Realizar el calculo de probabilidad:
-                    // const randomProb = Math.random();
-                    // let cumulativeProb = 0;
-                    // let selectedItem = 0;
+                    // const rP = Math.random();
+                    // let cP = 0;
+                    // let sI = 0;
 
                     // //console.log(allPrizes.length);
 
-                    // for (let i = 0; i < allPrizes.length; i++) {
+                    // for (let i = 0; i < allP.length; i++) {
                     //     //console.log(allPrizes[i]);
-                    //     cumulativeProb += allPrizes[i].probability;
-                    //     if (randomProb <= cumulativeProb) {
-                    //     selectedItem = i;
+                    //     cP += allP[i].probability;
+                    //     if (rP <= cP) {
+                    //         sI = i;
                     //     break;
                     //     }
                     // }

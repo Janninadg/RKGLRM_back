@@ -25,6 +25,13 @@ import { decrypt, encrypt } from '../helpers/encryption.js';
 import config from '../config/config.js';
 import { setPresentsReward } from '../utils/gameUtils.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
+import AssetPrice from '../models/assetsPriceModel.js';
+import EventPoint from '../models/eventPointsModel.js';
+import UserAsset from '../models/userAssetsModel.js';
+import TypeAsset from '../models/typeAssetsModel.js';
+import AnunciosComment from '../models/anunciosCommentModel.js';
+import ConfigParameters from '../models/configParametersModel.js';
+import EventsReview from '../models/eventsReviewModel.js';
 
 class UserService {
 
@@ -378,19 +385,89 @@ class UserService {
     }
   }
 
-  // Obtener el gold de un usuario por ID
-  async getUserGoldById(userId) {
+  // Obtener activos de un usuario por ID
+  async getAssetsUser(user,token) {
+    const t = await sequelize.transaction();
     try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        // console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua...' };
+      }
+
       const userGameInfo = await UserGameInfo.findOne({
         attributes: ['gold'],
         where: {
-          id: userId,
+          name: user,
         },
       });
 
-      return userGameInfo ? userGameInfo.gold : null;
+      const cashData = await Cash.findOne({ 
+        attributes: ['cash'],
+        where: {
+          id: user,
+      }});
+
+      const userPoints = await EventPoint.findOne({
+        where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+        transaction: t,
+      });
+
+      const userAsset = await UserAsset.findAll({
+        attributes: ['asset', 'amount'],
+        where: {
+          user: user,
+        },
+        order:[['asset','ASC']],
+      });
+      
+      // Recorrer cada assetPrice y buscar su tipo en TypeAsset y la imagen en AssetPrices
+      const assetsWithDetails = await Promise.all(
+        userAsset.map(async (asset) => {
+          // Buscar el tipo correspondiente en TypeAsset
+          const typeAsset = await TypeAsset.findOne({
+            where: { id: asset.asset },
+            attributes: ['tipo'], // Obtener solo el campo 'tipo'
+          });
+
+          // Buscar la imagen correspondiente en AssetPrices
+          const assetPrice = await AssetPrice.findOne({
+            where: { asset: asset.asset },
+            attributes: ['img'], // Obtener solo el campo 'img'
+          });
+
+          // Agregar el tipo y la imagen al resultado, devolviendo solo el registro actual
+          return {
+            asset: asset.asset,
+            amount: asset.amount,
+            tipo: typeAsset ? typeAsset.tipo : 'Tipo no encontrado',
+            img: assetPrice ? assetPrice.img : 'Imagen no encontrada',
+          };
+        })
+      );
+
+      const _au = {
+        o: userGameInfo ? userGameInfo.gold : 0,
+        c: cashData ? cashData.cash : 0,
+        ep: userPoints ? userPoints.Points : 0,
+        asst: assetsWithDetails,
+      };
+
+      await t.commit();
+      return { success: true, code: '000', _au};
     } catch (error) {
-      console.error('Error al obtener el gold del usuario:', error);
+      console.error('Error al obtener los activos del usuario:', error);
       throw new Error('Error en el servidor');
     }
   }
@@ -421,9 +498,16 @@ class UserService {
         return { success: false,message:'El usuario ingresado ya se encuentra registrado', code: '100' };
       }
 
+      const apodoUser = await User.findOne({ where: { apodo: apodo } });
+  
+      if (apodoUser) {
+        await transaction.rollback();
+        return { success: false,message:'El apodo ingresado ya se encuentra en uso', code: '100' };
+      }
+
       /*Verificar si su ip esta baneada*/
       // Verificar si el usuario está en la tabla banlist
-      const bannedUser = await Banlist.findOne({ where: { UserIP: req.clientIp } });
+      const bannedUser = await Banlist.findOne({ where: { UserIP: ip } });
 
       if(bannedUser){
         await transaction.rollback();
@@ -447,7 +531,7 @@ class UserService {
       await UserGameInfo.create(
         {
           name: username,
-          gold:10000,
+          gold:0,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
@@ -459,13 +543,17 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 10000 }, { transaction });
+      await Cash.create({ id: username, cash: 0 }, { transaction });
+      await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
+      // Token
       await TokenSession.create({ id: username, token: 0 }, { transaction });
 
-      await Ticket.create({ id: username, tickets: 0 }, { transaction });
+      // Assets: piedras refineria, .... tickets etc
+      await UserAsset.create({ user: username, amount: 0, asset:1 }, { transaction }); //refineria piedra cash
+      await UserAsset.create({ user: username, amount: 0, asset:2 }, { transaction }); //refineria piedra oro
 
-      await TicketOro.create({ id: username, tickets: 0 }, { transaction });
+      // await TicketOro.create({ id: username, tickets: 0 }, { transaction });
 
       //Insertar IP:
       await InitialIpUser.create({ user: username, ip: ip }, { transaction });
@@ -529,21 +617,21 @@ class UserService {
       //   fecha: new Date(), 
       // }, { transaction });
 
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:10000,
-        tipo_recompensa: 1,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:10000,
+      //   tipo_recompensa: 1,
+      //   fecha: new Date(), 
+      // }, { transaction });
 
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:10000,
-        tipo_recompensa: 2,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:10000,
+      //   tipo_recompensa: 2,
+      //   fecha: new Date(), 
+      // }, { transaction });
 
       // await LogRewardsUser.create({  
       //   user:username,
@@ -555,9 +643,12 @@ class UserService {
       //await LogRewardsUser.bulkCreate(originRecords, { transaction });
 
       await transaction.commit();
+
+      // const message = 'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro de recompensa por registrarte!';
+      const message = '¡Se registro tu usuario correctamente!';
   
       // return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro + '+ pr.m +' de recompensa por registrarte!', code: '000' };
-      return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro de recompensa por registrarte!', code: '000' };
+      return { success: true,message, code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);
@@ -844,6 +935,448 @@ class UserService {
       await t.rollback();
       console.error('Error al obtener la cantidad de tickets:', error);
       throw new Error('Error en el servidor');
+    }
+  }
+
+
+  async buyAssets(user,token,assetid,type_payment,cantidad,req) {
+    const t = await sequelize.transaction();
+  
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua para generar esta compra...' };
+      }
+
+      var payment;
+      var typem;
+      var origen;
+      var tiporec;
+
+
+      // Tipo de Asset
+      const AssetBuy = await AssetPrice.findOne({
+            where: {
+                id: assetid,
+                show: 1,
+            },
+        });
+
+
+        if (!AssetBuy) {
+          await t.rollback();
+          console.log('[ERROR]'.red,'Activo no disponible'.red);
+          return { success: false, code: '100', message: `El activo no se encuentra disponible, actualiza la página por favor.`};
+        }
+
+      switch (AssetBuy.asset) {
+        case 1:
+          origen = 10;
+          tiporec = 14;
+          console.log('Asset:'.blue,'Piedra de refinería 1'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          break;
+        case 2:
+          origen = 11;
+          tiporec = 15;
+          console.log('Asset:'.blue,'Piedra de refinería 2'.yellow,(' [' +String(cantidad)+ ']').yellow);
+        break;
+        default:
+          origen = 0;
+          tiporec = 0;
+          break;
+      }
+
+      if(origen === 0 && tiporec === 0){
+        await t.rollback();
+        console.log('[ERROR]'.red,'Item de web inválido'.red);
+        return { success: false, code: '200', message: 'El tipo de item de web no es válido' };
+      }
+
+      const price = (AssetBuy.multiple ? JSON.parse(AssetBuy.price) : [Number(AssetBuy.price)])[type_payment];
+      const currency = (AssetBuy.multiple ? JSON.parse(AssetBuy.currency) : [Number(AssetBuy.currency)])[type_payment];
+
+      switch (currency) {
+        case 0:
+          payment = 1;
+          typem = 'cash';
+          console.log('Medio de pago:'.blue,'Cash'.yellow);
+          break;
+        case 1:
+          typem = 'oro';
+          payment = 2;
+          console.log('Medio de pago:'.blue,'Oro'.yellow);
+          break;
+        case 2:
+          typem = 'puntos de evento';
+          payment = 3;
+          console.log('Medio de pago:'.blue,'Puntos de evento'.yellow);
+          break;
+        default:
+          payment = null;
+          typem = 'NULL';
+          break;
+      }
+
+      if(payment === null){
+        await t.rollback();
+        console.log('[ERROR]'.red,'Medio de pago inválido'.red);
+        return { success: false, code: '200', message: 'El tipo de pago seleccionado no es válido' };
+      }
+
+      var currencyAmount;
+      var amount;
+      // var typem = payment === 1 ? 'cash' : 'oro';
+
+      const params = {};
+      
+      if(payment===1){
+        currencyAmount = await Cash.findOne({
+          where: {
+            id: user,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        amount = currencyAmount.cash;
+      } else if(payment===2) {
+        currencyAmount = await UserGameInfo.findOne({
+          where: {
+            name: user,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        amount = currencyAmount.gold;
+      } else{
+        currencyAmount = await EventPoint.findOne({
+          // attributes: ['Points'],
+          where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        amount = currencyAmount.Points;
+      }
+  // console.log('a');
+
+      // const ticketsPrice = payment === 1 ? 1000 : 2000; // Precio de un ticket en cash u oro
+  
+      if (!currencyAmount || amount < price * cantidad) {
+        await t.rollback();
+        console.log('[ERROR]'.red,'Saldo insuficiente'.red);
+        return { success: false, code: '100', message: `No tienes suficiente(s) ${typem} para esta compra`};
+      }
+
+      // console.log(1111);
+      // Actualizar el asset en UserAssets
+      const userAsset = await UserAsset.findOne({
+        where: {
+          user: user,
+          asset: AssetBuy.asset,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      // console.log(cantidad);
+      // console.log(AssetBuy.asset);
+      if (userAsset) {
+        // Si ya tiene el asset, incrementar la cantidad
+        userAsset.amount += cantidad;
+        await userAsset.save({ transaction: t });
+        // console.log('Asset actualizado:'.green, `Cantidad actualizada a ${userAsset.amount}`.green);
+      } else {
+        // Si no tiene el asset, crear un nuevo registro
+        // console.log(AssetBuy);
+        await UserAsset.create(
+          {
+            user: user,
+            asset: AssetBuy.asset,
+            amount: cantidad,
+          },
+          { transaction: t }
+        );
+        // console.log('Asset añadido:'.green, `Cantidad inicial ${cantidad}`.green);
+      }
+
+      // Descontar el pago (cash/oro/puntos de evento) como lo haces antes
+      if (payment === 1) {
+        currencyAmount.cash -= price * cantidad;
+        await currencyAmount.save({ transaction: t });
+        // params['c'] = currencyAmount.cash;
+      } else if (payment === 2) {
+        currencyAmount.gold -= price * cantidad;
+        await currencyAmount.save({ transaction: t });
+        // params['g'] = currencyAmount.gold;
+      } else {
+        currencyAmount.Points -= price * cantidad;
+        await currencyAmount.save({ transaction: t });
+        // params['ep'] = currencyAmount.Points;
+      }
+
+     
+      await LogRewardsUser.create({  
+        user:user,
+        origen:origen,
+        recompensa:cantidad,
+        tipo_recompensa: tiporec,
+        //origen_2: type,
+        fecha: new Date(), 
+      }, { transaction: t });
+     
+      await t.commit();
+
+      console.log('[EXITO]'.green,'Compra exitosa'.green);
+
+     
+      return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa'};
+    } catch (error) {
+      await t.rollback();
+      throw new Error('Error al realizar la compra');
+    }
+  }
+
+  async setComentarioAnuncio(user,token,anuncio,comentario ,req) {
+    const t = await sequelize.transaction();
+  
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        // console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
+      }
+
+      const userInfo = await User.findOne({
+        where: {
+          id: user,
+        },
+        transaction: t,
+      });
+
+      const now = new Date();
+
+      // Ajustar la hora a la zona horaria de Perú (UTC -5)
+      const localTimePeru = new Date(now.setUTCHours(now.getUTCHours() - 5));
+
+      // Verificar que no haya más de 5 comentarios en el último minuto
+      const unMinutoAtras = new Date(localTimePeru - 60 * 1000);
+      const comentariosRecientes = await AnunciosComment.count({
+        where: {
+          anuncio: anuncio,
+          apodo: userInfo.apodo,
+          fecha: {
+            [Op.gt]: unMinutoAtras, // Comentarios hechos en el último minuto
+          },
+        },
+        transaction: t,
+      });
+
+      if (comentariosRecientes >= 5) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '100',
+          message: 'Estás comentando demasiado rápido, evita hacer spam.',
+        };
+      }
+
+      if (!comentario || comentario.length === 0 || comentario.length > 200) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'Tu comentario no tiene el rango de caracteres admitidos (1-200).',
+        };
+      }
+
+      // Obtener el diccionario de palabras malas desde ConfigParameters
+      const badWordsConfig = await ConfigParameters.findOne({
+        where: { name: 'badwords' },
+        attributes: ['value'], // Suponiendo que "value" es la columna donde está almacenado el JSON
+        transaction: t,
+      });
+
+      let palabrasMalas;
+
+      if (!badWordsConfig) {
+        palabrasMalas = [];
+      } else{
+        palabrasMalas = JSON.parse(badWordsConfig.value);
+      }
+      
+      const contienePalabrasMalas = palabrasMalas.some((palabra) =>
+        comentario.toLowerCase().includes(palabra.toLowerCase())
+      );
+
+      if (contienePalabrasMalas) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'Tu comentario tiene palabras que no están permitidas, vuelve a intentarlo.',
+        };
+      }
+
+      // Si todo está bien, guardar el comentario
+      await AnunciosComment.create(
+        {
+          anuncio: anuncio,
+          apodo: userInfo.apodo,
+          comentario: comentario,
+          fecha: localTimePeru,
+        },
+        { transaction: t }
+      );
+
+      // Confirmar la transacción
+      await t.commit();
+     
+      return { success: true, code: '000', message: 'Se ha guardado tu comentario'};
+    } catch (error) {
+      await t.rollback();
+      console.log(error);
+      throw new Error('Error al realizar al comentar');
+    }
+  }
+
+  async calificarEvento(user,token,evento,comentario,estrellas ,req) {
+    const t = await sequelize.transaction();
+  
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        // console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
+      }
+
+      const userInfo = await User.findOne({
+        where: {
+          id: user,
+        },
+        transaction: t,
+      });
+
+      const now = new Date();
+
+      // Ajustar la hora a la zona horaria de Perú (UTC -5)
+      const localTimePeru = new Date(now.setUTCHours(now.getUTCHours() - 5));
+
+      const eventCalf = await EventsReview.count({
+        where: {
+          evento: evento,
+          apodo: userInfo.apodo,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (eventCalf) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '100',
+          message: 'Ya has calificado este evento.',
+        };
+      }
+
+      if (estrellas > 5 || estrellas < 1) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'La calificación debe de estar entre 1 a 5 estrellas.',
+        };
+      }
+
+      if (!comentario || comentario.length === 0 || comentario.length > 200) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'Tu comentario no tiene el rango de caracteres admitidos (1-200).',
+        };
+      }
+
+      // Obtener el diccionario de palabras malas desde ConfigParameters
+      const badWordsConfig = await ConfigParameters.findOne({
+        where: { name: 'badwords' },
+        attributes: ['value'], // Suponiendo que "value" es la columna donde está almacenado el JSON
+        transaction: t,
+      });
+
+      let palabrasMalas;
+
+      if (!badWordsConfig) {
+        palabrasMalas = [];
+      } else{
+        palabrasMalas = JSON.parse(badWordsConfig.value);
+      }
+      
+      const contienePalabrasMalas = palabrasMalas.some((palabra) =>
+        comentario.toLowerCase().includes(palabra.toLowerCase())
+      );
+
+      if (contienePalabrasMalas) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'Tu comentario tiene palabras que no están permitidas, vuelve a intentarlo.',
+        };
+      }
+
+      // Si todo está bien, guardar el comentario
+      await EventsReview.create(
+        {
+          evento: evento,
+          apodo: userInfo.apodo,
+          review: comentario,
+          points: Number(estrellas),
+          fecha: localTimePeru,
+        },
+        { transaction: t }
+      );
+
+      // Confirmar la transacción
+      await t.commit();
+     
+      return { success: true, code: '000', message: 'Se ha guardado tu calificación'};
+    } catch (error) {
+      await t.rollback();
+      console.log(error);
+      throw new Error('Error al realizar al comentar');
     }
   }
 }

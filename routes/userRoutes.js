@@ -18,6 +18,9 @@ const router = express.Router();
 // Obtener ID por nombre
 //router.get('/uid/:name', UserController.getUserIdByUsername);
 
+
+router.post('/gtAss', UserController.getAssetsUser);
+
 // Registrar usuario
 router.post('/reg', UserController.registerUser);
 
@@ -36,5 +39,13 @@ router.post('/exch/ok', UserController.exchangeCash);
 //Stages:
 router.post('/stStgs', UserController.getTickets);
 router.post('/rstStgs', UserController.resetStage);
+
+//Shopping
+router.post('/shopAst', UserController.buyAssets);
+
+//Comentarios:
+
+router.post('/comAn', UserController.setComentarioAnuncio);
+router.post('/calEvt', UserController.calificarEvento);
 
 export default router;

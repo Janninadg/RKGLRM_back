@@ -32,6 +32,15 @@ router.post('/getChrc', GMPanelController.getPersonajes);
 router.post('/setLevel', GMPanelController.setLevel);
 router.post('/getLogs', GMPanelController.getLogs);
 
+//Streamers
+router.post('/getStrms', GMPanelController.getStreamers);
+router.post('/setStatusSt', GMPanelController.changeStreamerStatus);
+router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 
+//Anuncios
+router.post('/getAnuncios', GMPanelController.getAnuncios);
+router.post('/setStatusAn', GMPanelController.changeAnunciosStatus);
+router.post('/createAn', GMPanelController.crearAnuncio);
+// router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 
 export default router;

@@ -249,6 +249,27 @@ class GMPanelController {
         }
       }
 
+      async getStreamers(req, res, next) {
+        try {
+          const { user,token } = req.body;
+
+          const response = await GMPanelService.getStreamers(user,token);
+          //console.log(ranking);
+
+          console.log("[GM Panel]".green,' Get streamers'.white,(' - Admin: '+user).white);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al obtener usuarios:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+
       async giftPowerUser(req, res, next) {
         try {
           const { user,token,dias,usuarios } = req.body;
@@ -380,6 +401,102 @@ class GMPanelController {
           }
         } catch (error) {
           console.error('Error al obtener logs:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async changeStreamerStatus(req, res, next) {
+        try {
+          const { user,token,streamer } = req.body;
+
+          const response = await GMPanelService.changeStreamerStatus(user,token,streamer );
+          console.log("[GM Panel]".green,' Cambiar estatus de streamer'.white,(' - Admin: '+user).white);
+          //console.log(response);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al otorgar poweruser:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async changeLinkStreamer(req, res, next) {
+        try {
+          const { user,token,streamer,link } = req.body;
+
+          const response = await GMPanelService.changeLinkStreamer(user,token,streamer,link );
+          console.log("[GM Panel]".green,' Cambiar link de streamer'.white,(' - Admin: '+user).white);
+          //console.log(response);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al cambiar link:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async getAnuncios(req, res, next) {
+        try {
+          const { user,token } = req.body;
+
+          const response = await GMPanelService.getAnuncios(user,token);
+          //console.log(ranking);
+
+          console.log("[GM Panel]".green,' Get Anuncios'.white,(' - Admin: '+user).white);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al obtener usuarios:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async changeAnunciosStatus(req, res, next) {
+        try {
+          const { user,token,anuncio } = req.body;
+
+          const response = await GMPanelService.changeAnunciosStatus(user,token,anuncio );
+          console.log("[GM Panel]".green,' Cambiar estatus de anuncio'.white,(' - Admin: '+user).white);
+          //console.log(response);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al otorgar poweruser:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async crearAnuncio(req, res, next) {
+        try {
+          const { user,token,titulo,autor,texto,imagen,importante,categoria, estado } = req.body;
+          console.log("[GM Panel]".green,' Crear anuncio'.white,(' - Admin: '+user).white);
+
+          const response = await GMPanelService.crearAnuncio(user,token,titulo,autor,texto,categoria,imagen,importante, estado);
+          //console.log(ranking);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al crar anuncio:', error);
           return res.status(500).json({ error: 'Error interno del servidor' });
         }
       }

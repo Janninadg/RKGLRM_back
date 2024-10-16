@@ -24,6 +24,10 @@ const Evento = sequelize.define('evento', {
     type: DataTypes.TEXT,
     allowNull: false
   },
+  category: {
+    type: DataTypes.STRING(50),
+    allowNull: false
+  },
   inicio: {
     type: DataTypes.DATE,
     allowNull: false,

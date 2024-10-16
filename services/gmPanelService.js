@@ -24,8 +24,14 @@ import LogRewardsUser from '../models/logRewardUserModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import LogExchange from '../models/logExchanges.js';
 import TempCupon from '../models/tempCupones.js';
+import Streamer from '../models/streamersModel.js';
 import { obtenerCuponesGenerados, obtenerLogsCupones, obtenerLogsExchanges, obtenerLogsGM, obtenerLogsRecompensas, obtenerLogsStreamers } from '../utils/panelUtils.js';
 import EventPoint from '../models/eventPointsModel.js';
+import StreamPlatform from '../models/streamsPlatformsModel.js';
+import Anuncio from '../models/anunciosModel.js';
+
+import fs from 'fs/promises'; // Importar módulo de promesas para ESM
+import path from 'path';
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -252,6 +258,312 @@ class GMPanelService {
           throw new Error('Error interno del servidor');
         }
       }
+
+      async getAnuncios(user,token) {
+        try {
+
+           // Verificar token:
+           const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token: token,
+              id: user,
+            },
+            //transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!sessionToken){
+            //await t.rollback(); // Revertir la transacción en caso de error
+            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+          // Verificar si todos los miembros de members existen en usergameinfo
+          const anuncios = await Anuncio.findAll({
+            order: [
+              ['importante', 'DESC'], // Ordenar primero por el atributo 'importante', de mayor a menor
+              ['fecha', 'DESC'], // Luego, ordenar por fecha, del más reciente al más antiguo
+            ],
+          });
+           
+            return {success:true,code:'000',message:'ok',ann:anuncios};
+    
+          //return users;
+        } catch (error) {
+          console.error('Error al obtener anuncios:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+
+      async changeAnunciosStatus(user,token,anuncioid) {
+        const t = await sequelize.transaction();
+      
+        try {
+
+           // Verificar token:
+          const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token: token,
+              id: user,
+            },
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!sessionToken){
+            await t.rollback(); // Revertir la transacción en caso de error
+            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+          //Verificar si es GM otra vez:
+          const existGM = await UsersPanel.findOne({
+            attributes:['id'],
+            where:{
+              user: user,
+              [Op.or]: [{ type: 0 }, { type: 9 }],
+            },
+            transaction: t,
+          });
+
+          if(!existGM){
+            await t.rollback();
+            return {
+              success: false,
+              code: '001',
+              message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+            };
+          
+          }
+
+
+            // Obtener el status actual del streamer
+            const anuncio = await Anuncio.findOne({
+              where: { id: anuncioid },
+              transaction: t, // Asociar la transacción con esta consulta
+              lock: t.LOCK,
+            });
+
+            if (!anuncio) {
+              await t.rollback();
+              return {
+                success: false,
+                code: '003',
+                message: 'El anuncio no existe.',
+              };
+            }
+
+            anuncio.estado = anuncio.estado === 1 ? 0 : 1;
+            await anuncio.save({ transaction: t });
+
+          await t.commit();
+          
+          return {
+            success: true,
+            code: '000',
+            message:'Se cambio el estado del anuncio correctamente'
+          };
+        
+        }
+        catch (error) {
+            await t.rollback();
+            throw new Error('Error al banear usuarios');
+        }
+    }
+
+      async getStreamers(user,token) {
+        try {
+
+           // Verificar token:
+           const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token: token,
+              id: user,
+            },
+            //transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!sessionToken){
+            //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Sesión antigua'.red);
+            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+          // Obtener todos los streamers
+          const streamers = await Streamer.findAll();
+
+          // Obtener los nombres de las plataformas
+          const streamersWithPlatformNames = await Promise.all(
+              streamers.map(async (streamer) => {
+                  const platform = await StreamPlatform.findOne({
+                      where: { id: streamer.platform },
+                      attributes: ['name'],
+                  });
+
+                  return {
+                      ...streamer.toJSON(),
+                      platformName: platform ? platform.name : 'Plataforma desconocida',
+                  };
+              })
+          );
+
+          return {success:true,code:'000',message:'ok',st:streamersWithPlatformNames };
+    
+          //return users;
+        } catch (error) {
+          console.error('Error al obtener logs:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+
+      async changeStreamerStatus(user,token,streamerId) {
+        const t = await sequelize.transaction();
+      
+        try {
+
+           // Verificar token:
+          const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token: token,
+              id: user,
+            },
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!sessionToken){
+            await t.rollback(); // Revertir la transacción en caso de error
+            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+          //Verificar si es GM otra vez:
+          const existGM = await UsersPanel.findOne({
+            attributes:['id'],
+            where:{
+              user: user,
+              [Op.or]: [{ type: 0 }, { type: 9 }],
+            },
+            transaction: t,
+          });
+
+          if(!existGM){
+            await t.rollback();
+            return {
+              success: false,
+              code: '001',
+              message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+            };
+          
+          }
+
+
+            // Obtener el status actual del streamer
+            const streamer = await Streamer.findOne({
+              where: { id: streamerId },
+              transaction: t, // Asociar la transacción con esta consulta
+              lock: t.LOCK,
+            });
+
+            if (!streamer) {
+              await t.rollback();
+              return {
+                success: false,
+                code: '003',
+                message: 'El streamer no existe.',
+              };
+            }
+
+            streamer.status = streamer.status === 1 ? 0 : 1;
+            await streamer.save({ transaction: t });
+
+          await t.commit();
+          
+          return {
+            success: true,
+            code: '000',
+            message:'Se cambio el estado del streamer correctamente'
+          };
+        
+        }
+        catch (error) {
+            await t.rollback();
+            throw new Error('Error al banear usuarios');
+        }
+    }
+
+    async changeLinkStreamer(user,token,streamerId,link) {
+      const t = await sequelize.transaction();
+    
+      try {
+
+         // Verificar token:
+        const sessionToken = await TokenSession.findOne({
+          attributes: ['token'],
+          where: {
+            token: token,
+            id: user,
+          },
+          transaction: t, // Asociar la transacción con esta consulta
+        });
+
+        if(!sessionToken){
+          await t.rollback(); // Revertir la transacción en caso de error
+          return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+        }
+
+        //Verificar si es GM otra vez:
+        const existGM = await UsersPanel.findOne({
+          attributes:['id'],
+          where:{
+            user: user,
+            [Op.or]: [{ type: 0 }, { type: 9 }],
+          },
+          transaction: t,
+        });
+
+        if(!existGM){
+          await t.rollback();
+          return {
+            success: false,
+            code: '001',
+            message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+          };
+        
+        }
+
+
+          // Obtener el status actual del streamer
+          const streamer = await Streamer.findOne({
+            where: { id: streamerId },
+            transaction: t, // Asociar la transacción con esta consulta
+            lock: t.LOCK,
+          });
+
+          if (!streamer) {
+            await t.rollback();
+            return {
+              success: false,
+              code: '003',
+              message: 'El streamer no existe.',
+            };
+          }
+
+          streamer.link = link;
+          await streamer.save({ transaction: t });
+
+        await t.commit();
+        
+        return {
+          success: true,
+          code: '000',
+          message:'Se cambio el link del streamer correctamente'
+        };
+      
+      }
+      catch (error) {
+          await t.rollback();
+          throw new Error('Error al banear usuarios');
+      }
+  }
 
       async getLogs(user,token) {
         try {
@@ -1120,6 +1432,120 @@ class GMPanelService {
         throw new Error('Error al generar cupon');
     }
   }
+
+  async crearAnuncio(user,token,titulo,autor,texto,categoria,imagen,importante, estado) {
+    const t = await sequelize.transaction();
+
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      }
+
+      //Verificar si es GM otra vez:
+      const existGM = await UsersPanel.findOne({
+        attributes:['id'],
+        where:{
+          user: user,
+          [Op.or]: [{ type: 0 }, { type: 9 }],
+        },
+        transaction: t,
+      });
+
+      if(!existGM){
+        await t.rollback();
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+        };
+      
+      }
+
+
+      // Verificar si la imagen es un archivo o un enlace
+      let imagePath = ''; // Imagen por defecto
+
+      // console.log(imagen);
+
+      if (typeof imagen === 'object' && imagen.r) {
+        // Extraer la parte base64 y el tipo de imagen
+        const matches = imagen.r.match(/^data:(.+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) {
+          throw new Error('Formato de imagen inválido');
+        }
+
+        const extension = matches[1].split('/')[1]; // Obtener la extensión del archivo (jpg, png, etc.)
+        const base64Data = matches[2]; // Datos de la imagen en base64
+
+        // Crear un nombre único para la imagen
+        const filename = `${Date.now()}.${extension}`;
+        const filepath = path.join('C:/xampp/htdocs/pictures/anuncios', filename);
+
+        // Guardar el archivo en el servidor
+        await fs.writeFile(filepath, base64Data, 'base64');
+
+        // Asignar la ruta de la imagen al anuncio
+        imagePath = `/pictures/anuncios/${filename}`;
+      } else if (typeof imagen === 'string' && imagen.startsWith('http')) {
+        // Si es un enlace, no hacer nada, solo usar el valor de imagen tal como está
+        imagePath = imagen;
+      }
+
+      // Crear el anuncio:
+      const nuevoAnuncio = await Anuncio.create({
+        titulo: titulo,
+        autor: autor || 'Rakion Eternals',  // Si no se proporciona un autor, utiliza el valor por defecto
+        contenido: texto,
+        imagen: imagePath || '/pictures/rakxmas.png', // Usa la imagen por defecto si no se proporciona
+        category: categoria || 'anuncio general', // Establecer la categoría de anuncio, o ajustarla según tu lógica
+        importante: importante || 0, // Por defecto, no es importante si no se proporciona
+        estado: estado || 1, // Por defecto, estado activo si no se proporciona
+      }, {
+        transaction: t, // Asociar la transacción con esta operación
+      });
+
+      //Insertar en LOG
+      await LogPanelGM.create(
+        {
+          userAction:user,
+          action: 'Crear Anuncio',
+          user:'-',
+          type:13,
+          date: new Date(),
+        },
+        {
+          transaction: t, // Asociar la transacción con esta operación
+        }
+      );
+
+      await t.commit();
+      
+      return {
+        success: true,
+        code: '000',
+        message:'Se ha creado el anuncio correctamente'
+      };
+    
+    }
+    catch (error) {
+        await t.rollback();
+        console.log(error);
+        throw new Error('Error al generar cupon');
+    }
+  }
+
 
   async addMembers(user,token,clan,members) {
     const t = await sequelize.transaction();

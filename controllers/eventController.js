@@ -139,9 +139,9 @@ class EventController {
 
       switch (type) {
         case 1:
-          console.log('Evento:'.blue,'Cartas de nivel'.red);
+          console.log('Evento:'.blue,'CountDown'.red);
           break;
-        case 3: 
+        case 2: 
           console.log('Evento:'.blue,'Ruleta'.red);
           break;
         default:
@@ -449,11 +449,11 @@ class EventController {
       console.log("---------------------------------------------------------------".magenta);
       console.log("SET TOKEN DE JUEGO - FROM IP: ".blue,req.clientIp.green);
       console.log('Usuario:'.blue,user.yellow);
-      switch (game) {
+      switch (Number(game)) {
         case 1:
-          console.log('Evento:'.blue,'Cartas de nivel'.red);
+          console.log('Evento:'.blue,'CountDown'.red);
           break;
-        case 3: 
+        case 2: 
           console.log('Evento:'.blue,'Ruleta'.red);
           break;
         default:
@@ -461,7 +461,7 @@ class EventController {
       }
       console.log("---------------------------------------------------------------".magenta);
 
-      const result = await EventService.setAuthGame(token,user,game);
+      const result = await EventService.setAuthGame(token,user,Number(game));
 
       if (result.success || result.code) {
         return res.status(200).json(result);

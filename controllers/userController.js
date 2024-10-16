@@ -115,21 +115,20 @@ class UserController {
   }
 
   // Obtener el gold de un usuario por ID
-  async getUserGold(req, res) {
-    const userId = req.params.id;
+  async getAssetsUser(req, res) {
 
     try {
-      const gold = await UserService.getUserGoldById(userId);
+      const { user,token } = req.body;
 
-      if (gold !== null) {
-        const key = generateKey();
-        const encryptedGold = encrypt(gold.toString(), key);
-        return res.status(200).json({ IOMJKL: encryptedGold, SHUTDI:key });
+      const activos = await UserService.getAssetsUser(user,token);
+
+      if (activos.success || activos.code) {
+        return res.status(200).json(activos);
       } else {
-        return res.status(404).json({ message: 'Usuario no encontrado' });
+        return res.status(400).json(activos);
       }
     } catch (error) {
-      console.error('Error al obtener el gold del usuario:', error);
+      console.error('Error al obtener activos de usuario:', error);
       return res.status(500).json({ message: 'Error en el servidor' });
     }
   }
@@ -316,6 +315,76 @@ class UserController {
       return res.status(500).json({ message: 'Error interno del servidor' });
     }
   }
+
+
+
+  async buyAssets(req, res) {
+    try {
+
+      const { user,token,assetid,type_payment,cantidad } = req.body;
+
+  
+
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("COMPRA DE ACTIVOS - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,user.yellow);
+
+      //onsole.log(typePay);
+      //console.log(decrypt(CCIOMD,key));
+
+      //console.log(paramsString);
+
+      const result = await UserService.buyAssets(user,token,assetid,type_payment,Number(cantidad),req);
+  
+      console.log("---------------------------------------------------------------".magenta);
+      
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la compra de activos:', error);
+      return res.status(500).json({error: 'Error interno del servidor'});
+    }
+  }  
+
+
+  async setComentarioAnuncio(req, res) {
+    try {
+
+      const { user,token,anuncio,comentario } = req.body;
+
+      const result = await UserService.setComentarioAnuncio(user,token,anuncio,comentario ,req);
+  
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al comentar anuncio:', error);
+      return res.status(500).json({error: 'Error interno del servidor'});
+    }
+  }  
+
+  async calificarEvento(req, res) {
+    try {
+
+      const { user,token,evento,comentario,estrellas } = req.body;
+
+      const result = await UserService.calificarEvento(user,token,evento,comentario,estrellas ,req);
+  
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al comentar evento:', error);
+      return res.status(500).json({error: 'Error interno del servidor'});
+    }
+  }  
 }
 
 export default new UserController();

@@ -3,7 +3,10 @@ import RefineriaController from '../controllers/refineriaController.js';
 
 const router = express.Router();
 
-// Rutas de apis de tienda
+// Rutas de apis de inventario
+router.post('/gtInv', RefineriaController.getInventory);
+
+router.post('/refIt', RefineriaController.refinyItem);
 
 
 export default router;

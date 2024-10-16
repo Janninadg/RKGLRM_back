@@ -11,7 +11,7 @@ import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
 import Cupon from '../models/cuponesModel.js';
 import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamers.js';
+import Streamer from '../models/streamersModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import Linksgame from '../models/linksGameModel.js';
 import Anuncio from '../models/anunciosModel.js';
