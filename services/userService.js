@@ -764,6 +764,42 @@ class UserService {
       throw new Error('Error interno del servidor');
     }
   }
+
+  async getRankingClanes() {
+    try {
+      const rankingData = await sequelize.query(
+        `
+        SELECT 
+            u.clanid,
+            clan.name AS clanName,
+            SUM(ci.win) AS totalWins,
+            SUM(ci.lose) AS totalLoses,
+            CASE 
+                WHEN (SUM(ci.win) + SUM(ci.lose)) > 0 
+                THEN ((SUM(ci.win) - SUM(ci.lose)) * 0.255)
+                ELSE 0 
+            END AS winrate
+        FROM characterinfo ci
+        INNER JOIN usergameinfo u ON ci.userid = u.id
+        INNER JOIN claninfo clan ON u.clanid = clan.id
+        WHERE u.clanid != 0
+        GROUP BY u.clanid, clan.name
+        ORDER BY winrate DESC
+        `,
+        { type: sequelize.QueryTypes.SELECT }
+    );
+  
+      /**   CASE
+          WHEN ci.lose = 0 AND ci.win = 0 THEN 1
+          WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
+          WHEN ci.lose > 0 THEN ci.win / ci.lose
+        END AS winrate*/
+      return rankingData;
+    } catch (error) {
+      console.error('Error al obtener el ranking:', error);
+      throw new Error('Error interno del servidor');
+    }
+  }
   
   async getTickets(userId,type,mode) {
     try {

@@ -242,6 +242,18 @@ class UserController {
     }
   }
 
+  async getRankingClanes(req, res, next) {
+    try {
+      const ranking = await UserService.getRankingClanes();
+      //console.log(ranking);
+
+      return res.status(200).json({rc:ranking});
+    } catch (error) {
+      console.error('Error al obtener el ranking:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
   async getTickets(req, res) {
 
     try {

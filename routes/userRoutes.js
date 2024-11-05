@@ -29,6 +29,7 @@ router.get('/prf/:name/:token', UserController.getProfile);
 
 // Ruta para obtener el ranking
 router.get('/rnk', UserController.getRanking);
+router.get('/rnkc', UserController.getRankingClanes);
 
 // Ruta para obtener tipo de cambio
 router.get('/exch', UserController.getExchangeRate);
