@@ -215,7 +215,7 @@ class GMPanelController {
 
           const users = await GMPanelService.getUserstoBan(user,token);
 
-          console.log("[GM Panel]".green,' Get user data'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Lista de usuarios'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (users.success || users.code) {
@@ -236,7 +236,7 @@ class GMPanelController {
           const response = await GMPanelService.getUsersName(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Get users name'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Lista de usuarios [solo nombres]'.white,(' - Admin: '+user).white);
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -256,7 +256,7 @@ class GMPanelController {
           const response = await GMPanelService.getStreamers(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Get streamers'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Lista de streamers'.white,(' - Admin: '+user).white);
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -332,7 +332,7 @@ class GMPanelController {
           const { user,token } = req.body;
 
           const response = await GMPanelService.getClanes(user,token);
-          console.log("[GM Panel]".green,' Obtener clanes'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Lista de clanes'.white,(' - Admin: '+user).white);
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -450,7 +450,7 @@ class GMPanelController {
           const response = await GMPanelService.getAnuncios(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Get Anuncios'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Lista de Anuncios'.white,(' - Admin: '+user).white);
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -468,7 +468,7 @@ class GMPanelController {
           const { user,token,anuncio } = req.body;
 
           const response = await GMPanelService.changeAnunciosStatus(user,token,anuncio );
-          console.log("[GM Panel]".green,' Cambiar estatus de anuncio'.white,(' - Admin: '+user).white);
+          console.log("[GM Panel]".green,' Cambiar status de anuncio'.white,(' - Admin: '+user).white);
           //console.log(response);
 
           if (response.success || response.code) {
@@ -497,6 +497,25 @@ class GMPanelController {
           }
         } catch (error) {
           console.error('Error al crar anuncio:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async enviarMensajes(req, res, next) {
+        try {
+          const { user,token,texto,users,sala,type } = req.body;
+          console.log("[GM Panel]".green,' Enviar mensaje a Servidor'.white,(' - Admin: '+user).white);
+
+          const response = await GMPanelService.enviarMensajes(user,token,texto,users,sala,type);
+          //console.log(ranking);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al enviar mensaje:', error);
           return res.status(500).json({ error: 'Error interno del servidor' });
         }
       }

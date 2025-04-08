@@ -1,3 +1,5 @@
+import RewardClaim from "../models/rewardsClaim.js";
+
 const setPresentsReward = (character) => {
     try {
         switch (character) {
@@ -24,6 +26,22 @@ const setPresentsReward = (character) => {
       console.error(`Error al entregar premios:`, error);
       throw error;
     }
-  };
+};
 
-  export { setPresentsReward };
+const hasUserClaimed = async (userId) => {
+  // Obtenemos la fecha actual en formato "YYYY-MM-DD"
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Buscamos un registro en reward_claims para ese usuario y la fecha actual
+  const claim = await RewardClaim.findOne({
+    where: {
+      user_id: userId,
+      claim_date: todayStr
+    }
+  });
+
+  // Retornamos true si existe un registro, false en caso contrario
+  return claim !== null;
+};
+
+  export { setPresentsReward,hasUserClaimed };

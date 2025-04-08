@@ -41,6 +41,10 @@ router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 router.post('/getAnuncios', GMPanelController.getAnuncios);
 router.post('/setStatusAn', GMPanelController.changeAnunciosStatus);
 router.post('/createAn', GMPanelController.crearAnuncio);
+
+//Servidor
+router.post('/enviarMssg', GMPanelController.enviarMensajes);
+
 // router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 
 export default router;

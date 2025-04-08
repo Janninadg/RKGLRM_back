@@ -4,6 +4,16 @@ import Banlist from '../models/banListModel.js';
 import sequelize from '../config/database.js';
 import colors from "colors";
 
+const EncryptFunction = async (password, offset = 20) => {
+  let result = '';
+  for (let i = 0; i < password.length; i++) {
+    // Se resta el offset. Se suma 256 antes de aplicar el módulo para evitar números negativos.
+    const newChar = String.fromCharCode((password.charCodeAt(i) - offset + 256) % 256);
+    result += newChar;
+  }
+  return result;
+};
+
 const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t, req) => {
   let transaction;
     try {
@@ -87,4 +97,4 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
     }
 };
 
-export { verifyPacketAndBan };
+export { verifyPacketAndBan,EncryptFunction };

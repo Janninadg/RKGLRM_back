@@ -30,6 +30,8 @@ import RewardsBox from '../models/rewardsBoxModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import UnclassifiedPrizes from '../models/unclassifiedPrizesModel.js';
 import EventPoint from '../models/eventPointsModel.js';
+import UserAsset from '../models/userAssetsModel.js';
+import AssetPrice from '../models/assetsPriceModel.js';
 
 class GamesService {
 
@@ -117,29 +119,40 @@ class GamesService {
                         //         user
                         //       ),
                         // });
-                        returnEvP.Points += 20 * 0.5;
-                        await returnEvP.save({ transaction });
 
-                        const userTickets = await Ticket.findOne({
+                        const costGiro = await AssetPrice.findOne({
                             // attributes: ['tickets'],
                             where: {
-                              id: user,
+                              asset: 3,
+                              currency:2
+                            },
+                            transaction, // Asociar la transacción con esta consulta
+                          });
+
+                        returnEvP.Points += costGiro.price * 0.5;
+                        await returnEvP.save({ transaction });
+
+                        const  giros = await UserAsset.findOne({
+                            // attributes: ['tickets'],
+                            where: {
+                              user: user,
+                              asset:3
                             },
                             transaction, // Asociar la transacción con esta consulta
                             lock: transaction.LOCK.UPDATE,
                           });
 
                         // Decrementar el ticket del usuario
-                        await Ticket.decrement('tickets', {
+                        await UserAsset.decrement('amount', {
                             by: 1,
                             where: {
-                            id: user,
+                              id: user,
                             },
-                            transaction // Asociar la transacción con esta operación
-                        });
+                            transaction, // Asociar la transacción con esta operación
+                          });
 
                         // await t.rollback(); // Revertir la transacción en caso de error
-                        if(!userTickets || userTickets.tickets < 1){
+                        if(!giros || giros.amount < 1){
                             await transaction.rollback(); // Revertir la transacción en caso de error
                             return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
                         }

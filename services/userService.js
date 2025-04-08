@@ -15,7 +15,7 @@ import PendingPresents from '../models/pendingPresentsModel.js'
 import InitialIpUser from '../models/ipUserModel.js';
 import ExchangeRate from '../models/exchangeRateModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
+import { EncryptFunction, verifyPacketAndBan } from '../utils/securityUtils.js';
 import LogExchange from '../models/logExchanges.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import UserStageInfo from '../models/userStageInfo.js';
@@ -23,7 +23,7 @@ import { calculatePowerUse } from '../utils/prizesUtils.js';
 // import BarraConexion from '../models/barProgressModel.js';
 import { decrypt, encrypt } from '../helpers/encryption.js';
 import config from '../config/config.js';
-import { setPresentsReward } from '../utils/gameUtils.js';
+import { hasUserClaimed, setPresentsReward } from '../utils/gameUtils.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import EventPoint from '../models/eventPointsModel.js';
@@ -32,6 +32,7 @@ import TypeAsset from '../models/typeAssetsModel.js';
 import AnunciosComment from '../models/anunciosCommentModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import EventsReview from '../models/eventsReviewModel.js';
+import WebUser from '../models/webUsersModel.js';
 
 class UserService {
 
@@ -249,8 +250,8 @@ class UserService {
         return { success:false, message:'El usuario ingresado se encuentra baneado', code: '101' };
       }
   
-      // Verificar las credenciales en la tabla 'user'
-      const user = await User.findOne({ where: { id, password } });
+      // Verificar las credenciales en la tabla 'Webuser'
+      const user = await WebUser.findOne({ where: { user:id, password } });
   
       if (user) {
         // Si las credenciales son correctas, crear un token
@@ -269,17 +270,22 @@ class UserService {
   
         // Obtener información adicional del usuario desde usergameinfo
         const userInfo = await UserGameInfo.findOne({
-          where: { name: user.id },
+          where: { name: user.user },
           attributes: ['id', 'name', 'createtime', 'lastconnect'],
-          transaction: t, 
+          transaction: t,
         });
+
+        const userTable = await User.findOne({ where: { id } });
+  
   
         // Combinar la información del usuario
-        const completeUserInfo = { ...user.toJSON(), ...userInfo.toJSON() };
+        const completeUserInfo = { ...userTable.toJSON(), ...userInfo.toJSON() };
+
+        // const claim = hasUserClaimed(user.id);
   
         // Devolver el objeto con toda la información del usuario, el token y el código 2
         await t.commit();
-        return { _u: completeUserInfo, auth:token, tx:expired, success:true, message:'Ha iniciado sesión correctamente', code: '000'  };
+        return { _u: completeUserInfo, auth:token, tx:expired, success:true, message:'Ha iniciado sesión correctamente', code: '000' };
       } else {
         // Si las credenciales son incorrectas, retornar 3 (credenciales incorrectas)
         await t.rollback();
@@ -513,16 +519,29 @@ class UserService {
         await transaction.rollback();
         return { success: false,message:'No se puede registrar porque su IP se encuentra baneada', code: '101'};
       }
+
+      const passwordEncrypt = await EncryptFunction(password);
+
+      console.log(password);
+      console.log(passwordEncrypt);
   
       await User.create(
         {
           id: username,
-          password,
+          password:passwordEncrypt,
           apodo,
           e_mail: phoneNumber,
         },
         { transaction }
       );
+
+      await WebUser.create(
+        {
+          user: username,
+          password
+        },
+        { transaction }
+      )
 
       //console.log(111111);
 
@@ -552,6 +571,7 @@ class UserService {
       // Assets: piedras refineria, .... tickets etc
       await UserAsset.create({ user: username, amount: 0, asset:1 }, { transaction }); //refineria piedra cash
       await UserAsset.create({ user: username, amount: 0, asset:2 }, { transaction }); //refineria piedra oro
+      await UserAsset.create({ user: username, amount: 0, asset:3 }, { transaction }); //giro ruleta
 
       // await TicketOro.create({ id: username, tickets: 0 }, { transaction });
 

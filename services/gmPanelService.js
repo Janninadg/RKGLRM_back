@@ -32,6 +32,7 @@ import Anuncio from '../models/anunciosModel.js';
 
 import fs from 'fs/promises'; // Importar módulo de promesas para ESM
 import path from 'path';
+import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -659,6 +660,7 @@ class GMPanelService {
           });
 
           if(!sessionToken){
+            console.log("!![GM Panel]".red,' Sesión antigua'.red);
             await t.rollback(); // Revertir la transacción en caso de error
             return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
           }
@@ -677,6 +679,7 @@ class GMPanelService {
           });
 
           if(!existGM){
+            console.log("!![GM Panel]".red,' Ya no es GM'.red);
             await t.rollback();
             return {
               success: false,
@@ -726,6 +729,8 @@ class GMPanelService {
           }
 
           await t.commit();
+
+          console.log("[GM Panel]".green,' Exito'.green);
           
           return {
             success: true,
@@ -1262,6 +1267,7 @@ class GMPanelService {
       });
 
       if(!sessionToken){
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
@@ -1277,6 +1283,7 @@ class GMPanelService {
       });
 
       if(!existGM){
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
         await t.rollback();
         return {
           success: false,
@@ -1297,6 +1304,7 @@ class GMPanelService {
 
       if (existingClan) {
         await t.rollback();
+        console.log("!![GM Panel]".red,' Nombre de clan repetido'.red);
         return { success: false, code: '204', message: 'Ya existe un clan con el mismo nombre' };
       }
 
@@ -1305,13 +1313,14 @@ class GMPanelService {
       const usergetId = await UserGameInfo.findOne({
         attributes:['id'],
         where:{
-          name: master
+          name: master,
         },
         transaction: t, // Asociar la transacción con esta consulta
       });
 
       if (!usergetId) {
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log("!![GM Panel]".red,' No existe el ID del Master ingresado'.red);
         return { success: false, code: '202', message: 'ID del Master no existe' };
       }
 
@@ -1326,7 +1335,24 @@ class GMPanelService {
 
       if (masterInAnotherClan) {
         await t.rollback();
+        console.log("!![GM Panel]".red,' El usuario ya es master de otro clan'.red);
         return { success: false, code: '205', message: 'El usuario ya es master de otro clan' };
+      }
+
+      // Verificar si el usuario master pertenece a otro clan:
+      const memberOfClan = await UserGameInfo.findOne({
+        attributes: ['id'],
+        where: {
+          clanid: 0,
+          name: master,
+        },
+        transaction: t,
+      });
+
+      if (!memberOfClan) {
+        await t.rollback();
+        console.log("!![GM Panel]".red,' El usuario es miembro de otro clan'.red);
+        return { success: false, code: '205', message: 'El usuario es miembro de otro clan' };
       }
 
       // Obtener el número de clanes creados
@@ -1349,7 +1375,28 @@ class GMPanelService {
 
       if (missingMembers.length > 0) {
         await t.rollback();
+        console.log("!![GM Panel]".red,` No existen los ID's de los siguientes miembros: [${missingMembers.join(', ')}]`.red);
         return { success: false, code: '203', message: `No existen los ID's de los siguientes miembros: [${missingMembers.join(', ')}]` };
+      }
+
+      // Verificar si todos los miembros no pertenecen a otro clan
+      const membersExistClan = await UserGameInfo.findAll({
+        attributes: ['name'],
+        where: {
+          clanid:0,
+          name: members,
+        },
+        transaction: t,
+      });
+
+      const membersClanNames = membersExistClan.map(member => member.name);
+
+      const missingClanMembers = members.filter(member => !membersClanNames.includes(member));
+
+      if (missingClanMembers.length > 0) {
+        await t.rollback();
+        console.log("!![GM Panel]".red,` Los siguiente usuarios ya pertenecen a otros clanes: [${missingClanMembers.join(', ')}]`.red);
+        return { success: false, code: '203', message: `Los siguiente usuarios ya pertenecen a otros clanes:  [${missingClanMembers.join(', ')}]` };
       }
 
       //Insertar en ClanInfo
@@ -1419,6 +1466,7 @@ class GMPanelService {
       );
 
       await t.commit();
+      console.log("[GM Panel]".green,' Exito'.green);
       
       return {
         success: true,
@@ -1428,8 +1476,9 @@ class GMPanelService {
     
     }
     catch (error) {
+      console.log("!![GM Panel]".red,' Error exception'.red);
         await t.rollback();
-        throw new Error('Error al generar cupon');
+        throw new Error('Error al crean clan');
     }
   }
 
@@ -1449,6 +1498,7 @@ class GMPanelService {
       });
 
       if(!sessionToken){
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
@@ -1464,6 +1514,7 @@ class GMPanelService {
       });
 
       if(!existGM){
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
         await t.rollback();
         return {
           success: false,
@@ -1532,6 +1583,8 @@ class GMPanelService {
 
       await t.commit();
       
+      console.log("[GM Panel]".green,' Exito'.green);
+      
       return {
         success: true,
         code: '000',
@@ -1540,14 +1593,14 @@ class GMPanelService {
     
     }
     catch (error) {
+      console.log("!![GM Panel]".red,' Error exception'.red);
         await t.rollback();
         console.log(error);
         throw new Error('Error al generar cupon');
     }
   }
 
-
-  async addMembers(user,token,clan,members) {
+  async enviarMensajes(user,token,texto,users,sala,type ) {
     const t = await sequelize.transaction();
 
     try {
@@ -1564,6 +1617,7 @@ class GMPanelService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
         return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
 
@@ -1587,6 +1641,207 @@ class GMPanelService {
       
       }
 
+
+      // Enviar mensajes:
+
+      // Obtener id de gm:
+      const gmUser = await UsersPanel.findOne({
+            where: {
+                user: user,
+            },
+        });
+
+      const mssg = {
+        'idgm':gmUser.id,
+        'message':texto,
+      };
+     
+
+      switch (type) {
+        case 1:
+          //Todos
+          console.log("[GM Panel]".green,' Enviando mensaje a todos'.cyan);
+          mssg['type'] = 1;
+          console.log("[Object] ".cyan, mssg);
+          break;
+        case 2:
+          //Usuarios
+          // console.log(users);
+          mssg['users'] = users.join('#');
+          mssg['type'] = 2;
+          console.log("[GM Panel]".green,' Enviando mensaje a usuarios en especifico'.cyan);
+          console.log("[Object] ".cyan, mssg);
+          break;
+        case 3:
+          mssg['sala'] = Number(sala);
+          mssg['type'] = 3;
+          console.log("[GM Panel]".green,' Enviando mensaje a sala'.cyan);
+          console.log("[Object] ".cyan, mssg);
+          break;
+        default:
+          console.log("!![GM Panel]".red,' No existe este tipo de envío de mensajes'.red);
+          return {
+            success: false,
+            code: '002',
+            message: 'No existe este tipo de envio de mensajes'
+          };
+          break;
+      }
+
+      // **Enviar mensaje al socket TCP**
+      // await enviarMensajeSocket(12345, '127.0.0.1', mssg);
+
+      // Simulación: Esperar 5 segundos y luego enviar un mensaje al cliente 1
+     
+        const activos = obtenerClientesActivos();
+        // console.log("[Servidor] Clientes activos:", activos);
+
+        let res;
+
+        if (activos.length > 0) {
+            // enviarMensajeACliente(activos[0], mssg);
+            try {
+              // Espera la respuesta de la promesa
+              res = await enviarMensajeACliente(activos[0], mssg);
+              // console.log("Respuesta recibida:", res);
+              // Aquí puedes utilizar la variable 'res' que contiene la respuesta
+              // return res; // O hacer lo que necesites con ella
+            } catch (error) {
+              console.error("Error al enviar mensaje:", error);
+              // Maneja el error o lanza una excepción
+            }
+        } else {
+            console.log("[Servidor] No hay clientes activos para enviar mensajes.");
+            console.log("!![GM Panel]".blue,' No se pudo enviar el mensaje porque no hay clientes activos.'.blue);
+            return {
+              success: false,
+              code: '003',
+              message: 'El cliente no puede recibir mensajes en este momento. Contacta con el administrador.'
+            };
+        }
+
+      const response = JSON.parse(res);
+      console.log("[Object Received] ".magenta, response);
+
+      if(Number(response.reason) === 1 && gmUser.id === response.idgm){
+        console.log("!![GM Panel]".red,' No se pudo enviar el mensaje. Ocurrió un error en el servidor.'.red);
+          return {
+              success: false,
+              code: '002',
+              message: 'No se ha podido enviar el mensaje. Hay un error interno en el servidor.'
+            };
+      }
+   
+
+      //Insertar en LOG
+
+      switch (type) {
+        case 1:
+          //Todos
+          await LogPanelGM.create(
+            {
+              userAction:user,
+              action: 'Enviar Mensaje a Todos',
+              user:'-',
+              type:14,
+              date: new Date(),
+            },
+            {
+              transaction: t, // Asociar la transacción con esta operación
+            }
+          );
+          break;
+        case 2:
+          //Usuarios
+          const originRecords = users.map(u => ({
+            userAction:user,
+            action: 'Enviar Mensaje a Usuarios',
+            user:u,
+            type:15,
+            date: new Date(),
+          }));
+
+          await LogPanelGM.bulkCreate(originRecords, { transaction:t });
+          break;
+        case 3:
+          await LogPanelGM.create(
+            {
+              userAction:user,
+              action: 'Enviar Mensaje a Sala',
+              amount:sala,
+              user:'-',
+              type:16,
+              date: new Date(),
+            },
+            {
+              transaction: t, // Asociar la transacción con esta operación
+            }
+          );
+          break;
+      }
+
+      console.log("[GM Panel]".green,' Mensaje enviado correctamente'.green);
+
+      await t.commit();
+      
+      return {
+        success: true,
+        code: '000',
+        message:'Se ha enviado el mensaje correctamente'
+      };
+    
+    }
+    catch (error) {
+      console.log("!![GM Panel]".red,' Error exception'.red);
+        await t.rollback();
+        console.log(error);
+        throw new Error('Error al enviar mensajes');
+    }
+  }
+
+
+  async addMembers(user,token,clan,members) {
+    const t = await sequelize.transaction();
+
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      }
+
+      //Verificar si es GM otra vez:
+      const existGM = await UsersPanel.findOne({
+        attributes:['id'],
+        where:{
+          user: user,
+          [Op.or]: [{ type: 0 }, { type: 9 }],
+        },
+        transaction: t,
+      });
+
+      if(!existGM){
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
+        await t.rollback();
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+        };
+      
+      }
+
       // Verificar si todos los miembros de members existen en usergameinfo
       const membersExist = await UserGameInfo.findAll({
         attributes: ['name'],
@@ -1601,6 +1856,7 @@ class GMPanelService {
       const missingMembers = members.filter(member => !membersExistNames.includes(member));
 
       if (missingMembers.length > 0) {
+        console.log("!![GM Panel]".red,`No existen los ID's de los siguientes miembros: [${missingMembers.join(', ')}]`.red);
         await t.rollback();
         return { success: false, code: '203', message: `No existen los ID's de los siguientes miembros: [${missingMembers.join(', ')}]` };
       }
@@ -1621,6 +1877,7 @@ class GMPanelService {
       const membersWithClanNames = membersWithClan.map(member => member.name);
       
       if (membersWithClanNames.length > 0) {
+        console.log("!![GM Panel]".red,` Los siguientes usuarios ya pertenecen a un clan: [${membersWithClanNames.join(', ')}]`.red);
         await t.rollback();
         return { success: false, code: '203', message: `Los siguientes usuarios ya pertenecen a un clan: [${membersWithClanNames.join(', ')}]` };
       }
@@ -1663,6 +1920,8 @@ class GMPanelService {
       });
 
       await t.commit();
+
+      console.log("[GM Panel]".green,' Exito'.green);
       
       return {
         success: true,
@@ -1672,6 +1931,7 @@ class GMPanelService {
     
     }
     catch (error) {
+      console.log("!![GM Panel]".red,' Error exception'.red);
         await t.rollback();
         throw new Error('Error al añadir miembros a clan');
     }
@@ -1730,6 +1990,7 @@ class GMPanelService {
       });
 
       if (userGamePowers.length !== usuarios.length) {
+        console.log("!![GM Panel]".red,' No se encontraron todos los usuarios'.red);
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '202', message: 'No se encontraron todos los usuarios' };
       }

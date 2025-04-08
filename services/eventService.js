@@ -34,6 +34,7 @@ import TrackingPacket from '../models/trackingPacketModel.js';
 import EventPoint from '../models/eventPointsModel.js';
 import colors from "colors";
 import EventsReview from '../models/eventsReviewModel.js';
+import UserAsset from '../models/userAssetsModel.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -1250,7 +1251,7 @@ class EventService {
           break;
         //Ruleta
         case 2:
-          var userTickets;
+          var giros;
           //var slotsAvaible;
           var typename;
           //Acciones según modalidad:
@@ -1260,23 +1261,30 @@ class EventService {
 
               typename = 'eventpoints';
 
-              userTickets = await Ticket.findOne({
+              giros = await UserAsset.findOne({
                 // attributes: ['tickets'],
                 where: {
-                  id: userId,
+                  user: userId,
+                  asset:3
                 },
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
               });
 
-              // Decrementar el ticket del usuario
-              await Ticket.decrement('tickets', {
-                by: 1,
-                where: {
-                  id: userId,
-                },
-                transaction: t, // Asociar la transacción con esta operación
-              });
+              if(giros.amount > 0){
+                // Decrementar el ticket del usuario
+                await UserAsset.decrement('amount', {
+                  by: 1,
+                  where: {
+                    id: userId,
+                  },
+                  transaction: t, // Asociar la transacción con esta operación
+                });
+              } else{
+                await t.rollback(); 
+                return { success: false, code: '200', message: 'No tienes giros suficientes para girar la ruleta.' };
+                break;
+              }
 
               //slotsAvaible = true;
 
