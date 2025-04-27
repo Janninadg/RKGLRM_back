@@ -497,6 +497,16 @@ class UserService {
     const transaction = await sequelize.transaction();
   
     try {
+
+      /*Verificar si su ip esta baneada*/
+      // Verificar si el usuario está en la tabla banlist
+      const bannedUser = await Banlist.findOne({ where: { UserIP: ip } });
+
+      if(bannedUser){
+        await transaction.rollback();
+        return { success: false,message:'No se puede registrar porque su IP se encuentra baneada', code: '101'};
+      }
+
       const existingUser = await UserGameInfo.findOne({ where: { name: username } });
   
       if (existingUser) {
@@ -510,14 +520,32 @@ class UserService {
         await transaction.rollback();
         return { success: false,message:'El apodo ingresado ya se encuentra en uso', code: '100' };
       }
+       
+      if (
+        !/^[a-zA-Z0-9]+$/.test(password) ||
+        password.length < 6 ||
+        password.length > 11
+      ) {
+          await transaction.rollback();
+          return { success: false,message:"La contraseña debe contener solo caracteres alfanuméricos y tener entre 6 y 11 caracteres", code: '100' };
+      }
 
-      /*Verificar si su ip esta baneada*/
-      // Verificar si el usuario está en la tabla banlist
-      const bannedUser = await Banlist.findOne({ where: { UserIP: ip } });
+      if (
+        !apodo ||
+        apodo.length < 3 ||
+        apodo.length > 11
+      ) {
+          await transaction.rollback();
+          return { success: false,message:"El apodo debe tener entre 3 y 11 caracteres", code: '100' };
+      }
 
-      if(bannedUser){
-        await transaction.rollback();
-        return { success: false,message:'No se puede registrar porque su IP se encuentra baneada', code: '101'};
+      if (
+        !username ||
+        username.length < 3 ||
+        username.length > 11
+      ) {
+          await transaction.rollback();
+          return { success: false,message:"El nombre de usuario debe tener entre 3 y 11 caracteres", code: '100' };
       }
 
       const passwordEncrypt = await EncryptFunction(password);
