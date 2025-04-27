@@ -550,7 +550,7 @@ class UserService {
       await UserGameInfo.create(
         {
           name: username,
-          gold:0,
+          gold:12000,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
@@ -562,7 +562,7 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 0 }, { transaction });
+      await Cash.create({ id: username, cash: 10000 }, { transaction });
       await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
       // Token
@@ -606,29 +606,29 @@ class UserService {
       //   }
       // );
 
-      // const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
-      // const presentIds = pr.i;
+      const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
+      const presentIds = pr.i;
       // presentIds.push(8000);
       // presentIds.push(7000);
 
-      // const presentRecords = presentIds.map(present_id => ({
-      //   present_id,
-      //   user_id: userGameInfo.id,
-      //   added_time: new Date(),
-      // }));
+      const presentRecords = presentIds.map(present_id => ({
+        present_id,
+        user_id: userGameInfo.id,
+        added_time: new Date(),
+      }));
 
-      // const originRecords = presentIds.map(recompensa => ({
-      //   user:username,
-      //   origen:0,
-      //   recompensa,
-      //   tipo_recompensa: 0,
-      //   fecha: new Date(),
-      // }));
+      const originRecords = presentIds.map(recompensa => ({
+        user:username,
+        origen:0,
+        recompensa,
+        tipo_recompensa: 0,
+        fecha: new Date(),
+      }));
       
-      // await PendingPresents.bulkCreate(presentRecords, { transaction });
+      await PendingPresents.bulkCreate(presentRecords, { transaction });
 
       //LOGS REWARDS:
-      // await LogRewardsUser.bulkCreate(originRecords, { transaction });
+      await LogRewardsUser.bulkCreate(originRecords, { transaction });
       // await LogRewardsUser.create({  
       //   user:username,
       //   origen:0,
@@ -637,21 +637,21 @@ class UserService {
       //   fecha: new Date(), 
       // }, { transaction });
 
-      // await LogRewardsUser.create({  
-      //   user:username,
-      //   origen:0,
-      //   recompensa:10000,
-      //   tipo_recompensa: 1,
-      //   fecha: new Date(), 
-      // }, { transaction });
+      await LogRewardsUser.create({  
+        user:username,
+        origen:0,
+        recompensa:12000,
+        tipo_recompensa: 1,
+        fecha: new Date(), 
+      }, { transaction });
 
-      // await LogRewardsUser.create({  
-      //   user:username,
-      //   origen:0,
-      //   recompensa:10000,
-      //   tipo_recompensa: 2,
-      //   fecha: new Date(), 
-      // }, { transaction });
+      await LogRewardsUser.create({  
+        user:username,
+        origen:0,
+        recompensa:10000,
+        tipo_recompensa: 2,
+        fecha: new Date(), 
+      }, { transaction });
 
       // await LogRewardsUser.create({  
       //   user:username,
@@ -664,11 +664,11 @@ class UserService {
 
       await transaction.commit();
 
-      // const message = 'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro de recompensa por registrarte!';
-      const message = '¡Se registro tu usuario correctamente!';
+      const message = 'Te has registrado correctamente ¡Has recibido 10K Cash y 12K Oro + '+ pr.m +' de recompensa por registrarte!';
+      // const message = '¡Se registro tu usuario correctamente!';
   
-      // return { success: true,message:'Te has registrado correctamente ¡Has recibido 10000 de Cash y Oro + '+ pr.m +' de recompensa por registrarte!', code: '000' };
       return { success: true,message, code: '000' };
+      // return { success: true,message, code: '000' };
     } catch (error) {
       await transaction.rollback();
       console.error('Error al registrar el usuario:', error);
