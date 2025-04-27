@@ -134,6 +134,8 @@ class RefineriaService {
         
         try {
 
+            return { success: false, code: '200', message: 'NO DISPONIBLE' };
+
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
                 attributes: ['token'],

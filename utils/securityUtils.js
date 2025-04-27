@@ -4,14 +4,28 @@ import Banlist from '../models/banListModel.js';
 import sequelize from '../config/database.js';
 import colors from "colors";
 
-const EncryptFunction = async (password, offset = 20) => {
-  let result = '';
-  for (let i = 0; i < password.length; i++) {
-    // Se resta el offset. Se suma 256 antes de aplicar el módulo para evitar números negativos.
-    const newChar = String.fromCharCode((password.charCodeAt(i) - offset + 256) % 256);
-    result += newChar;
-  }
-  return result;
+const EncryptFunction = async (input, offset = 20) => {
+    // Verifica si la cadena ya está encriptada
+    if (input.startsWith('$FF')) {
+      console.log('Esta cadena ya está encriptada.');
+      return '';
+    }
+  
+    const encryptedBytes = [];
+  
+    for (let i = 0; i < input.length; i++) {
+      const code = input.charCodeAt(i);
+      const encrypted = (code + offset) % 256;
+      encryptedBytes.push(encrypted);
+    }
+  
+    let result = '$FF';
+    for (const byte of encryptedBytes) {
+      // Asegura que el número hexadecimal tenga siempre 2 dígitos
+      result += byte.toString(16).padStart(2, '0').toUpperCase();
+    }
+  
+    return result;
 };
 
 const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t, req) => {

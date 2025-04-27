@@ -8,6 +8,11 @@ const TempUserItemInfo = sequelize.define('temp_useriteminfo', {
     allowNull: false,
     autoIncrement: true,
   },
+  // marketid: {
+  //   type: DataTypes.INTEGER,
+  //   allowNull: false,
+  //   defaultValue: 0,
+  // },
   userid: {
     type: DataTypes.INTEGER,
     allowNull: false,

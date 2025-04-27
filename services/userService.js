@@ -522,8 +522,8 @@ class UserService {
 
       const passwordEncrypt = await EncryptFunction(password);
 
-      console.log(password);
-      console.log(passwordEncrypt);
+      // console.log(password);
+      // console.log(passwordEncrypt);
   
       await User.create(
         {
