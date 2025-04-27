@@ -1251,6 +1251,22 @@ class UserService {
         return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
       }
 
+      // Verificar token blackout:
+      const blackoutToken = await Blackout.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          user: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!blackoutToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        // console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Sesión inválida, ya ha cerrado sesión. Actualice o cierre la página.' };
+      }
+
       const userInfo = await User.findOne({
         where: {
           id: user,
@@ -1363,6 +1379,22 @@ class UserService {
         await t.rollback(); // Revertir la transacción en caso de error
         // console.log('[ERROR]'.red,'Sesión antigua'.red);
         return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
+      }
+
+       // Verificar token blackout:
+       const blackoutToken = await Blackout.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          user: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!blackoutToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        // console.log('[ERROR]'.red,'Sesión antigua'.red);
+        return { success: false, code: '999', message: 'Sesión inválida, ya ha cerrado sesión. Actualice o cierre la página.' };
       }
 
       const userInfo = await User.findOne({
