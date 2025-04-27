@@ -1743,7 +1743,7 @@ class GMPanelService {
               userAction:user,
               action: 'Enviar Mensaje a Todos',
               user:'-',
-              type:15,
+              type:14,
               date: new Date(),
             },
             {
@@ -1757,7 +1757,7 @@ class GMPanelService {
             userAction:user,
             action: 'Enviar Mensaje a Usuarios',
             user:u,
-            type:16,
+            type:15,
             date: new Date(),
           }));
 
@@ -1770,7 +1770,7 @@ class GMPanelService {
               action: 'Enviar Mensaje a Sala',
               amount:sala,
               user:'-',
-              type:17,
+              type:16,
               date: new Date(),
             },
             {
