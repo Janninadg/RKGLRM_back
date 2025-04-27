@@ -1391,7 +1391,7 @@ class UserService {
         transaction: t, // Asociar la transacción con esta consulta
       });
 
-      if(!blackoutToken){
+      if(blackoutToken){
         await t.rollback(); // Revertir la transacción en caso de error
         // console.log('[ERROR]'.red,'Sesión antigua'.red);
         return { success: false, code: '999', message: 'Sesión inválida, ya ha cerrado sesión. Actualice o cierre la página.' };
