@@ -672,14 +672,14 @@ class MarketService {
               };
 
               /*PRUEBA*/
-              console.log("[Object Send] ".green, objectSend);
-              const objectReceived = {
-                'user': user,
-                'reason':1,
-              }
-              console.log("[Object Received] ".magenta, objectReceived);
+            //   console.log("[Object Send] ".green, objectSend);
+            //   const objectReceived = {
+            //     'user': user,
+            //     'reason':1,
+            //   }
+            //   console.log("[Object Received] ".magenta, objectReceived);
 
-              return {success:true, obj:objectReceived};
+            //   return {success:true, obj:objectReceived};
              /*END*/
 
               const activos = obtenerClientesActivos();

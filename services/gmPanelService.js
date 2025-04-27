@@ -1557,7 +1557,7 @@ class GMPanelService {
       // Crear el anuncio:
       const nuevoAnuncio = await Anuncio.create({
         titulo: titulo,
-        autor: autor || 'Rakion Eternals',  // Si no se proporciona un autor, utiliza el valor por defecto
+        autor: autor || 'Rakion Old',  // Si no se proporciona un autor, utiliza el valor por defecto
         contenido: texto,
         imagen: imagePath || '/pictures/rakxmas.png', // Usa la imagen por defecto si no se proporciona
         category: categoria || 'anuncio general', // Establecer la categoría de anuncio, o ajustarla según tu lógica
