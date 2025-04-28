@@ -524,10 +524,10 @@ class UserService {
       if (
         !/^[a-zA-Z0-9]+$/.test(password) ||
         password.length < 6 ||
-        password.length > 11
+        password.length > 8
       ) {
           await transaction.rollback();
-          return { success: false,message:"La contraseña debe contener solo caracteres alfanuméricos y tener entre 6 y 11 caracteres", code: '100' };
+          return { success: false,message:"La contraseña debe contener solo caracteres alfanuméricos y tener entre 6 y 8 caracteres", code: '100' };
       }
 
       if (

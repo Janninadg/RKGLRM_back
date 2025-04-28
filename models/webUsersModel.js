@@ -8,7 +8,7 @@ const WebUser = sequelize.define('webuser', {
     allowNull: false,
   },
   password: {
-    type: DataTypes.STRING(11),
+    type: DataTypes.STRING(8),
     allowNull: false,
   },
 }, {
