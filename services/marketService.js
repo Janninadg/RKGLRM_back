@@ -55,6 +55,7 @@ class MarketService {
 
             if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
                 await t.rollback(); 
+                console.log("[Error] Intenta comprar un item mientras esta jugando.".red);
                 return { success: false, code: '200', message: 'No puedes comprar en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
             }
     
@@ -297,6 +298,7 @@ class MarketService {
 
             if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
                 await t.rollback(); 
+                console.log("[Error] Intenta solicitar devolución de un item mientras esta jugando.".red);
                 return { success: false, code: '200', message: 'No puedes solicitar un retorno de item mientras estes en el juego. Cierra sesión en el launcher.' };
             }
     
@@ -492,6 +494,7 @@ class MarketService {
 
             if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
                 await t.rollback(); 
+                console.log("[Error] Intenta vender un item mientras esta jugando.".red);
                 return { success: false, code: '200', message: 'No puedes vender en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
             }
 
@@ -723,6 +726,7 @@ class MarketService {
           } catch (errorObj) {
             console.error("Error al enviar mensaje:", errorObj);
             // return errorObj;  // Devuelves el error estándar que tú mismo preparaste
+            console.log("!![Server] El servidor no puede realizar la comprobación para el mercado.".red);
             if(errorObj.code && errorObj.code==='999'){
                 return errorObj;
             } else{
