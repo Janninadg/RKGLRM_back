@@ -86,7 +86,7 @@ class StreamersService {
           const cupon = data.cp;
           const prize = parseInt(data._prc,10);
           const tipoCupon = parseInt(data.sc,10);
-          const type = tipoCupon === 0 ? 2 : Number(data._tc)+1;
+          const type = tipoCupon === 0 ? 2 : (Number(data._tc) === 2 ? 0 :Number(data._tc)+1);
     
           //Verificar si es GM otra vez:
         const existSt = await UsersPanel.findOne({
@@ -106,6 +106,26 @@ class StreamersService {
             message: 'Usted no puede realizar ninguna acción porque ya no es Streamer, esta sesión será cerrada...'
           };
         
+        }
+
+        if(type === 0){
+          //console.log(prize);
+          const itemData = await ItemInfo.findOne({
+            attributes: ['type'],
+            where: {
+              id: prize, // Cambia esto para usar el nombre de usuario correcto
+            },
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+  
+          //console.log(itemData);
+      
+          if (!itemData) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![Streamer Panel]".red,' Item ID ingresado no existe'.red);
+            return { success: false, code: '003',message:'¡El item ID ingresado no existe!' };
+          }
+          //console.log(1);
         }
 
           //Verificar nro de cupones generados al dia por streamer...
@@ -164,10 +184,10 @@ class StreamersService {
           //Crear Log de cupon
           await LogStream.create(
             {
-              action:'Generacion de cupon - '+ (type === 1 ? 'Gold' : 'Cash'),
+              action:'Generacion de cupon - '+ (type === 1 ? 'Gold' : (type===2 ? 'Cash' : 'Item')),
               user: user,
               prize: prize,
-              type:tipoCupon,
+              type: tipoCupon,
               cupon:cupon,
               date: new Date(),
             },

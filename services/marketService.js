@@ -695,6 +695,9 @@ class MarketService {
                     // console.log("Respuesta recibida:", res);
                     // Aquí puedes utilizar la variable 'res' que contiene la respuesta
                     // return res; // O hacer lo que necesites con ella
+                    if(res.code && res.code==='999'){
+                        return res;
+                    }
                   } catch (error) {
                     console.error("Error al enviar mensaje:", error);
                     return {
@@ -717,13 +720,20 @@ class MarketService {
             const response = JSON.parse(res);
             console.log("[Object Received] ".magenta, response);
             return {success:true,obj:response};
-          } catch (error) {
-            return {
-              success: false,
-              code: '999',
-              message: 'El servidor no puede realizar la comprobación para el mercado. Contacta con el administrador.'
-            };
-          }
+          } catch (errorObj) {
+            console.error("Error al enviar mensaje:", errorObj);
+            // return errorObj;  // Devuelves el error estándar que tú mismo preparaste
+            if(errorObj.code && errorObj.code==='999'){
+                return errorObj;
+            } else{
+                return {
+                    success: false,
+                    code: '999',
+                    message: 'El servidor no puede realizar la comprobación para el mercado. Contacta con el administrador.'
+                  };
+            }
+
+        }
         }
 
     async getHistoryPucharse(user,token) {

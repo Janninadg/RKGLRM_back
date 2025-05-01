@@ -55,9 +55,18 @@ export function enviarMensajeACliente(id, mensaje) {
         const sizeBuffer = Buffer.alloc(4);
         sizeBuffer.writeUInt32BE(msgBuffer.length, 0);
   
-        // Escuchar la respuesta del cliente una única vez
+        // Creamos un temporizador de 6 segundos
+        const timeout = setTimeout(() => {
+          console.error(`[Servidor] Error: Timeout esperando respuesta del cliente ${id}.`);
+          reject({
+            success: false,
+            code: '999',
+            message: `Cliente activo pero no respondió en el tiempo esperado (6s).`
+          });
+        }, 6000);
+
         socket.once('data', (data) => {
-          // Si el mensaje viene en varias partes, quizá debas concatenar buffers
+          clearTimeout(timeout); // Si responde, cancelamos el timeout
           const respuesta = data.toString('utf8');
           console.log(`[Servidor] Respuesta del cliente ${id}:`, respuesta);
           resolve(respuesta);
@@ -68,8 +77,13 @@ export function enviarMensajeACliente(id, mensaje) {
         socket.write(msgBuffer);
         console.log(`[Servidor] Mensaje enviado a Cliente ${id}: ${mensajeJSON}`);
       } else {
-        reject(new Error(`Cliente ${id} no está activo.`));
-      }
+      console.error(`[Servidor] Error: Cliente ${id} no está activo.`);
+      reject({
+        success: false,
+        code: '999',
+        message: `Cliente no activo, no se puede enviar mensaje.`
+      });
+    }
     });
   }
 
