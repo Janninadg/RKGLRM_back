@@ -14,7 +14,7 @@ const ItemVirtual = sequelize.define('itemvirtual', {
   },
   itemref: {
     type: DataTypes.INTEGER(11),
-    allowNull: false
+    allowNull: true
   },
   cantidad: {
     type: DataTypes.INTEGER(11),
