@@ -417,16 +417,22 @@ class UserService {
         where: {
           name: user,
         },
+        transaction: t,
       });
 
       const cashData = await Cash.findOne({ 
         attributes: ['cash'],
         where: {
           id: user,
-      }});
+      },
+      transaction: t,
+    });
 
-      const userPoints = await EventPoint.findOne({
-        where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+      const userPoints = await UserGameInfo.findOne({
+        attributes: ['clanpoint'],
+        where: {
+          name: user,
+        },
         transaction: t,
       });
 
@@ -436,6 +442,7 @@ class UserService {
           user: user,
         },
         order:[['asset','ASC']],
+        transaction: t,
       });
       
       // Recorrer cada assetPrice y buscar su tipo en TypeAsset y la imagen en AssetPrices
@@ -466,7 +473,7 @@ class UserService {
       const _au = {
         o: userGameInfo ? userGameInfo.gold : 0,
         c: cashData ? cashData.cash : 0,
-        ep: userPoints ? userPoints.Points : 0,
+        ep: userPoints ? userPoints.clanpoint : 0,
         asst: assetsWithDetails,
       };
 

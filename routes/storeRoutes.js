@@ -11,4 +11,6 @@ router.post('/hstyPuch', StoreController.getHistoryPucharse);
 
 router.get('/getItems', StoreController.getItems);
 
+router.post('/getVirtualInv', StoreController.getVirtualInventory);
+
 export default router;

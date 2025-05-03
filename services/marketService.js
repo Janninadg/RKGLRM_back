@@ -775,6 +775,7 @@ class MarketService {
             // 3. Buscar compras en SellsRecords
             const sellRecords = await SellsRecord.findAll({
                 where: { buyer: nickname },
+                order: [['date', 'DESC']],
                 transaction: t,
             });
 
@@ -930,7 +931,7 @@ class MarketService {
                 where:{
                     estado:1,
                 },
-                order: [['id', 'ASC']],
+                order: [['fecha', 'DESC']],
             });
 
             // Obtener todos los itemIds de Market

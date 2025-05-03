@@ -12,12 +12,8 @@ const ItemStore = sequelize.define('itemstore', {
     type: DataTypes.INTEGER(11),
     allowNull: false
   },
-  name: {
-    type: DataTypes.STRING(50),
-    allowNull: false
-  },
-  url: {
-    type: DataTypes.TEXT,
+  type: {
+    type: DataTypes.INTEGER(11),
     allowNull: false
   },
   price: {

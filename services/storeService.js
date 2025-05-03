@@ -21,6 +21,8 @@ import ItemStore from '../models/itemStoreModel.js';
 import PurchaseLogs from '../models/pucharseLogsModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
+import ItemVirtual from '../models/ItemVirtualModel.js';
+import UserPoisons from '../models/userPoisonsModel.js';
 
 class StoreService {
 
@@ -117,14 +119,14 @@ class StoreService {
             }
 
              // Verificar puntos de evento del usuario con bloqueo
-             const userPoints = await EventPoint.findOne({
-                where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+             const userPoints = await UserGameInfo.findOne({
+                where: { name: user},
                 transaction: t,
                 lock: t.LOCK.UPDATE,
             });
     
             const totalCost = item.price * amount;
-            if (!userPoints || userPoints.Points < totalCost) {
+            if (!userPoints || userPoints.clanpoint < totalCost) {
                 await t.rollback();
                 return { success: false, code: '200', message: 'No tienes suficientes puntos de evento para realizar esta compra' };
             }
@@ -147,38 +149,85 @@ class StoreService {
                 }
             }
     
-            // Obtener nombre del item desde ItemInfo
-            const itemInfo = await ItemInfo.findOne({
-                where: { id: item.itemid },
-                transaction: t,
-            });
-    
-            let itemName = itemInfo ? itemInfo.name : item.itemid;
-    
-            // Añadir entradas a PendingPresents
-            const userGameInfo = await UserGameInfo.findOne({
-                where: { name: user },
-                transaction: t,
-            });
-    
-            if (!userGameInfo) {
-                await t.rollback();
-                return { success: false, code: '200', message: 'Usuario no encontrado' };
+
+            let itemName;
+            let typeReward;
+
+            switch (item.type) {
+                case 0:
+                      // Obtener nombre del item desde ItemInfo
+                      const virtualItm = await ItemVirtual.findOne({
+                        where: { id: item.itemid },
+                        transaction: t,
+                    });
+            
+                    itemName = virtualItm ? virtualItm.name : item.itemid;
+                    typeReward=16;
+
+                    // Añadir entradas a PendingPresents
+                    const userPois = await UserPoisons.findOne({
+                        where: { user: user,idpocion:item.itemid },
+                        transaction: t,
+                    });
+
+                    const quantity = virtualItm.cantidad * amount;
+                   
+                    if (!userPois) {
+                        // Crear si no existe
+                        await UserPoisons.create({
+                            user: user,
+                            idpocion: item.itemid,
+                            cantidad: quantity,
+                        }, { transaction: t });
+                    } else {
+                        // Si existe, aumentar la cantidad
+                        await userPois.update({
+                        cantidad: userPois.cantidad + quantity,
+                        }, { transaction: t });
+                    }
+            
+                    
+                    break;
+            
+                default:
+                    // Obtener nombre del item desde ItemInfo
+                    // const itemInfo = await ItemInfo.findOne({
+                    //     where: { id: item.itemid },
+                    //     transaction: t,
+                    // });
+            
+                    // itemName = itemInfo ? itemInfo.name : item.itemid;
+                    // typeReward=0;
+            
+                    // // Añadir entradas a PendingPresents
+                    // const userGameInfo = await UserGameInfo.findOne({
+                    //     where: { name: user },
+                    //     transaction: t,
+                    // });
+            
+                    // if (!userGameInfo) {
+                    //     await t.rollback();
+                    //     return { success: false, code: '200', message: 'Usuario no encontrado' };
+                    // }
+            
+                    // const userId = userGameInfo.id;
+                    // const presentId = item.itemid;
+            
+                    // const pendingPresentsData = [];
+                    // for (let i = 0; i < amount; i++) {
+                    //     pendingPresentsData.push({
+                    //         present_id: presentId,
+                    //         user_id: userId,
+                    //         added_time: new Date(),
+                    //     });
+                    // }
+                
+                    // await PendingPresents.bulkCreate(pendingPresentsData, { transaction: t });
+                    await t.rollback();
+                    return { success: false, code: '200', message: 'No existe tipo de item' };
+                    break;
             }
-    
-            const userId = userGameInfo.id;
-            const presentId = item.itemid;
-    
-            const pendingPresentsData = [];
-            for (let i = 0; i < amount; i++) {
-                pendingPresentsData.push({
-                    present_id: presentId,
-                    user_id: userId,
-                    added_time: new Date(),
-                });
-            }
-        
-            await PendingPresents.bulkCreate(pendingPresentsData, { transaction: t });
+          
     
             // Añadir entradas en LogRewardsUser
             const logRewardsUserData = [];
@@ -187,7 +236,7 @@ class StoreService {
                     user: user,
                     origen: 7,
                     recompensa: item.itemid,
-                    tipo_recompensa: 0,
+                    tipo_recompensa: typeReward,
                     fecha: new Date(),
                 });
             }
@@ -195,7 +244,7 @@ class StoreService {
             await LogRewardsUser.bulkCreate(logRewardsUserData, { transaction: t });
     
             // Actualizar puntos de evento del usuario
-            userPoints.Points -= totalCost;
+            userPoints.clanpoint -= totalCost;
             await userPoints.save({ transaction: t });
     
             // Actualizar stock
@@ -215,7 +264,7 @@ class StoreService {
     
             await t.commit();
             const itms = await this.getItems();
-            return { success: true, code: '000', message: `Has comprado ${amount} ${itemName} exitosamente`, ep: userPoints.Points, _is: itms._is };
+            return { success: true, code: '000', message: `Has comprado ${amount} ${itemName} exitosamente`, _is: itms._is };
     
         } catch (error) {
             await t.rollback();
@@ -231,76 +280,68 @@ class StoreService {
         }
     }
 
-    async getHistoryPucharse(user,token) {
-        const t = await sequelize.transaction(); // Iniciar una transacción
+    async getHistoryPucharse(user, token) {
+        const t = await sequelize.transaction();
         try {
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
                 attributes: ['token'],
-                where: {
-                token: token,
-                id: user,
-                },
-                transaction: t, // Asociar la transacción con esta consulta
+                where: { token: token, id: user },
+                transaction: t,
             });
-
-            if(!sessionToken){
-                await t.rollback(); // Revertir la transacción en caso de error
+    
+            if (!sessionToken) {
+                await t.rollback();
                 return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
             }
-
-            const pucharseItems = await PurchaseLogs.findAll({
-                where:{
-                    user:user
-                },
-                order: [['id', 'ASC']],
-            });
-
-            // Obtener todos los idstore de los registros de compra
-            const storeIds = pucharseItems.map(purchase => purchase.idstore);
-
-            // Obtener los itemIds de ItemStore
-            const itemStores = await ItemStore.findAll({
-                where: {
-                    id: storeIds
-                },
-                attributes: ['id', 'itemid'],
+    
+            const purchaseItems = await PurchaseLogs.findAll({
+                where: { user },
+                order: [['fecha', 'DESC']],
                 transaction: t
             });
-
-            // Crear un mapa para un acceso rápido a los itemIds
-            const itemStoreMap = {};
-            itemStores.forEach(store => {
-                itemStoreMap[store.id] = store.itemid;
-            });
-
-            // Obtener los nombres de los items desde ItemInfo
-            const itemIds = Object.values(itemStoreMap);
-            const itemInfos = await ItemInfo.findAll({
-                where: {
-                    id: itemIds
-                },
-                attributes: ['id', 'name'],
-                transaction: t
-            });
-
-            // Crear un mapa para un acceso rápido a los nombres
-            const itemInfoMap = {};
-            itemInfos.forEach(info => {
-                itemInfoMap[info.id] = info.name;
-            });
-
-             // Combinar los resultados
-            const purchaseItemsWithDetails = pucharseItems.map(purchase => {
-                const purchaseData = purchase.toJSON();
-                const itemid = itemStoreMap[purchase.idstore];
-                purchaseData.itemid = itemid;
-                purchaseData.name = itemInfoMap[itemid] || 'Nombre no encontrado';
-                return purchaseData;
-            });
-
-            await t.commit(); // Confirmar la transacción
-            return { success: false, code: '000', _ip:purchaseItemsWithDetails };
+    
+            const purchaseItemsWithDetails = [];
+    
+            for (const purchase of purchaseItems) {
+                const storeItem = await ItemStore.findOne({
+                    where: { id: purchase.idstore },
+                    transaction: t
+                });
+    
+                if (!storeItem) continue;
+    
+                let name = 'Item desconocido';
+                let img = null;
+    
+                if (storeItem.type === 0) {
+                    const virtualItem = await ItemVirtual.findOne({
+                        where: { id: storeItem.itemid },
+                        transaction: t
+                    });
+    
+                    if (virtualItem) {
+                        name = virtualItem.name;
+                        img = virtualItem.img;
+                    }
+                }
+    
+                purchaseItemsWithDetails.push({
+                    id: purchase.id,
+                    idstore: purchase.idstore,
+                    fecha: purchase.fecha,
+                    item: {
+                        name,
+                        img,
+                        type: storeItem.type,
+                        price: storeItem.price
+                    }
+                });
+            }
+    
+            await t.commit();
+            return { success: true, code: '000', _ip: purchaseItemsWithDetails };
+    
         } catch (error) {
             await t.rollback();
             console.error('Error al obtener historial de compra:', error);
@@ -308,45 +349,117 @@ class StoreService {
         }
     }
 
+    async getVirtualInventory(user,token) {
+        const t = await sequelize.transaction();
+      
+        try {
+
+             // Verificar token:
+             const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: { token: token, id: user },
+                transaction: t,
+            });
+    
+            if (!sessionToken) {
+                await t.rollback();
+                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
+            }
+            
+          const userItems = await UserPoisons.findAll({
+            where: { user },
+            transaction: t
+          });
+      
+          const inventory = [];
+      
+          for (const item of userItems) {
+            const virtual = await ItemVirtual.findOne({
+              where: { id: item.idpocion },
+              transaction: t
+            });
+      
+            if (!virtual) continue;
+      
+            const cantidadDisponible = Math.floor(item.cantidad / virtual.cantidad);
+      
+            inventory.push({
+              id: item.idpocion,
+              name: virtual.name,
+              img: virtual.img,
+              cantidadDisponible
+            });
+          }
+      
+          await t.commit();
+          return { success: true, code: '000', iv: inventory };
+        } catch (error) {
+          await t.rollback();
+          console.error('Error al obtener inventario virtual:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+    
+
     async getItems() {
         try {
-            const items = await ItemStore.findAll({
-                where:{
-                    show:1,
-                },
-                order: [['id', 'ASC']],
-            });
-
-            // Obtener todos los itemIds de ItemStore
-            const itemIds = items.map(item => item.itemid);
-
-            // Obtener los nombres de los items desde ItemInfo
-            const itemInfos = await ItemInfo.findAll({
-                where: {
-                    id: itemIds
-                },
-                attributes: ['id', 'name']
-            });
-
-            // Crear un mapa para un acceso rápido a los nombres
-            const itemInfoMap = {};
-            itemInfos.forEach(info => {
-                itemInfoMap[info.id] = info.name;
-            });
-
-            // Combinar los resultados
-            const itemsWithName = items.map(item => {
-                const itemData = item.toJSON();
-                itemData.name = itemInfoMap[item.itemid] || 'Nombre no encontrado';
-                return itemData;
-            });
-
-            return { success: true, code: '000', _is: itemsWithName };
+          const items = await ItemStore.findAll({
+            where: { show: 1 },
+            order: [['id', 'ASC']],
+          });
+      
+          // Separar itemIds por tipo
+          const itemIds = items.map(item => item.itemid);
+          const virtualItemIds = items.filter(item => item.type === 0).map(item => item.itemid);
+          const realItemIds = items.filter(item => item.type !== 0).map(item => item.itemid);
+      
+          // Obtener info de ItemInfo (para type !== 0)
+          const itemInfos = await ItemInfo.findAll({
+            where: { id: realItemIds },
+            attributes: ['id', 'name']
+          });
+      
+          // Obtener info de ItemVirtual (para type === 0)
+          const virtualInfos = await ItemVirtual.findAll({
+            where: { id: virtualItemIds },
+            attributes: ['id', 'name', 'img']
+          });
+      
+          // Mapas de referencia
+          const itemInfoMap = {};
+          itemInfos.forEach(info => {
+            itemInfoMap[info.id] = { name: info.name };
+          });
+      
+          const virtualInfoMap = {};
+          virtualInfos.forEach(info => {
+            virtualInfoMap[info.id] = { name: info.name, img: info.img };
+          });
+      
+          // Combinar resultados
+          const itemsWithName = items.map(item => {
+            const itemData = item.toJSON();
+      
+            if (item.type === 0) {
+              const info = virtualInfoMap[item.itemid];
+              itemData.name = info?.name || 'Nombre no encontrado';
+              itemData.img = info?.img || '';
+            } else {
+              const info = itemInfoMap[item.itemid];
+              itemData.name = info?.name || 'Nombre no encontrado';
+              itemData.img = '';
+            }
+      
+            return itemData;
+          });
+      
+          return { success: true, code: '000', _is: itemsWithName };
         } catch (error) {
           console.error('Error al obtener items de la tienda:', error);
           throw new Error('Error interno del servidor');
         }
-    }
+      }
+      
 
 }
 
