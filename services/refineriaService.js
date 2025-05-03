@@ -91,15 +91,20 @@ class RefineriaService {
                 return acc;
             }, []);
 
+            // console.log(uniqueUserItems);
+
            // Obtener las imágenes de cada item y retornar solo los datos limpios
             const uniqueUserItemsWithImagesAndNames = await Promise.all(
                 uniqueUserItems.map(async item => {
                     // Buscar la imagen en la tabla ItemImage
                     const itemImage = await ItemImage.findOne({
                         where: {
-                            item: item.id // Suponiendo que 'id' es el identificador del item en uniqueUserItems
+                            item: item.itemid // Suponiendo que 'id' es el identificador del item en uniqueUserItems
                         }
                     });
+            //         console.log("ID: ",item.itemid);
+            // console.log("OBJECT: ",itemImage);
+            // console.log("IMAGE: ",itemImage.image);
 
                     // Buscar el nombre en la tabla ItemInfo basado en el itemid
                     const itemInfo = await ItemInfo.findOne({
@@ -118,6 +123,8 @@ class RefineriaService {
             );
 
             // const points = userPoints[0].Points;
+
+            // console.log("FINAL :",uniqueUserItemsWithImagesAndNames);
 
             await t.commit(); // Confirmar la transacción
             return { success: true, code: '000', _ui: uniqueUserItemsWithImagesAndNames };
