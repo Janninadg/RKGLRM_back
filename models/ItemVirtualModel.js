@@ -12,6 +12,10 @@ const ItemVirtual = sequelize.define('itemvirtual', {
     type: DataTypes.TEXT('utf8mb4'),
     allowNull: false
   },
+  itemref: {
+    type: DataTypes.INTEGER(11),
+    allowNull: false
+  },
   cantidad: {
     type: DataTypes.INTEGER(11),
     allowNull: false
