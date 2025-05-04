@@ -141,7 +141,7 @@ class RefineriaService {
         
         try {
 
-            return { success: false, code: '200', message: 'NO DISPONIBLE' };
+            // return { success: false, code: '200', message: 'NO DISPONIBLE' };
 
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
@@ -173,6 +173,19 @@ class RefineriaService {
             //     console.log('[ERROR]'.red,'Jugando dentro de rakion actualmente'.red);
             //     return { success: false, code: '200', message: 'No puedes refinar mientrás te encuentres jugando en el servidor.' };
             // }
+
+            const res = await this.socketSend(user);
+
+            if(!res.success && res.code==='999'){
+                await t.rollback(); 
+                return res;
+            }
+
+            if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
+                await t.rollback(); 
+                console.log("[Error] Intenta refinar un item mientras esta jugando.".red);
+                return { success: false, code: '200', message: 'No puedes refinar mientras estes en el juego. Cierra sesión en el launcher.' };
+            }
 
             const userGame = await UserGameInfo.findOne({
                 attributes: ['id'],
@@ -390,6 +403,79 @@ class RefineriaService {
             throw new Error('Error interno del servidor');
         }
     }
+
+    async socketSend(user){
+        try {
+            const objectSend = {
+              'user':user,
+              'type':4,
+            };
+
+            /*PRUEBA*/
+          //   console.log("[Object Send] ".green, objectSend);
+          //   const objectReceived = {
+          //     'user': user,
+          //     'reason':1,
+          //   }
+          //   console.log("[Object Received] ".magenta, objectReceived);
+
+          //   return {success:true, obj:objectReceived};
+           /*END*/
+
+            const activos = obtenerClientesActivos();
+            // console.log("[Servidor] Clientes activos:", activos);
+    
+            let res;
+    
+            if (activos.length > 0) {
+                // enviarMensajeACliente(activos[0], mssg);
+                try {
+                  // Espera la respuesta de la promesa
+                  res = await enviarMensajeACliente(activos[0], objectSend);
+                  // console.log("Respuesta recibida:", res);
+                  // Aquí puedes utilizar la variable 'res' que contiene la respuesta
+                  // return res; // O hacer lo que necesites con ella
+                  if(res.code && res.code==='999'){
+                      return res;
+                  }
+                } catch (error) {
+                  console.error("Error al enviar mensaje:", error);
+                  return {
+                    success: false,
+                    code: '999',
+                    message: 'El servidor no puede realizar la comprobación para la refineria. Contacta con el administrador.'
+                  };
+                  // Maneja el error o lanza una excepción
+                }
+            } else {
+                console.log("!![Server] No hay clientes activos para enviar mensajes.".red);
+                // console.log("!![Server]".blue,' No se pudo enviar el mensaje porque no hay clientes activos.'.blue);
+                return {
+                  success: false,
+                  code: '999',
+                  message: 'Servidor inactivo, no se puede realizar la comprobación para la refineria. Contacta con el administrador.'
+                };
+            }
+    
+          const response = JSON.parse(res);
+          console.log("[Object Received] ".magenta, response);
+          return {success:true,obj:response};
+        } catch (errorObj) {
+          console.error("Error al enviar mensaje:", errorObj);
+          // return errorObj;  // Devuelves el error estándar que tú mismo preparaste
+          console.log("!![Server] El servidor no puede realizar la comprobación para la refineria.".red);
+          if(errorObj.code && errorObj.code==='999'){
+              return errorObj;
+          } else{
+              return {
+                  success: false,
+                  code: '999',
+                  message: 'El servidor no puede realizar la comprobación para la refineria. Contacta con el administrador.'
+                };
+          }
+
+      }
+      }
 }
 
 export default new RefineriaService();
