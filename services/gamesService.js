@@ -763,6 +763,55 @@ class GamesService {
         }
     }
 
+     /**
+     * Guarda tickets de cash para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+     async saveGiroRuleta(userId,prize,t) {
+        try {
+             // Actualizar giros
+            const userAsset = await UserAsset.findOne({
+                where: {
+                    user: userId,
+                    asset: 3,
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (userAsset) {
+                // Si ya tiene el asset, incrementar la cantidad
+                userAsset.amount += prize.prize;
+                await userAsset.save({ transaction: t });
+                // console.log('Asset actualizado:'.green, `Cantidad actualizada a ${userAsset.amount}`.green);
+            } else {
+                // Si no tiene el asset, crear un nuevo registro
+                // console.log(AssetBuy);
+                await UserAsset.create(
+                {
+                    user: userId,
+                    asset: 3,
+                    amount: cantidad,
+                },
+                { transaction: t }
+                );
+                // console.log('Asset añadido:'.green, `Cantidad inicial ${cantidad}`.green);
+            }
+
+            return { message:`Has obtenido ${prize.prize} giro(s) de ruleta`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar giros de ruleta:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
     async setWinPrizes(game,typePrize,prize,userId,t){
         try {
             // Agregar el premio según el tipo
@@ -807,6 +856,10 @@ class GamesService {
                 case 11:
                     // console.log(2);
                     response = await this.saveRewardBox(game,userId,prize,t);
+                    break;
+                case 12:
+                    // console.log(2);
+                    response = await this.saveGiroRuleta(userId,prize,t);
                     break;
                 case 98:
                 case 99:
