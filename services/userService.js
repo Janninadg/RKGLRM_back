@@ -1073,7 +1073,7 @@ class UserService {
         case 3:
           origen = 8;
           tiporec = 12;
-          console.log('Asset:'.blue,'Giro de Rulera'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
         default:
           origen = 0;
