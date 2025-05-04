@@ -1082,6 +1082,10 @@ class UserService {
           origen = 11;
           tiporec = 15;
           console.log('Asset:'.blue,'Piedra de refinería 2'.yellow,(' [' +String(cantidad)+ ']').yellow);
+        case 3:
+          origen = 8;
+          tiporec = 12;
+          console.log('Asset:'.blue,'Giro de Rulera'.yellow,(' [' +String(cantidad)+ ']').yellow);
         break;
         default:
           origen = 0;
@@ -1110,7 +1114,7 @@ class UserService {
           console.log('Medio de pago:'.blue,'Oro'.yellow);
           break;
         case 2:
-          typem = 'puntos de evento';
+          typem = 'punto(s) de evento';
           payment = 3;
           console.log('Medio de pago:'.blue,'Puntos de evento'.yellow);
           break;
@@ -1150,14 +1154,16 @@ class UserService {
           lock: t.LOCK.UPDATE,
         });
         amount = currencyAmount.gold;
-      } else{
-        currencyAmount = await EventPoint.findOne({
+      } else if(payment===3){
+        currencyAmount = await UserGameInfo.findOne({
           // attributes: ['Points'],
-          where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user),
+          where: {
+            name: user,
+          },
           transaction: t,
           lock: t.LOCK.UPDATE,
         });
-        amount = currencyAmount.Points;
+        amount = currencyAmount.clanpoint;
       }
   // console.log('a');
 
@@ -1209,8 +1215,8 @@ class UserService {
         currencyAmount.gold -= price * cantidad;
         await currencyAmount.save({ transaction: t });
         // params['g'] = currencyAmount.gold;
-      } else {
-        currencyAmount.Points -= price * cantidad;
+      } else if (payment === 3) {
+        currencyAmount.clanpoint -= price * cantidad;
         await currencyAmount.save({ transaction: t });
         // params['ep'] = currencyAmount.Points;
       }

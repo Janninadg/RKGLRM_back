@@ -1259,7 +1259,7 @@ class EventService {
             //Cash
             case 1:
 
-              typename = 'eventpoints';
+              typename = 'giros';
 
               giros = await UserAsset.findOne({
                 // attributes: ['tickets'],
@@ -1276,7 +1276,8 @@ class EventService {
                 await UserAsset.decrement('amount', {
                   by: 1,
                   where: {
-                    id: userId,
+                    user: userId,
+                    asset:3
                   },
                   transaction: t, // Asociar la transacción con esta operación
                 });
