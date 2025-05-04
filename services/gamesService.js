@@ -730,6 +730,39 @@ class GamesService {
         }
     }
 
+     /**
+     * Guarda oro aleatorio al usuario, basado en un rango especificado en prize.name.
+     *
+     * @param {string} userId - Identificador del usuario.
+     * @param {Object} prize - Objeto premio, cuya propiedad `name` viene en formato "min-max".
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+     async saveBolsaOro(userId,prize,t) {
+        try {
+
+            // 1. Partir el rango "100-2000" en sus dos extremos
+            const [minStr, maxStr] = prize.name.split('-');
+            const min = parseInt(minStr, 10);
+            const max = parseInt(maxStr, 10);
+
+            // 2. Generar un entero aleatorio entre min y max (inclusive)
+            const amount = Math.floor(Math.random() * (max - min + 1)) + min;
+
+            // 3. Incrementar el oro del usuario por el valor aleatorio calculado
+            await UserGameInfo.increment(
+                'gold',
+                { by: amount, where: { name: userId }, transaction: t }
+            );
+            
+            return { message:`Has obtenido ${amount} de Oro de la Bolsa`, success: true, bv:amount };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar oro:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
     async setWinPrizes(game,typePrize,prize,userId,t){
         try {
             // Agregar el premio según el tipo
@@ -738,6 +771,8 @@ class GamesService {
             // console.log(1);
             // console.log(typePrize);
             // console.log(prize);
+
+            var regBolsa = 0;
 
             switch (typePrize) {
                 case 0:
@@ -760,6 +795,10 @@ class GamesService {
                     break;
                 case 6:
                     response = await this.savePowerUser(userId,prize,t);
+                    break;
+                case 8:
+                    response = await this.saveBolsaOro(userId,prize,t);
+                    regBolsa=1;
                     break;
                 case 10:
                     // console.log('a');
@@ -784,7 +823,7 @@ class GamesService {
                 await LogRewardsUser.create({  
                     user:userId,
                     origen:1,
-                    recompensa:prize.prize,
+                    recompensa:(typePrize === 8 || typePrize===9) ? response.bv: prize.prize,
                     tipo_recompensa: typePrize,
                     origen_2: game,
                     fecha: new Date(), 

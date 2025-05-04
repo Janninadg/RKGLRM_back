@@ -1475,7 +1475,7 @@ class EventService {
         {
           user: userId,
           type: typePrize,
-          prize: prizesGame.prize,
+          prize: resWin.bv ? resWin.bv : prizesGame.prize,
           game: type,
           opcion: opcion,
           fecha: new Date(),
