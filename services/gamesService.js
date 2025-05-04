@@ -33,6 +33,7 @@ import EventPoint from '../models/eventPointsModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
+import TicketsMode from '../models/ticketsModeModel.js';
 
 class GamesService {
 
@@ -764,7 +765,7 @@ class GamesService {
     }
 
      /**
-     * Guarda tickets de cash para el usuario.
+     * Guarda giros de ruleta para el usuario.
      * 
      * @param {string} userId - ID del usuario (nombre del usuario).
      * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
@@ -808,6 +809,112 @@ class GamesService {
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar giros de ruleta:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda tickts de theme park para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveThemeParkTicket(userId,prize,t) {
+        try {
+             // Actualizar giros
+             const tcksStage = await TicketsMode.findOne({
+                attributes:['tickets'],
+                where:{
+                  user: user,
+                  type:1,
+                  mode:71,
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+              });
+        
+
+            if (tcksStage) {
+                // Si ya tiene el asset, incrementar la cantidad
+                tcksStage.tickets += prize.prize;
+                await tcksStage.save({ transaction: t });
+                // console.log('Asset actualizado:'.green, `Cantidad actualizada a ${userAsset.amount}`.green);
+            } else {
+                // Si no tiene el asset, crear un nuevo registro
+                // console.log(AssetBuy);
+                await TicketsMode.create(
+                {
+                    user: user,
+                    type:1,
+                    mode:71,
+                    amount: prize.prize,
+                },
+                { transaction: t }
+                );
+                // console.log('Asset añadido:'.green, `Cantidad inicial ${cantidad}`.green);
+            }
+
+            return { message:`Has obtenido ${prize.prize} ticket(s) para theme park`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar tickets de theme park :', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda tickts de theme park para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+    async saveThemeParkTicket2(userId,prize,t) {
+        try {
+             // Actualizar giros
+             const tcksStage = await TicketsMode.findOne({
+                attributes:['tickets'],
+                where:{
+                  user: user,
+                  type:1,
+                  mode:72,
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+              });
+        
+
+            if (tcksStage) {
+                // Si ya tiene el asset, incrementar la cantidad
+                tcksStage.tickets += prize.prize;
+                await tcksStage.save({ transaction: t });
+                // console.log('Asset actualizado:'.green, `Cantidad actualizada a ${userAsset.amount}`.green);
+            } else {
+                // Si no tiene el asset, crear un nuevo registro
+                // console.log(AssetBuy);
+                await TicketsMode.create(
+                {
+                    user: user,
+                    type:1,
+                    mode:72,
+                    amount: prize.prize,
+                },
+                { transaction: t }
+                );
+                // console.log('Asset añadido:'.green, `Cantidad inicial ${cantidad}`.green);
+            }
+
+            return { message:`Has obtenido ${prize.prize} ticket(s) para theme park`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar tickets de theme park :', error);
             throw new Error('Error interno del servidor');
         }
     }
@@ -863,6 +970,9 @@ class GamesService {
                 case 12:
                     // console.log(2);
                     response = await this.saveGiroRuleta(userId,prize,t);
+                    break;
+                case 17:
+                    response = await this.saveThemeParkTicket2(userId,prize,t);
                     break;
                 case 98:
                 case 99:
