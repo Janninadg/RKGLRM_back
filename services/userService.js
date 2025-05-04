@@ -1082,11 +1082,12 @@ class UserService {
           origen = 11;
           tiporec = 15;
           console.log('Asset:'.blue,'Piedra de refinería 2'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          break;
         case 3:
           origen = 8;
           tiporec = 12;
           console.log('Asset:'.blue,'Giro de Rulera'.yellow,(' [' +String(cantidad)+ ']').yellow);
-        break;
+          break;
         default:
           origen = 0;
           tiporec = 0;
