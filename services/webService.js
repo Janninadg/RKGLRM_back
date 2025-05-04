@@ -21,6 +21,7 @@ import AnunciosComment from '../models/anunciosCommentModel.js';
 import StreamPlatform from '../models/streamsPlatformsModel.js';
 import puppeteer from 'puppeteer'; // Importa Puppeteer
 import axios from 'axios';
+import StagesReset from '../models/stagesResetModel.js';
 
 const IMG_OFF = "https://res.cloudinary.com/dgh0ctded/image/upload/f_auto,q_auto/afbhaox5bxrydq17t8ik";
 
@@ -40,6 +41,26 @@ class WebService {
               WHEN ci.lose > 0 THEN ci.win / ci.lose
             END AS winrate*/
           return links;
+        } catch (error) {
+          console.error('Error al obtener los links:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+
+      async getStages() {
+        try {
+            const stages = await StagesReset.findAll({
+              where:{
+                visible:1,
+              }
+            });
+      
+          /**   CASE
+              WHEN ci.lose = 0 AND ci.win = 0 THEN 1
+              WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
+              WHEN ci.lose > 0 THEN ci.win / ci.lose
+            END AS winrate*/
+          return stages;
         } catch (error) {
           console.error('Error al obtener los links:', error);
           throw new Error('Error interno del servidor');

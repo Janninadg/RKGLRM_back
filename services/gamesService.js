@@ -797,7 +797,7 @@ class GamesService {
                 {
                     user: userId,
                     asset: 3,
-                    amount: cantidad,
+                    amount: prize.prize,
                 },
                 { transaction: t }
                 );
@@ -844,6 +844,9 @@ class GamesService {
                     break;
                 case 6:
                     response = await this.savePowerUser(userId,prize,t);
+                    break;
+                case 7:
+                    response = await this.saveThemeParkTicket(userId,prize,t);
                     break;
                 case 8:
                     response = await this.saveBolsaOro(userId,prize,t);

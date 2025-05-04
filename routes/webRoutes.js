@@ -12,4 +12,7 @@ router.get('/assets', WebController.getBuyAssets);
 
 router.get('/streamers', WebController.getStreamers);
 
+
+router.get('/stages', WebController.getStages);
+
 export default router;

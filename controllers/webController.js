@@ -20,6 +20,21 @@ class WebController {
         }
       }
 
+      async getStages(req, res, next) {
+        try {
+          const stages = await WebService.getStages();
+          //console.log(ranking);
+    
+          //const MNFoeO = generateKey();
+          //const TdkfEO = encrypt(JSON.stringify(ranking), MNFoeO);
+    
+          return res.status(200).json(stages);
+        } catch (error) {
+          console.error('Error al obtener los stages:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
       async getAnuncios(req, res, next) {
         try {
           const ann = await WebService.getAnuncios();

@@ -926,16 +926,12 @@ class UserService {
           mode:idStage,
         },
         transaction: t, // Asociar la transacción con esta consulta
+        lock: t.LOCK.UPDATE,
       });
 
-      if(!tcksStage){
+      if(!tcksStage || tcksStage.tickets <= 0){
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '200', message: 'No tienes tickets suficientes para resetear este stage' };
-      } else{
-        if(tcksStage.tickets <= 0){
-          await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '200', message: 'No tienes tickets suficientes para resetear este stage' };
-        }
       }
 
       //Obtener id de usuario:
@@ -1008,16 +1004,8 @@ class UserService {
       });
 
       // Decrementar:
-      // Decrementar el ticket del usuario
-      await TicketsMode.decrement('tickets', {
-        by: 1,
-        where: {
-          user: user,
-          type:1,
-          mode:idStage,
-        },
-        transaction: t, // Asociar la transacción con esta operación
-      });
+      tcksStage.tickets -= 1;
+      await tcksStage.save({ transaction: t });
 
       // Commit de la transacción si todo fue exitoso
       await t.commit();
