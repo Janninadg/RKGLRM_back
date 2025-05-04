@@ -827,9 +827,8 @@ class GamesService {
         try {
              // Actualizar giros
              const tcksStage = await TicketsMode.findOne({
-                attributes:['tickets'],
                 where:{
-                  user: user,
+                  user: userId,
                   type:1,
                   mode:71,
                 },
@@ -848,10 +847,10 @@ class GamesService {
                 // console.log(AssetBuy);
                 await TicketsMode.create(
                 {
-                    user: user,
+                    user: userId,
                     type:1,
                     mode:71,
-                    amount: prize.prize,
+                    tickets: prize.prize,
                 },
                 { transaction: t }
                 );
@@ -880,9 +879,8 @@ class GamesService {
         try {
              // Actualizar giros
              const tcksStage = await TicketsMode.findOne({
-                attributes:['tickets'],
                 where:{
-                  user: user,
+                  user: userId,
                   type:1,
                   mode:72,
                 },
@@ -901,10 +899,10 @@ class GamesService {
                 // console.log(AssetBuy);
                 await TicketsMode.create(
                 {
-                    user: user,
+                    user: userId,
                     type:1,
                     mode:72,
-                    amount: prize.prize,
+                    tickets: prize.prize,
                 },
                 { transaction: t }
                 );

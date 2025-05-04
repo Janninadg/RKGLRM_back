@@ -919,7 +919,6 @@ class UserService {
 
       //Verificar cantidad de tickets:
       const tcksStage = await TicketsMode.findOne({
-        attributes:['tickets'],
         where:{
           user: user,
           type:1,
