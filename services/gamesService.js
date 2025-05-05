@@ -123,6 +123,8 @@ class GamesService {
         
                    const prob = rouletteProbabiliy ? parseFloat(rouletteProbabiliy.value) : 0;
 
+                   console.log(prob);
+
                     if(Math.random() < (1-prob)) {
                         
                         const  giros = await UserAsset.findOne({
