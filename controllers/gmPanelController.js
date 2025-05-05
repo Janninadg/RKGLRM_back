@@ -520,6 +520,27 @@ class GMPanelController {
         }
       }
 
+      async getPersonajeUser(req, res, next) {
+        try {
+          const { user,token, username } = req.body;
+
+          console.log("[GM Panel]".green,' Obteniendo personajes de usuario'.white,' ['+username+']',(' - Admin: '+user).white);
+          const response = await GMPanelService.getPersonajeUser(user,token, username);
+          //console.log(ranking);
+
+          // console.log("[GM Panel]".green,' Obteniendo personajes de usuario'.white,' ['+username+']',(' - Admin: '+user).white);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al obtener usuarios:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
 }
 
 export default new GMPanelController();

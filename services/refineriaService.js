@@ -30,6 +30,7 @@ import GameActive from '../models/gameActiveModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
+import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 
 class RefineriaService {
 

@@ -28,6 +28,7 @@ import SellsRecord from '../models/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
+import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 
 class MarketService {
 

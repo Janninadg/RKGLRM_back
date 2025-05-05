@@ -227,6 +227,77 @@ class GMPanelService {
         }
       }
 
+      async getPersonajeUser(user,token,username) {
+        try {
+
+           // Verificar token:
+           const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token: token,
+              id: user,
+            },
+            //transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!sessionToken){
+            //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Sesión antigua'.red);
+            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+          //Verificar si es GM otra vez:
+          const existGM = await UsersPanel.findOne({
+            attributes:['id'],
+            where:{
+              user: user,
+              [Op.or]: [{ type: 0 }, { type: 9 }],
+            },
+            // transaction: t,
+          });
+
+          if(!existGM){
+            await t.rollback();
+            return {
+              success: false,
+              code: '001',
+              message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+            };
+          
+          }
+
+
+          const userGame = await UserGameInfo.findOne({
+            attributes: ['id'],
+            where: {
+              name: username, // Cambia esto para usar el nombre de usuario correcto
+            },
+            //transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if(!userGame){
+            //await t.rollback(); // Revertir la transacción en caso de error
+            console.log("!![GM Panel]".red,' Usuario no existe'.red);
+            return { success: false, code: '002', message: 'Usuario no existe' };
+          }
+
+          const personajes = await CharacterInfo.findAll({
+            where: { userid: userGame.id },
+            attributes: ['id','name','level','exp'],
+          });
+
+          //const namesArray = users.map(user => user.name);
+        
+            console.log("[GM Panel]".green,' Exito'.green);
+            return {success:true,code:'000',message:'ok',_lpr:personajes};
+    
+          //return users;
+        } catch (error) {
+          console.error('Error al obtener usuarios:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+
       async getClanes(user,token) {
         try {
 
@@ -855,9 +926,11 @@ class GMPanelService {
             usersNoCash.push(u.name);
           }
 
-          const userEventPoints = await EventPoint.findOne({
+          const userEventPoints = await UserGameInfo.findOne({
             // attributes: ['Points'],
-            where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), u.name),
+            where: {
+              name: u.name, // Cambia esto para usar el nombre de usuario correcto
+            },
             transaction: t,
             // lock: t.LOCK.UPDATE,
           });
@@ -978,34 +1051,20 @@ class GMPanelService {
 
             if(tipo === 1){   
               // console.log(eventPoints);
-              await EventPoint.increment(
-                'Points',
-                { by: eventPoints,  where: {
-                  [Op.and]: [
-                    sequelize.where(
-                      sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
-                      u.name
-                    )
-                  ]
-                }, transaction: t }
+              await UserGameInfo.increment(
+                'clanpoint',
+                { by: eventPoints, where: { name: u.name  }, transaction: t }
               );
               // console.log(2123);
             } else {
               //Descuento...
-              const eg = await EventPoint.findOne({
-                attributes: ['User', 'Points'],
+              const eg = await UserGameInfo.findOne({
+                attributes: ['id', 'clanpoint'],
                 where: {
-                  [Op.and]: [
-                    sequelize.where(
-                      sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
-                      u.name // Aquí comparas con el nombre correcto
-                    ),
-                    {
-                      Points: {
-                        [Op.lte]: eventPoints - 1, // Verifica que Points sea menor o igual a eventPoints - 1
-                      },
-                    },
-                  ],
+                  name: u.name, // Cambia esto para usar el nombre de usuario correcto
+                  gold: {
+                    [Op.lte]: (eventPoints-1), // Verifica que gold sea menor o igual a 4999
+                  },
                 },
                 transaction: t, // Asociar la transacción con esta consulta
               });
@@ -1013,16 +1072,9 @@ class GMPanelService {
               if (eg) {
                 lowEventPoints.push(u.name);
               } else{
-                await EventPoint.decrement(
-                  'Points',
-                  { by: eventPoints, where: {
-                    [Op.and]: [
-                      sequelize.where(
-                        sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1),
-                        u.name
-                      )
-                    ]
-                  }, transaction: t }
+                await UserGameInfo.decrement(
+                  'clanpoint',
+                  { by: eventPoints, where: { name: u.name  }, transaction: t }
                 );
               }
             }

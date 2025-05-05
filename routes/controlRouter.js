@@ -15,6 +15,8 @@ router.post('/actionList', GMPanelController.banUsers);
 
 router.post('/loadExch', GMPanelController.recargaCash);
 
+router.post('/getChrcUsr', GMPanelController.getPersonajeUser);
+
 //Eventos
 router.post('/genCpn', GMPanelController.setCupon);
 
