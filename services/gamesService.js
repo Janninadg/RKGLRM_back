@@ -118,6 +118,8 @@ class GamesService {
                         where: { name: 'roulette_prob' },
                         transaction,
                     });
+
+                    console.log(rouletteProbabiliy);
         
                    const prob = rouletteProbabiliy ? parseFloat(rouletteProbabiliy.value) : 0;
 
@@ -160,11 +162,14 @@ class GamesService {
                         return {all: null, win:false,params,ms: '¡Perdiste! Suerte para la próxima :)'};
                     }
 
+
+
                     // Realizar el calculo de probabilidad:
                     const randomProb = Math.random();
                     let cumulativeProb = 0;
                     let selectedItem = 0;
 
+                    console.log(randomProb);
                     //console.log(allPrizes.length);
 
                     for (let i = 0; i < allPrizes.length; i++) {
