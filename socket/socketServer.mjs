@@ -19,7 +19,7 @@ const server = net.createServer((socket) => {
     // const mensajeInicial3 = {idgm: 1, message: 'Hola, este es un mensaje de GM', type: 3,};
 
     // Enviar el mensaje en formato JSON
-    socket.write(JSON.stringify(mensajeInicial));
+    // socket.write(JSON.stringify(mensajeInicial));
 
     // Manejar mensajes recibidos desde el cliente
     socket.on('data', (data) => {
