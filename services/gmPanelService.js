@@ -2288,6 +2288,133 @@ class GMPanelService {
     }
   }
 
+  async setLevelChUser(user,token,personaje,username,level,exp) {
+    const t = await sequelize.transaction();
+
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
+        return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      }
+
+      //Verificar si es GM otra vez:
+      const existGM = await UsersPanel.findOne({
+        attributes:['id'],
+        where:{
+          user: user,
+          [Op.or]: [{ type: 0 }, { type: 9 }],
+        },
+        transaction: t,
+      });
+
+      if(!existGM){
+        await t.rollback();
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+        };
+      
+      }
+
+       // 3) Obtener el id interno de usuario por su username
+      const userGameInfo = await UserGameInfo.findOne({
+        attributes: ['id'],
+        where: { name: username },
+        transaction: t,
+      });
+      
+      if (!userGameInfo) {
+        await t.rollback();
+        return { success: false, code: '003', message: 'Usuario de juego no encontrado.' };
+      }
+
+         // 4) Verificar que el personaje pertenece a ese usuario
+      const personajeUser = await CharacterInfo.findOne({
+        where: {
+          id: personaje,
+          userid: userGameInfo.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!personajeUser) {
+        await t.rollback();
+        console.log("![GM Panel]".red,' Error: El personaje no pertenece a este usuario'.red);
+        return {
+          success: false,
+          code: '004',
+          message: 'El personaje no pertenece a este usuario.',
+        };
+      }
+
+
+
+      //Insertar en LOG
+      await LogPanelGM.create(
+        {
+          userAction:user,
+          action: 'Cambiar nivel de personaje',
+          user:personaje,
+          amount:level,
+          type:7,
+          date: new Date(),
+        },
+        {
+          transaction: t, // Asociar la transacción con esta operación
+        }
+      );
+
+      await LogPanelGM.create(
+        {
+          userAction:user,
+          action: 'Cambiar experiencia de personaje',
+          user:personaje,
+          amount:exp,
+          type:8,
+          date: new Date(),
+        },
+        {
+          transaction: t, // Asociar la transacción con esta operación
+        }
+      );
+      
+      // 6) Actualizar nivel y experiencia
+      personajeUser.level = level;
+      personajeUser.exp = exp;
+      await personajeUser.save({ transaction: t });
+
+      // 7) Obtener el nombre para el mensaje
+      const personajeName = personajeUser.name;
+
+      await t.commit();
+      console.log("[GM Panel]".green,' Exito'.green);
+      return {
+        success: true,
+        code: '000',
+        message: `El personaje "${personajeName}" fue actualizado a nivel ${level} y ${exp} de experiencia.`,
+      };
+
+  } catch (error) {
+      await t.rollback();
+      throw new Error('Error al cambiar de nivelS');
+  }
+}
+
 }
 
 export default new GMPanelService();

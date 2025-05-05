@@ -213,9 +213,11 @@ class GMPanelController {
         try {
           const { user,token } = req.body;
 
-          const users = await GMPanelService.getUserstoBan(user,token);
 
           console.log("[GM Panel]".green,' Lista de usuarios'.white,(' - Admin: '+user).white);
+          const users = await GMPanelService.getUserstoBan(user,token);
+
+         
           //console.log(ranking);
 
           if (users.success || users.code) {
@@ -233,10 +235,12 @@ class GMPanelController {
         try {
           const { user,token } = req.body;
 
+
+          console.log("[GM Panel]".green,' Lista de usuarios [solo nombres]'.white,(' - Admin: '+user).white);
           const response = await GMPanelService.getUsersName(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Lista de usuarios [solo nombres]'.white,(' - Admin: '+user).white);
+          
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -253,10 +257,11 @@ class GMPanelController {
         try {
           const { user,token } = req.body;
 
+          console.log("[GM Panel]".green,' Lista de streamers'.white,(' - Admin: '+user).white);
           const response = await GMPanelService.getStreamers(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Lista de streamers'.white,(' - Admin: '+user).white);
+          
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -293,8 +298,9 @@ class GMPanelController {
         try {
           const { user,token } = req.body;
 
-          const response = await GMPanelService.getPersonajes(user,token);
           console.log("[GM Panel]".green,' Obtener personajes propios'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.getPersonajes(user,token);
+          
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -312,8 +318,9 @@ class GMPanelController {
         try {
           const { user,token,level,personajes } = req.body;
 
-          const response = await GMPanelService.setLevel(user,token,level,personajes );
           console.log("[GM Panel]".green,' Modificar nivel y exp de personaje'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.setLevel(user,token,level,personajes );
+          
           //console.log(response);
 
           if (response.success || response.code) {
@@ -331,8 +338,10 @@ class GMPanelController {
         try {
           const { user,token } = req.body;
 
-          const response = await GMPanelService.getClanes(user,token);
+
           console.log("[GM Panel]".green,' Lista de clanes'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.getClanes(user,token);
+         
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -369,9 +378,10 @@ class GMPanelController {
         try {
           const { user,token,idClan,members } = req.body;
 
+          console.log("[GM Panel]".green,' Añadir miembros a clan'.white,(' - Admin: '+user).white);
           const response = await GMPanelService.addMembers(user,token,idClan,members);
 
-          console.log("[GM Panel]".green,' Añadir miembros a clan'.white,(' - Admin: '+user).white);
+         
           //console.log(ranking);
 
           if (response.success || response.code) {
@@ -389,9 +399,10 @@ class GMPanelController {
         try {
           const { user,token, } = req.body;
 
+          console.log("[GM Panel]".green,' Obtener logs'.white,(' - Admin: '+user).white);
           const response = await GMPanelService.getLogs(user,token);
 
-          console.log("[GM Panel]".green,' Obtener logs'.white,(' - Admin: '+user).white);
+          
           //console.log(response);
 
           if (response.success || response.code) {
@@ -409,8 +420,9 @@ class GMPanelController {
         try {
           const { user,token,streamer } = req.body;
 
-          const response = await GMPanelService.changeStreamerStatus(user,token,streamer );
           console.log("[GM Panel]".green,' Cambiar estatus de streamer'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.changeStreamerStatus(user,token,streamer );
+         
           //console.log(response);
 
           if (response.success || response.code) {
@@ -428,8 +440,9 @@ class GMPanelController {
         try {
           const { user,token,streamer,link } = req.body;
 
-          const response = await GMPanelService.changeLinkStreamer(user,token,streamer,link );
           console.log("[GM Panel]".green,' Cambiar link de streamer'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.changeLinkStreamer(user,token,streamer,link );
+         
           //console.log(response);
 
           if (response.success || response.code) {
@@ -446,11 +459,10 @@ class GMPanelController {
       async getAnuncios(req, res, next) {
         try {
           const { user,token } = req.body;
-
+          console.log("[GM Panel]".green,' Lista de Anuncios'.white,(' - Admin: '+user).white);
           const response = await GMPanelService.getAnuncios(user,token);
           //console.log(ranking);
 
-          console.log("[GM Panel]".green,' Lista de Anuncios'.white,(' - Admin: '+user).white);
 
           if (response.success || response.code) {
             return res.status(200).json(response);
@@ -467,8 +479,8 @@ class GMPanelController {
         try {
           const { user,token,anuncio } = req.body;
 
-          const response = await GMPanelService.changeAnunciosStatus(user,token,anuncio );
           console.log("[GM Panel]".green,' Cambiar status de anuncio'.white,(' - Admin: '+user).white);
+          const response = await GMPanelService.changeAnunciosStatus(user,token,anuncio );
           //console.log(response);
 
           if (response.success || response.code) {
@@ -537,6 +549,25 @@ class GMPanelController {
           }
         } catch (error) {
           console.error('Error al obtener usuarios:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async setLevelChUser(req, res, next) {
+        try {
+          const { user,token,personaje,username,level,exp } = req.body;
+
+          console.log("[GM Panel]".green,' Modificar nivel y exp de personaje'.white,' ['+username+']',(' - Admin: '+user).white);
+          const response = await GMPanelService.setLevelChUser(user,token,personaje,username,level,exp );
+          //console.log(response);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al cambiar niveles:', error);
           return res.status(500).json({ error: 'Error interno del servidor' });
         }
       }
