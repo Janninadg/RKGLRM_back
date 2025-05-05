@@ -55,15 +55,22 @@ export function enviarMensajeACliente(id, mensaje) {
         const sizeBuffer = Buffer.alloc(4);
         sizeBuffer.writeUInt32BE(msgBuffer.length, 0);
   
-        // Creamos un temporizador de 6 segundos
+        // Creamos un temporizador de 8 segundos
         const timeout = setTimeout(() => {
-          console.error(`[Servidor] Error: Timeout esperando respuesta del cliente ${id}.`);
-          reject({
-            success: false,
-            code: '999',
-            message: `Cliente activo pero no respondió en el tiempo esperado (6s).`
-          });
-        }, 6000);
+          if(mensaje.type===4){
+            resolve({
+              'user': mensaje.user,
+              'reason':1,
+            });
+          } else {
+            console.error(`[Servidor] Error: Timeout esperando respuesta del cliente ${id}.`);
+            reject({
+              success: false,
+              code: '999',
+              message: `Cliente activo pero no respondió en el tiempo esperado (6s).`
+            });
+          }
+        }, 8000);
 
         socket.once('data', (data) => {
           clearTimeout(timeout); // Si responde, cancelamos el timeout
