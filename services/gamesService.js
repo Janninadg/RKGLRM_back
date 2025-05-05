@@ -119,11 +119,11 @@ class GamesService {
                         transaction,
                     });
 
-                    console.log(rouletteProbabiliy);
+                    // console.log(rouletteProbabiliy);
         
                    const prob = rouletteProbabiliy ? parseFloat(rouletteProbabiliy.value) : 0;
 
-                   console.log(prob);
+                   console.log("Prob: ",prob);
 
                     if(Math.random() < (1-prob)) {
                         
@@ -171,7 +171,7 @@ class GamesService {
                     let cumulativeProb = 0;
                     let selectedItem = 0;
 
-                    console.log(randomProb);
+                    // console.log(randomProb);
                     //console.log(allPrizes.length);
 
                     for (let i = 0; i < allPrizes.length; i++) {
