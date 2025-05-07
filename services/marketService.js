@@ -47,18 +47,18 @@ class MarketService {
                 return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para comprar items.' };
             }
 
-            const res = await this.socketSend(user);
+            // const res = await this.socketSend(user);
 
-            if(!res.success && res.code==='999'){
-                await t.rollback(); 
-                return res;
-            }
+            // if(!res.success && res.code==='999'){
+            //     await t.rollback(); 
+            //     return res;
+            // }
 
-            if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
-                await t.rollback(); 
-                console.log("[Error] Intenta comprar un item mientras esta jugando.".red);
-                return { success: false, code: '200', message: 'No puedes comprar en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
-            }
+            // if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
+            //     await t.rollback(); 
+            //     console.log("[Error] Intenta comprar un item mientras esta jugando.".red);
+            //     return { success: false, code: '200', message: 'No puedes comprar en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
+            // }
     
             // Bloquear market place
             const item = await Marketplace.findOne({
@@ -290,18 +290,18 @@ class MarketService {
                 return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para comprar items.' };
             }
 
-            const res = await this.socketSend(user);
+            // const res = await this.socketSend(user);
 
-            if(!res.success && res.code==='999'){
-                await t.rollback(); 
-                return res;
-            }
+            // if(!res.success && res.code==='999'){
+            //     await t.rollback(); 
+            //     return res;
+            // }
 
-            if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
-                await t.rollback(); 
-                console.log("[Error] Intenta solicitar devolución de un item mientras esta jugando.".red);
-                return { success: false, code: '200', message: 'No puedes solicitar un retorno de item mientras estes en el juego. Cierra sesión en el launcher.' };
-            }
+            // if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
+            //     await t.rollback(); 
+            //     console.log("[Error] Intenta solicitar devolución de un item mientras esta jugando.".red);
+            //     return { success: false, code: '200', message: 'No puedes solicitar un retorno de item mientras estes en el juego. Cierra sesión en el launcher.' };
+            // }
     
             // Bloquear market place
             const item = await Marketplace.findOne({
@@ -486,18 +486,18 @@ class MarketService {
                 return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para vender.' };
             }
 
-            const res = await this.socketSend(user);
+            // const res = await this.socketSend(user);
 
-            if(!res.success && res.code==='999'){
-                await t.rollback(); 
-                return res;
-            }
+            // if(!res.success && res.code==='999'){
+            //     await t.rollback(); 
+            //     return res;
+            // }
 
-            if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
-                await t.rollback(); 
-                console.log("[Error] Intenta vender un item mientras esta jugando.".red);
-                return { success: false, code: '200', message: 'No puedes vender en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
-            }
+            // if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
+            //     await t.rollback(); 
+            //     console.log("[Error] Intenta vender un item mientras esta jugando.".red);
+            //     return { success: false, code: '200', message: 'No puedes vender en el mercado mientras estes en el juego. Cierra sesión en el launcher.' };
+            // }
 
              // Buscar el item por ID en UserItemInfo con bloqueo
             const userItem = await UserItemInfo.findOne({

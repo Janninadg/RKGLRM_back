@@ -175,18 +175,18 @@ class RefineriaService {
             //     return { success: false, code: '200', message: 'No puedes refinar mientrás te encuentres jugando en el servidor.' };
             // }
 
-            const res = await this.socketSend(user);
+            // const res = await this.socketSend(user);
 
-            if(!res.success && res.code==='999'){
-                await t.rollback(); 
-                return res;
-            }
+            // if(!res.success && res.code==='999'){
+            //     await t.rollback(); 
+            //     return res;
+            // }
 
-            if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
-                await t.rollback(); 
-                console.log("[Error] Intenta refinar un item mientras esta jugando.".red);
-                return { success: false, code: '200', message: 'No puedes refinar mientras estes en el juego. Cierra sesión en el launcher.' };
-            }
+            // if(res.success && Number(res.obj.reason)===0 && user === res.obj.user){
+            //     await t.rollback(); 
+            //     console.log("[Error] Intenta refinar un item mientras esta jugando.".red);
+            //     return { success: false, code: '200', message: 'No puedes refinar mientras estes en el juego. Cierra sesión en el launcher.' };
+            // }
 
             const userGame = await UserGameInfo.findOne({
                 attributes: ['id'],
