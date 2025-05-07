@@ -102,8 +102,15 @@ class MarketService {
                 return { success: false, code: '200', message: 'El item ya no se encuentra disponible. Actualiza la tienda.' };
             }
 
+            const sellerInfo = await User.findOne({
+                where: { apodo: item.vendedor },
+                attributes: ['id'],
+                transaction: t,
+            });
+
 
             var uCoin;
+            var sCoin;
             var coDis;
             var texCoin;
 
@@ -116,12 +123,23 @@ class MarketService {
                         lock: t.LOCK.UPDATE,
                     });
 
+                    sCoin = await Cash.findOne({
+                        where: {id:sellerInfo.id},
+                        transaction: t,
+                        lock: t.LOCK.UPDATE,
+                    });
+
                     coDis = uCoin.cash;
                     texCoin='Cash';
                     break;
                 case 1: //oro
                     uCoin = await UserGameInfo.findOne({
                         where: {name:user},
+                        transaction: t,
+                        lock: t.LOCK.UPDATE,
+                    });
+                    sCoin = await UserGameInfo.findOne({
+                        where: {name:sellerInfo.id},
                         transaction: t,
                         lock: t.LOCK.UPDATE,
                     });
@@ -147,9 +165,15 @@ class MarketService {
             if(item.medio_pago === 0) {
                 uCoin.cash -= totalCost;
                 await uCoin.save({ transaction: t });
+
+                sCoin.cash += totalCost;
+                await sCoin.save({ transaction: t });
             } else {
                 uCoin.gold -= totalCost;
                 await uCoin.save({ transaction: t });
+
+                sCoin.gold += totalCost;
+                await sCoin.save({ transaction: t });
             }
 
             // Verificar si tiene slots disponibles... 3 boxes 30 items
