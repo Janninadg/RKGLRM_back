@@ -660,9 +660,9 @@ class MarketService {
                 itemid: userItem.itemid,
                 item_sn: userItem.item_sn || 8000,
                 sn_type: 3, // O el valor que corresponda
-                level: userItem.level || 1,
+                level: userItem.level || 0,
                 limittime: userItem.limittime || 0,
-                slot: userItem.slot || 1,
+                slot: userItem.slot || 0,
                 exp: userItem.exp,
                 // marketid: 0, // IMPORTANTE: asegúrate de que tu tabla temp tenga este campo
             }, { transaction: t });
