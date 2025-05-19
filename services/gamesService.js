@@ -1014,7 +1014,7 @@ class GamesService {
         try {
             var match;
             switch (game) {
-                case 1:
+                case 3:
 
                  // Obtener el userid desde usergameinfo
                     const userGameInfo = await UserGameInfo.findOne({
@@ -1060,8 +1060,8 @@ class GamesService {
                         });
                     }
 
-                    const niveles = Array.from({ length: 11 }, (_, index) => {
-                        if (index === 20) {
+                    const niveles = Array.from({ length: 8 }, (_, index) => {
+                        if (index === 19) {
                             return 99;
                         } else {
                             return (index + 1) * 5;
@@ -1099,10 +1099,10 @@ class GamesService {
                         // Convertir premios_obtenidos a un array
                         let premiosObtenidos = JSON.parse(match.premios_obtenidos);
 
-                        // Verificar si la longitud es menor a 11
+                        // Verificar si la longitud es menor a 8
                         if (premiosObtenidos.length < 11) {
-                            // Agregar null hasta que la longitud sea 11
-                            premiosObtenidos = [...premiosObtenidos, ...Array(11 - premiosObtenidos.length).fill(null)];
+                            // Agregar null hasta que la longitud sea 8
+                            premiosObtenidos = [...premiosObtenidos, ...Array(8 - premiosObtenidos.length).fill(null)];
                             
                             // Actualizar el campo premios_obtenidos en la base de datos
                             await Matches.update(
@@ -1130,7 +1130,7 @@ class GamesService {
                         const nuevaPartida = {
                           user: user,
                           partida: JSON.stringify(nuevaPartidaArray),
-                          premios_obtenidos: JSON.stringify(Array(11).fill(null)),
+                          premios_obtenidos: JSON.stringify(Array(8).fill(null)),
                           game: game,
                           estado: 1
                         };
@@ -1160,7 +1160,7 @@ class GamesService {
             
             // Verificar que el usuario se encuentre en ese nivel...
 
-            const nivel = opcion == 20 ? ((opcion + 1) * 10) - 1 : (opcion + 1) * 5;
+            const nivel = opcion == 19 ? ((opcion + 1) * 5) - 1 : (opcion + 1) * 5;
 
             // Buscar el userId del usuario dado su username dentro de la transacción
             const user = await UserGameInfo.findOne({

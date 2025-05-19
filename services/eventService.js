@@ -2936,8 +2936,8 @@ class EventService {
           return { success: false, code: '200', message: 'El personaje que has seleccionado no existe o estás intentando tomar un personaje que no te pertenece' };
       }
 
-      const niveles = Array.from({ length: 6 }, (_, index) => {
-        if (index === 9) {
+      const niveles = Array.from({ length: 8 }, (_, index) => {
+        if (index === 19) {
             return 99;
         } else {
             return (index + 1) * 5;
@@ -2954,7 +2954,7 @@ class EventService {
         attributes: ['id','partida', 'premios_obtenidos'],
         where: {
           user: user,
-          game: 1, //luego enviar parametro...
+          game: 3, //luego enviar parametro...
           estado: 1,
         },
         transaction:t // Añadir transacción aquí

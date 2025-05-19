@@ -144,6 +144,9 @@ class EventController {
         case 2: 
           console.log('Evento:'.blue,'Ruleta'.red);
           break;
+        case 3: 
+          console.log('Evento:'.blue,'Reto de nivel'.red);
+          break;
         default:
           break;
       }
