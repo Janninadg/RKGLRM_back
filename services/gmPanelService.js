@@ -102,7 +102,7 @@ class GMPanelService {
                 where: {
                   name: user.name, // Cambia esto para usar el nombre de usuario correcto
                 },
-                transaction: t,
+                // transaction: t,
                 // lock: t.LOCK.UPDATE,
               });
 
