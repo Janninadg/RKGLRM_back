@@ -97,9 +97,13 @@ class GMPanelService {
               });
 
               //Obtener event points
-              const eventPoints = await EventPoint.findOne({
-                where: sequelize.where(sequelize.fn('SUBSTRING_INDEX', sequelize.col('User'), ' ', 1), user.name),
-                attributes: ['Points'],
+              const eventPoints = await UserGameInfo.findOne({
+                // attributes: ['Points'],
+                where: {
+                  name: user.name, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t,
+                // lock: t.LOCK.UPDATE,
               });
 
 
@@ -112,7 +116,7 @@ class GMPanelService {
                   personajes: characterNames,
                   gold: user.gold,
                   cash: cashUser === null ? 0 :cashUser.cash,
-                  ep: eventPoints === null ? 0:eventPoints.Points,
+                  ep: eventPoints === null ? 0:eventPoints.clanpoint,
               });
           }
 
