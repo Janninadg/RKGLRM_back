@@ -29,6 +29,7 @@ import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
+import CharacterInfo from '../models/characterInfo.js';
 
 class MarketService {
 
@@ -190,6 +191,38 @@ class MarketService {
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[Error] Usuario no encontrado'.red);
                 return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            }
+
+             // Paso 1: Obtener todos los personajes del usuario
+            const characters = await CharacterInfo.findAll({
+                where: {
+                    userid: userGame.id,
+                },
+                transaction: t,
+            });
+
+            // Paso 2: Validar si tiene personajes
+            if (!characters || characters.length === 0) {
+                await t.rollback();
+                console.log('[Error] No tiene personajes'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Debes tener personajes con nivel superior a 20 para comprar en el mercado',
+                };
+            }
+
+            // Paso 3: Verificar si alguno tiene nivel >= 20
+            const hasLevel20OrMore = characters.some(char => char.level >= 20);
+
+            if (!hasLevel20OrMore) {
+                await t.rollback();
+                console.log('[Error] Ningún personaje con nivel suficiente'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Debes tener personajes con nivel superior a 20 para comprar en el mercado',
+                };
             }
             
             //Obtener el nro de slot mas cercano disponible
@@ -556,6 +589,38 @@ class MarketService {
                     success: false,
                     code: '200',
                     message: 'ID de Usuario no encontrado',
+                };
+            }
+
+            // Paso 1: Obtener todos los personajes del usuario
+            const characters = await CharacterInfo.findAll({
+                where: {
+                    userid: userGame.id,
+                },
+                transaction: t,
+            });
+
+            // Paso 2: Validar si tiene personajes
+            if (!characters || characters.length === 0) {
+                await t.rollback();
+                console.log('[Error] No tiene personajes'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Debes tener personajes con nivel superior a 20 para vender en el mercado',
+                };
+            }
+
+            // Paso 3: Verificar si alguno tiene nivel >= 20
+            const hasLevel20OrMore = characters.some(char => char.level >= 20);
+
+            if (!hasLevel20OrMore) {
+                await t.rollback();
+                console.log('[Error] Ningún personaje con nivel suficiente'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Debes tener personajes con nivel superior a 20 para vender en el mercado',
                 };
             }
 
