@@ -1078,7 +1078,7 @@ class UserService {
         case 4:
           origen = 15;
           tiporec = 18;
-          console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Pica de minar'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
         default:
           origen = 0;
