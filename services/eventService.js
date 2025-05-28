@@ -552,7 +552,7 @@ class EventService {
                 console.log('Partida: '.magenta,'Explotó una mina'.red);
                 console.log('Win: '.magenta,'false'.red);
                 nuevasCalabazas[index].premio = '¡Explotó!';
-                nuevasCalabazas[index].premioUrl = '/pictures/extra/mina.png';
+                nuevasCalabazas[index].premioUrl = '/pictures/extra/bomba.gif';
                 var ix = Number(matchFound.picked)+1;
                 await t.commit();
                 return {success:true,code:'003',xc:true,_om2:nuevasCalabazas,_om3:nuevosPremios,_om4:nuevosNombres,_om5:ix };
