@@ -821,6 +821,56 @@ class GamesService {
     }
 
     /**
+     * Guarda picas de minar para el usuario.
+     * 
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - ID del premio.
+     * @param {string} prize.name - Nombre del premio.
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+     async savePicaDeMina(userId,prize,t) {
+        try {
+             // Actualizar giros
+            const userAsset = await UserAsset.findOne({
+                where: {
+                    user: userId,
+                    asset: 4,
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (userAsset) {
+                // Si ya tiene el asset, incrementar la cantidad
+                userAsset.amount += prize.prize;
+                await userAsset.save({ transaction: t });
+                // console.log('Asset actualizado:'.green, `Cantidad actualizada a ${userAsset.amount}`.green);
+            } else {
+                // Si no tiene el asset, crear un nuevo registro
+                // console.log(AssetBuy);
+                await UserAsset.create(
+                {
+                    user: userId,
+                    asset: 4,
+                    amount: prize.prize,
+                },
+                { transaction: t }
+                );
+                // console.log('Asset añadido:'.green, `Cantidad inicial ${cantidad}`.green);
+            }
+
+            return { message:`Has obtenido ${prize.prize} pica(s) de minar`, success: true };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar giros de ruleta:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+
+    /**
      * Guarda tickts de theme park para el usuario.
      * 
      * @param {string} userId - ID del usuario (nombre del usuario).
@@ -978,6 +1028,10 @@ class GamesService {
                     break;
                 case 17:
                     response = await this.saveThemeParkTicket2(userId,prize,t);
+                    break;
+                case 18:
+                    // console.log(2);
+                    response = await this.savePicaDeMina(userId,prize,t);
                     break;
                 case 98:
                 case 99:
