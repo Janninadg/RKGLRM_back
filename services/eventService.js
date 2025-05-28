@@ -348,7 +348,7 @@ class EventService {
 
                 // await t.rollback(); // Revertir la transacción en caso de error
                 if(!picas || picas.amount < 1){
-                  await transaction.rollback(); // Revertir la transacción en caso de error
+                  await t.rollback(); // Revertir la transacción en caso de error
                   return { success: false, code: '001', message:`No tiene picas suficientes para jugar al buscaminas` };
                 }
 
