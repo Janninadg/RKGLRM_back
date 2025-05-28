@@ -1075,6 +1075,11 @@ class UserService {
           tiporec = 12;
           console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
+        case 4:
+          origen = 15;
+          tiporec = 18;
+          console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          break;
         default:
           origen = 0;
           tiporec = 0;
