@@ -35,6 +35,7 @@ import EventPoint from '../models/eventPointsModel.js';
 import colors from "colors";
 import EventsReview from '../models/eventsReviewModel.js';
 import UserAsset from '../models/userAssetsModel.js';
+import ConfigParameters from '../models/configParametersModel.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -249,7 +250,7 @@ class EventService {
 
       const verifyPacketEqual = (isDataIntegrityValid);// && (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
       const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-      console.log(banInfo);
+      // console.log(banInfo);
       if (banInfo) {
         await t.rollback(); // Revertir la transacción en caso de error
         return banInfo;
@@ -309,18 +310,20 @@ class EventService {
               game: type,
             },
             transaction: t, // Asociar la transacción con esta consulta
+            lock: t.LOCK.UPDATE,
           });
           //console.log('AAAA');
 
 
           switch (type) {
-            case 3:
+            case 4:
               // Verifico token...
-              const tokenCount = await PumpkinsAuth.findOne({
+              const tokenCount = await GameAuth.findOne({
                 attributes: ['token'],
                 where: {
                   token: authGame,
                   user: user,
+                  type_game:type
                 },
                 transaction: t, // Asociar la transacción con esta consulta
               });
@@ -329,16 +332,43 @@ class EventService {
                 await t.rollback(); // Revertir la transacción en caso de error
                 return { success: false, code: '301', message: 'Has abierto este juego en otra pestaña...' };
               }
+              
 
               if(!matchFound){
+
+                const  picas = await UserAsset.findOne({
+                  // attributes: ['tickets'],
+                  where: {
+                    user: user,
+                    asset:4
+                  },
+                  transaction:t, // Asociar la transacción con esta consulta
+                  lock: t.LOCK.UPDATE,
+                });
+
+                // await t.rollback(); // Revertir la transacción en caso de error
+                if(!picas || picas.amount < 1){
+                  await transaction.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`No tiene picas suficientes para jugar al buscaminas` };
+                }
+
+               // Decrementar picas
+                await UserAsset.decrement('amount', {
+                    by: 1,
+                    where: {
+                      user: user,
+                      asset:4
+                    },
+                    transaction:t, // Asociar la transacción con esta operación
+                  });
 
                 // Creo una nueva partida...
 
                 await Matches.create(
                   {
                     user: user,
-                    calabazas: JSON.stringify([...Array(15).fill({ premio: null, presionada: false })]),
-                    premios:JSON.stringify([]),
+                    partida: JSON.stringify([...Array(20).fill({ premio: null, presionada: false })]),
+                    premios_obtenidos:JSON.stringify([]),
                     picked:String(0),
                     nombres:JSON.stringify([]),
                     game:type,
@@ -355,26 +385,26 @@ class EventService {
               // Actualizo partida...
 
               //Verificar cantidad de tickets gastados:
-              const numGames = await Matches.findAll({
-                //attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
-                //group: ['name'],
-                where: {
-                  user: user,
-                  game: 3,
-                },
-                transaction: t, // Asociar la transacción con esta consulta
-              });
+              // const numGames = await Matches.findAll({
+              //   //attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
+              //   //group: ['name'],
+              //   where: {
+              //     user: user,
+              //     game: 3,
+              //   },
+              //   transaction: t, // Asociar la transacción con esta consulta
+              // });
 
-              const numWins = await TempPrize.findAll({
-                //attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
-                //group: ['name'],
-                where: {
-                  user: user,
-                  game: 3,
-                  prize: 8007, //Toro
-                },
-                transaction: t, // Asociar la transacción con esta consulta
-              });
+              // const numWins = await TempPrize.findAll({
+              //   //attributes: [[Sequelize.fn('COUNT', Sequelize.literal('DISTINCT slot')), 'slots']],
+              //   //group: ['name'],
+              //   where: {
+              //     user: user,
+              //     game: 3,
+              //     prize: 8007, //Toro
+              //   },
+              //   transaction: t, // Asociar la transacción con esta consulta
+              // });
 
 
               //console.log(numGames.length);
@@ -382,20 +412,50 @@ class EventService {
 
               const probabilidades = [];
 
-              if(numWins.length == 0 && numGames > 80){
-                probabilidades.push(1, 1, 0.9, 0.80,0.60,0.40);
-              } else{
-                probabilidades.push(1, 0.98, 0.80, 0.60,0.40,0.15);
+              
+              const probs = await ConfigParameters.findOne({
+                  where: { name: 'game_4_probs' },
+                  transaction:t,
+              });
+
+              if (probs && typeof probs.value === 'string') {
+                try {
+                  // Parseamos la cadena de texto como JSON
+                  const parsed = JSON.parse(probs.value);
+                  
+                  if (Array.isArray(parsed)) {
+                    probabilidades.push(...parsed);
+                  } else {
+                    console.error('El valor no es un array:', parsed);
+                  }
+                } catch (err) {
+                  console.error('Error al parsear los datos de game_4_probs:', err.message);
+                }
               }
+                // probabilidades.push(1, 1, 1, 1,1,1);
+              // } else{
+                // probabilidades.push(1, 0.98, 0.80, 0.60,0.40,0.15);
+              // }
               
               //console.log(probabilidades);
               //const probabilidades = [1, 1, 1, 1,1,1];
 
               //const index = 0; //luego vendra del front es la calabaza presionada por defecto 0
 
-              const setcalabazas = JSON.parse(matchFound.calabazas);
-              const setpremios = JSON.parse(matchFound.premios);
+              const setcalabazas = JSON.parse(matchFound.partida);
+              const setpremios = JSON.parse(matchFound.premios_obtenidos);
               const setnombres = JSON.parse(matchFound.nombres);
+
+
+              if(setcalabazas[index].presionada){
+                  await t.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`Ya le has dado click a esta caja` };
+              }
+
+               if(Number(matchFound.picked) === 6){
+                  await t.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`Ya llegaste al máximo de cajas a romper` };
+              }
 
               let nuevasCalabazas = [...setcalabazas];
               let nuevosPremios = [...setpremios];
@@ -463,8 +523,8 @@ class EventService {
 
                 //console.log('BBB');
                 await Matches.update(
-                  { calabazas: JSON.stringify(nuevasCalabazas),
-                    premios:JSON.stringify(nuevosPremios),
+                  { partida: JSON.stringify(nuevasCalabazas),
+                    premios_obtenidos:JSON.stringify(nuevosPremios),
                     picked:String(Number(matchFound.picked)+1),
                     nombres:JSON.stringify(nuevosNombres),
                   }, //cambiar a codigo_base
@@ -475,19 +535,31 @@ class EventService {
                 //console.log('CCCC');
 
                 var ix = Number(matchFound.picked)+1;
+                console.log('Partida: '.magenta,'Ganó un premio'.green);
                 await t.commit();
                 return {success:true,code:'003',xc:false,_om2:nuevasCalabazas,_om3:nuevosPremios,_om4:nuevosNombres,_om5:ix };
 
               } else {
+
+                // Eliminar partida:
+                await Matches.update(
+                  { estado: 0}, //cambiar a codigo_base
+                  { where: { user: user, estado:1, game:type },
+                    transaction: t 
+                  },
+                );
+
+                console.log('Partida: '.magenta,'Explotó una mina'.red);
+                console.log('Win: '.magenta,'false'.red);
                 nuevasCalabazas[index].premio = '¡Explotó!';
-                nuevasCalabazas[index].premioUrl = '/pictures/extra/xmaslose.gif';
+                nuevasCalabazas[index].premioUrl = '/pictures/extra/mina.png';
                 var ix = Number(matchFound.picked)+1;
                 await t.commit();
                 return {success:true,code:'003',xc:true,_om2:nuevasCalabazas,_om3:nuevosPremios,_om4:nuevosNombres,_om5:ix };
               }
 
               break;
-            case 4:
+            case 5:
               //Cerrar nuevo juego...:
               await t.rollback(); // Revertir la transacción en caso de error
               return { success: false, code: '301', message: 'El juego ya no está disponible...' };
@@ -700,32 +772,35 @@ class EventService {
           
           //Obtener partida en curso
           const match = await Matches.findOne({
-            attributes: ['calabazas','premios','picked','nombres'],
+            // attributes: ['partida','premios_obtenidos','picked','nombres'],
             where: {
               user:user,
               estado:1,
               game: type,
             },
             transaction: t, // Asociar la transacción con esta consulta
+             lock: t.LOCK.UPDATE,
           });
 
           const tokenGen = generateRandomToken();
 
           
           switch (type) {
-            case 3:
-              const pumpAuth = await PumpkinsAuth.findOne({
+            case 4:
+              const pumpAuth = await GameAuth.findOne({
                 where: {
                   user: user, // Cambia esto para usar el nombre de usuario correcto
+                  type_game:type,
                 },
                 transaction: t, // Asociar la transacción con esta consulta
               });
     
               if(!pumpAuth){
-                await PumpkinsAuth.create(
+                await GameAuth.create(
                   {
                     user: user,
                     token: tokenGen,
+                    type_game:type,
                     date: new Date(),
                   },
                   {
@@ -733,12 +808,12 @@ class EventService {
                   }
                 );
               } else{
-                await PumpkinsAuth.update(
+                await GameAuth.update(
                   { date: new Date(),
                     token: tokenGen,
                   },
                   {
-                      where: { user: user },
+                      where: { user: user,type_game:type },
                       transaction: t,
                   }
                 );
@@ -752,7 +827,7 @@ class EventService {
               await t.commit();
               return {success:true,code:'002',_msv:match,message:'Tienes una partida en curso...',_authg:tokenGen};
               break;
-            case 4:
+            case 5:
               const slotAuth = await HotslotAuth.findOne({
                 where: {
                   user: user, // Cambia esto para usar el nombre de usuario correcto
@@ -1557,14 +1632,15 @@ class EventService {
       var namesPrizes;
 
       switch (type) {
-        case 3:
+        case 4:
 
           // Verifico token...
-          const tokenCount = await PumpkinsAuth.findOne({
+          const tokenCount = await GameAuth.findOne({
             attributes: ['token'],
             where: {
               token: authGame,
               user: user,
+              type_game:type,
             },
             transaction: t, // Asociar la transacción con esta consulta
           });
@@ -1576,13 +1652,14 @@ class EventService {
 
           //Obtener partida en curso
           const match = await Matches.findOne({
-            attributes: ['calabazas','premios','picked','nombres'],
+            // attributes: ['calabazas','premios','picked','nombres'],
             where: {
               user:user,
               estado:1,
               game:type,
             },
             transaction: t, // Asociar la transacción con esta consulta
+            lock: t.LOCK.UPDATE,
           });
 
           if(!match){
@@ -1590,11 +1667,19 @@ class EventService {
             return { success: false, code: '001', message: 'No tienes premios para reclamar o una partida pendiente...' };
           }
 
-          prizes = JSON.parse(match.premios);
+          prizes = JSON.parse(match.premios_obtenidos);
           namesPrizes = JSON.parse(match.nombres);
 
+           // Eliminar partida:
+            await Matches.update(
+              { estado: 0}, //cambiar a codigo_base
+              { where: { user: user, estado:1, game:type },
+                transaction: t 
+              },
+            );
+
           break;
-        case 4:
+        case 5:
            // Verifico token...
            const authSlot = await HotslotAuth.findOne({
             attributes: ['token'],
@@ -1666,475 +1751,13 @@ class EventService {
 
         var typePrize = pr.type;
 
-        // Agregar el premio según el tipo
-        switch (typePrize) {
-          case 0:
-            // Obtener el ID de usuario desde UserGameInfo por su nombre
-            const userGameInfo = await UserGameInfo.findOne({
-              attributes: ['id'],
-              where: {
-                name: user, // Cambia esto para usar el nombre de usuario correcto
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-    
-            if (!userGameInfo) {
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-            }
-            
-
-            //Verificar si el premio es una pocion ?
-            /*const itemData = await ItemInfo.findOne({
-              attributes: ['type'],
-              where: {
-                id: pr.prize, // Cambia esto para usar el nombre de usuario correcto
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-        
-            if (!itemData) {
-              await transaction.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '402', message: 'ID de Item no encontrado' };
-            }
-
-            if(itemData.type === 12){
-              //Insertar en tabla poisions :)
-              //Verificar si el usuario ya tiene esa pocion:
-              const userPocion = await UserPoisons.findOne({
-                where: {
-                  idpocion: pr.prize, // Cambia esto para usar el nombre de usuario correcto
-                  user: user,
-                },
-                transaction: t, // Asociar la transacción con esta consulta
-              });
-          
-              if (!userPocion) {
-                await UserPoisons.create(
-                  {
-                    user: user,
-                    idpocion: pr.prize,
-                    cantidad: 1,
-                  },
-                  {
-                    transaction: t, // Asociar la transacción con esta operación
-                  }
-                );
-              } else{
-                await UserPoisons.increment(
-                  'cantidad',
-                  { by: 1, where: { user: user,idpocion: pr.prize }, transaction: t }
-                );
-              }
-            } else{*/
-              // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-              await PendingPresents.create(
-                {
-                  present_id: pr.prize,
-                  user_id: userGameInfo.id, // Usar el ID de usuario obtenido
-                  added_time: new Date(),
-                },
-                {
-                  transaction: t, // Asociar la transacción con esta operación
-                }
-              );
-            //}
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-
-            break;
-          case 1:
-            // Actualizar el gold en UserGameInfo
-            await UserGameInfo.increment(
-              'gold',
-              { by: pr.prize, where: { name: user }, transaction: t }
-            );
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 2:
-            // Actualizar el cash en Cash
-            await Cash.increment(
-              'cash',
-              { by: pr.prize, where: { id: user }, transaction: t }
-            );
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 3:
-            // Actualizar el cash en Cash
-            await Ticket.increment(
-              'tickets',
-              { by: pr.prize, where: { id: user }, transaction: t }
-            );
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 4:
-              // Actualizar el cash en Cash
-              await TicketOro.increment(
-                'tickets',
-                { by: pr.prize, where: { id: user }, transaction: t }
-              );
-      
-              // Insertar el premio en temp_prizes
-              await TempPrize.create(
-                {
-                  user: user,
-                  type: typePrize,
-                  prize: pr.prize,
-                  game: type,
-                  fecha: new Date(),
-                },
-                {
-                  transaction: t, // Asociar la transacción con esta operación
-                }
-              );
-              break;
-          case 5:
-            //Obtener id de usuario
-            // Obtener el ID de usuario desde UserGameInfo por su nombre
-            const userGame = await UserGameInfo.findOne({
-              attributes: ['id'],
-              where: {
-                name: user, // Cambia esto para usar el nombre de usuario correcto
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-    
-            if (!userGame) {
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-            }
-            
-            //Obtener el nro de slot mas cercano disponible
-            // Obtener todos los slots distintos del usuario
-            const distinctSlots = await UserItemInfo.findAll({
-              attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
-              where: {
-                userid: userGame.id,
-              },
-              raw: true,
-              transaction: t,
-            });
-
-            // Mapear los resultados a un array de números
-            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
-            var slotFree = null;
-
-            //console.log(distinctSlotsArray);
-
-            for (let i = 0; i <= 89; i++) {
-              if (!distinctSlotsArray.includes(i)) {
-                slotFree = i;
-                break;
-              }
-            }
-            //console.log(slotFree);
-            //Si no hay, volver a enviar el mensaje de slot no disponible
-            if(slotFree === null){
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '001', message: 'No tiene slots disponbiles para girar la ruleta de oro' };
-            }
-
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-
-            const limit = await calculatePowerUse(0,2);
-            const responseAmount = await getAmountItem(pr.prize,t);
-
-            if(responseAmount.success === false && responseAmount.code === '402'){
-              return responseAmount;
-            }
-            //console.log(limit);
-
-            //Si tiene, guardar el premio temporal en useriteminfo
-            await UserItemInfo.create(
-              {
-                userid: userGame.id,
-                itemid: pr.prize,
-                slot: slotFree,
-                limittime: limit, //calculo como power use
-                exp: responseAmount,
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-
-            break;
-          case 6:
-            // Obtener el powertime de usuario desde UserGameInfo por su nombre
-            const userGamePower = await UserGameInfo.findOne({
-              attributes: ['powertime'],
-              where: {
-                name: user, // Cambia esto para usar el nombre de usuario correcto
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-    
-            if (!userGamePower) {
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '202', message: 'Usuario no encontrado' };
-            }
-
-            const powertimefinal = await calculatePowerUse(userGamePower.powertime,pr.prize);
-            //console.log(powertimefinal);
-            await UserGameInfo.update(
-              { powertime: powertimefinal}, //cambiar a codigo_base
-              { where: { name: user },
-                transaction: t 
-              },
-            );
-
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-
-            break;
-          case 7:
-            // Obtener tickets
-            const ticketsUser = await TicketsMode.findOne({
-              where: {
-                user: user, // Cambia esto para usar el nombre de usuario correcto
-                type: 1,
-                mode: 71
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-
-            if(!ticketsUser){
-              // crear
-              await TicketsMode.create(
-                {
-                  user: user,
-                  tickets: pr.prize,
-                  type: 1,
-                  mode: 71
-                },
-                {
-                  transaction: t, // Asociar la transacción con esta operación
-                }
-              );
-            } else{
-              // Tickets de themepark
-              await TicketsMode.increment(
-                'tickets',
-                { by: pr.prize, where: { user: user }, transaction: t }
-              );
-            }
-            
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: pr.prize,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 8:
-            // Actualizar el gold en UserGameInfo
-            // Dividir la cadena por espacios y obtener el primer elemento
-            const goldD = namesPrizes[i].split(' ')[0];
-            //console.log('GOLD:',namesPrizes[i]);
-
-            // Convertir el primer elemento a número
-            const goldIn = parseInt(goldD, 10);
-
-            await UserGameInfo.increment(
-              'gold',
-              { by: goldIn, where: { name: user }, transaction: t }
-            );
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: goldIn,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 9:
-            // Actualizar el cash en Cash
-             // Dividir la cadena por espacios y obtener el primer elemento
-             const cashd = namesPrizes[i].split(' ')[0];
-             //console.log('CASH:',namesPrizes[i]);
-
-             // Convertir el primer elemento a número
-             const cashIn = parseInt(cashd, 10);
-
-            await Cash.increment(
-              'cash',
-              { by: cashIn, where: { id: user }, transaction: t }
-            );
-    
-            // Insertar el premio en temp_prizes
-            await TempPrize.create(
-              {
-                user: user,
-                type: typePrize,
-                prize: cashIn,
-                game: type,
-                fecha: new Date(),
-              },
-              {
-                transaction: t, // Asociar la transacción con esta operación
-              }
-            );
-            break;
-          case 10:
-            // Insertar un SET
-
-            // Obtener el ID de usuario desde UserGameInfo por su nombre
-            const userGameInfoID = await UserGameInfo.findOne({
-              attributes: ['id'],
-              where: {
-                name: user, // Cambia esto para usar el nombre de usuario correcto
-              },
-              transaction: t, // Asociar la transacción con esta consulta
-            });
-    
-            if (!userGameInfoID) {
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-            }
-
-            //console.log(pr.prize);
-            //Obtener todos los id's del set:
-            const itemsSet = await SetItem.findAll({
-              attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('itemid')), 'itemid']],
-              where: {
-                idset: pr.prize,
-              },
-              raw: true,
-              transaction: t,
-            });
-
-            // Mapear los resultados a un array de números
-            const arrayItems = itemsSet.map((item) => item.itemid);
-            //console.log(arrayItems);
-
-            for(const i of arrayItems){
-              // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-              await PendingPresents.create(
-                {
-                  present_id: i,
-                  user_id: userGameInfoID.id, // Usar el ID de usuario obtenido
-                  added_time: new Date(),
-                },
-                {
-                  transaction: t, // Asociar la transacción con esta operación
-                }
-              );
-
-               // Insertar el premio en temp_prizes
-              await TempPrize.create(
-                {
-                  user: user,
-                  type: 0,
-                  prize: i,
-                  game: type,
-                  fecha: new Date(),
-                },
-                {
-                  transaction: t, // Asociar la transacción con esta operación
-                }
-              );
-            }
-
-            break;
-          default:
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '201', message: 'Tipo de premio no válido' };
-        }
+        const res = await gamesService.setWinPrizes(type,typePrize,pr,user,t);
 
         i+=1;
       }
   
       await t.commit(); // Confirmar la transacción si todas las operaciones tienen éxito
-  
+      console.log('Win: '.magenta,'true'.green);
       return { success: true, code: '000',_om4:namesPrizes, message:"Felicidades :)" };
     } catch (error) {
       await t.rollback(); // Revertir la transacción en caso de error

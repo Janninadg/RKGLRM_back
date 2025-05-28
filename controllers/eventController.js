@@ -268,8 +268,6 @@ class EventController {
   async setPartida(req, res) {
     try {
 
-      console.log("SET MATCCH- FROM IP: ".blue,req.clientIp.green);
-
       //enviar otro key para comparar...
       const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
 
@@ -299,8 +297,38 @@ class EventController {
 
       const paramsString = `${MOLjPO}-${OPJKOU}-${OLPOKK}-${MKUID}-${MKLOIJ}-${OIDOL}-${MTODLA}`;
 
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("PARTIDA - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,user.yellow);
+
+       switch (Number(type)) {
+        case 4:
+          console.log('Evento:'.blue,'Buscaminas'.red);
+          break;
+        case 5: 
+          console.log('Evento:'.blue,'....'.red);
+          break;
+        default:
+          break;
+      }
+
+      switch (Number(estado)) {
+        case 0:
+          console.log('Estado de evento:'.blue,'Partida terminada... [Eliminar]'.red);
+          break;
+        case 1: 
+          console.log('Estado de evento:'.blue,'Actualizar o crear partida'.red);
+          break;
+        case 2: 
+          console.log('Estado de evento:'.blue,'Obtener partida'.red);
+          break;
+        default:
+          break;
+      }
+
       const result = await EventService.setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString, req);
 
+       console.log("---------------------------------------------------------------".magenta);
       if (result.success || result.code) {
         return res.status(200).json(result);
       } else {
