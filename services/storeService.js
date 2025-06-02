@@ -23,6 +23,7 @@ import PendingPresents from '../models/pendingPresentsModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import ItemVirtual from '../models/ItemVirtualModel.js';
 import UserPoisons from '../models/userPoisonsModel.js';
+import ItemImage from '../models/itemImagesModel.js';
 
 class StoreService {
 
@@ -443,6 +444,11 @@ class StoreService {
             where: { id: realItemIds },
             attributes: ['id', 'name']
           });
+
+          const itemImages = await ItemImage.findAll({
+            where: { id: realItemIds },
+            attributes: ['item', 'image']
+          });
       
           // Obtener info de ItemVirtual (para type === 0)
           const virtualInfos = await ItemVirtual.findAll({
@@ -454,6 +460,11 @@ class StoreService {
           const itemInfoMap = {};
           itemInfos.forEach(info => {
             itemInfoMap[info.id] = { name: info.name };
+          });
+
+           const imagesInfo = {};
+          itemImages.forEach(info => {
+            imagesInfo[info.item] = { img: info.image };
           });
       
           const virtualInfoMap = {};
@@ -471,8 +482,9 @@ class StoreService {
               itemData.img = info?.img || '';
             } else {
               const info = itemInfoMap[item.itemid];
+              const infoImg = imagesInfo[item.itemid];
               itemData.name = info?.name || 'Nombre no encontrado';
-              itemData.img = '';
+              itemData.img = infoImg?.img || '';
             }
       
             return itemData;
