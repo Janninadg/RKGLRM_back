@@ -188,7 +188,29 @@ class StoreService {
             
                     
                     break;
+                case 1:
+                    typeReward=0;
+                    // Obtener nombre del item desde ItemInfo
+                      const itemReal = await ItemInfo.findOne({
+                        where: { id: item.itemid },
+                        transaction: t,
+                    });
             
+                    itemName = itemReal ? itemReal.name : item.itemid;
+
+                    // Agregar el premio a PendingPresents usando el ID de usuario obtenido
+                    await PendingPresents.create(
+                    {
+                        present_id: item.itemid,
+                        user_id: userPoints.id, // Usar el ID de usuario obtenido
+                        added_time: new Date(),
+                    },
+                    {
+                        transaction: t, // Asociar la transacción con esta operación
+                    }
+                    );
+
+                    break;
                 default:
                     // Obtener nombre del item desde ItemInfo
                     // const itemInfo = await ItemInfo.findOne({
