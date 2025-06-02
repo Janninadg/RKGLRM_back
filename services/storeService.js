@@ -446,7 +446,7 @@ class StoreService {
           });
 
           const itemImages = await ItemImage.findAll({
-            where: { id: realItemIds },
+            where: { item: realItemIds },
             attributes: ['item', 'image']
           });
       
