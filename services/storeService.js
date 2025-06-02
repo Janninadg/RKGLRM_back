@@ -350,6 +350,21 @@ class StoreService {
                         name = virtualItem.name;
                         img = virtualItem.img;
                     }
+                } else {
+                    const itemStoreReal = await ItemInfo.findOne({
+                        where: { id: storeItem.itemid },
+                        transaction: t
+                    });
+
+                    const itemStoreImg= await ItemImage.findOne({
+                        where: { item: storeItem.itemid },
+                        transaction: t
+                    });
+
+                       if (itemStoreReal && itemStoreImg) {
+                        name = itemStoreReal.name;
+                        img = itemStoreImg.image;
+                    }
                 }
     
                 purchaseItemsWithDetails.push({
