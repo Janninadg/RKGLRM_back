@@ -198,6 +198,9 @@ class StoreService {
             
                     itemName = itemReal ? itemReal.name : item.itemid;
 
+                    console.log(userPoints.id);
+                    console.log('aqui ...');
+
                     // Agregar el premio a PendingPresents usando el ID de usuario obtenido
                     await PendingPresents.create(
                     {
