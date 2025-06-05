@@ -255,7 +255,7 @@ class GMPanelService {
             attributes:['id'],
             where:{
               user: user,
-              [Op.or]: [{ type: 0 }, { type: 9 }],
+              [Op.or]: [{ type: 0 }, { type: 9 },{type:2}],
             },
             // transaction: t,
           });
@@ -657,6 +657,27 @@ class GMPanelService {
           if(!sessionToken){
             //await t.rollback(); // Revertir la transacción en caso de error
             return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          }
+
+           //Verificar si es GM otra vez:
+          const existGM = await UsersPanel.findOne({
+            attributes:['id'],
+            where:{
+              user: user,
+              [Op.or]: [{ type: 9 }],
+            },
+            // transaction: t,
+          });
+
+          if(!existGM){
+            // await t.rollback();
+            console.log("!![GM Panel]".red,' Ya no es GM'.red);
+            return {
+              success: false,
+              code: '001',
+              message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+            };
+          
           }
 
           //Logs GMS:
@@ -1228,7 +1249,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -1333,7 +1354,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -1564,7 +1585,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -1682,7 +1703,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -1882,7 +1903,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -2019,7 +2040,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
@@ -2137,7 +2158,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 }],
+            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
           },
           transaction: t,
         });
@@ -2318,7 +2339,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
         },
         transaction: t,
       });
