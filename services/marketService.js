@@ -115,9 +115,42 @@ class MarketService {
             var coDis;
             var texCoin;
 
+            // Obtener el ID del usuario desde UserGameInfo usando su name
+             const userGame = await UserGameInfo.findOne({
+                attributes: ['id'],
+                where: {
+                name: user, // Cambia esto para usar el nombre de usuario correcto
+                },
+                // transaction: t, // Asociar la transacción con esta consulta
+            });
+    
+            if (!userGame) {
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[Error] Usuario no encontrado'.red);
+                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            }
+
+            const userGameId = userGame.id;
+
+            var flagC = 0;
+
             switch (item.medio_pago) {
                 case 0: //cash
                      // Verificar puntos de evento del usuario con bloqueo
+                     // Sumar "price" en logbuycashitem
+                    const [sumCashItemResult] = await sequelize.query(
+                        `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
+                        { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    );
+
+
+                    // Sumar "buycash" en logbuypoweruser
+                    const [sumPowerUserResult] = await sequelize.query(
+                        `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGameId}`,
+                        { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    );
+                    const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+
                     uCoin = await Cash.findOne({
                         where: {id:user},
                         transaction: t,
@@ -130,10 +163,27 @@ class MarketService {
                         lock: t.LOCK.UPDATE,
                     });
 
-                    coDis = uCoin.cash;
+                    if(totalCashSpent > 10000){
+                         coDis = uCoin.cash;
+                    } else {
+                         coDis = uCoin.cash - (10000 - totalCashSpent);
+                         flagC = 1;
+                    }
+
                     texCoin='Cash';
                     break;
                 case 1: //oro
+
+                
+                    // Sumar "gold" en loguseritem
+                    const [sumGoldResult] = await sequelize.query(
+                        `SELECT COALESCE(SUM(gold), 0) AS total FROM loguseritem WHERE userid = ${userGameId}`,
+                        { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    );
+
+                    //const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+                    const totalGoldSpent = sumGoldResult.total;
+
                     uCoin = await UserGameInfo.findOne({
                         where: {name:user},
                         transaction: t,
@@ -144,7 +194,14 @@ class MarketService {
                         transaction: t,
                         lock: t.LOCK.UPDATE,
                     });
-                    coDis = uCoin.gold;
+
+                    if(totalGoldSpent > 12000){
+                        coDis = uCoin.gold;
+                    } else {
+                        coDis = uCoin.gold - (12000 - totalGoldSpent);
+                        flagC = 1;
+                    }
+                    // coDis = uCoin.gold;
                     texCoin='Oro';
                     break;
                 default:
@@ -157,6 +214,11 @@ class MarketService {
             const totalCost = item.precio;
             if (!uCoin || coDis < totalCost) {
                 await t.rollback();
+                //console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
+                if(flagC){
+                    console.log('[Error] No tiene cash u oro disponible para realizar la compra. Aún no gasta lo obtenido en registro...'.red);
+                    return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra (No puedes usar el '+texCoin+ ' obtenido en el registro).' };
+                }
                 console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
                 return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra' };
             }
@@ -178,20 +240,6 @@ class MarketService {
             }
 
             // Verificar si tiene slots disponibles... 3 boxes 30 items
-             // Obtener el ID de usuario desde UserGameInfo por su nombre
-             const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
-                where: {
-                name: user, // Cambia esto para usar el nombre de usuario correcto
-                },
-                // transaction: t, // Asociar la transacción con esta consulta
-            });
-    
-            if (!userGame) {
-                await t.rollback(); // Revertir la transacción en caso de error
-                console.log('[Error] Usuario no encontrado'.red);
-                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
-            }
 
              // Paso 1: Obtener todos los personajes del usuario
             const characters = await CharacterInfo.findAll({
@@ -572,6 +620,19 @@ class MarketService {
                     message: 'El item no existe o ya ha sido puesto a la venta',
                 };
             }
+
+            const itemProhibido = [7035, 6042];
+
+            if (itemProhibido.includes(userItem.itemid)) {
+                await t.rollback();
+                console.log(`[Error] El item está prohibido para la venta (itemid: ${userItem?.itemid})`.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Este item no puede ser vendido en el mercado.',
+                };
+            }
+
 
             // Obtener el ID del usuario desde UserGameInfo
             const userGame = await UserGameInfo.findOne({
