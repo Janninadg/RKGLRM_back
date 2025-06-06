@@ -223,21 +223,7 @@ class MarketService {
                 return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra' };
             }
 
-            // Decrementar... :)
-
-            if(item.medio_pago === 0) {
-                uCoin.cash -= totalCost;
-                await uCoin.save({ transaction: t });
-
-                sCoin.cash += totalCost;
-                await sCoin.save({ transaction: t });
-            } else {
-                uCoin.gold -= totalCost;
-                await uCoin.save({ transaction: t });
-
-                sCoin.gold += totalCost;
-                await sCoin.save({ transaction: t });
-            }
+            
 
             // Verificar si tiene slots disponibles... 3 boxes 30 items
 
@@ -256,12 +242,12 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 20 para comprar en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
                 };
             }
 
             // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 20);
+            const hasLevel20OrMore = characters.some(char => char.level >= 33);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -269,7 +255,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 20 para comprar en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
                 };
             }
             
@@ -302,6 +288,22 @@ class MarketService {
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[Error] No tiene slots disponibles en su inventario'.red);
                 return { success: false, code: '200', message: 'No tiene slots disponbiles en tu inventario para comprar este item' };
+            }
+
+            // Decrementar... :)
+
+            if(item.medio_pago === 0) {
+                uCoin.cash -= totalCost;
+                await uCoin.save({ transaction: t });
+
+                sCoin.cash += totalCost;
+                await sCoin.save({ transaction: t });
+            } else {
+                uCoin.gold -= totalCost;
+                await uCoin.save({ transaction: t });
+
+                sCoin.gold += totalCost;
+                await sCoin.save({ transaction: t });
             }
 
             // Obtener info del item con item.itemid
@@ -668,12 +670,12 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 20 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
                 };
             }
 
             // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 20);
+            const hasLevel20OrMore = characters.some(char => char.level >= 33);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -681,7 +683,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 20 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
                 };
             }
 
