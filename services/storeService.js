@@ -459,7 +459,7 @@ class StoreService {
           // Obtener info de ItemInfo (para type !== 0)
           const itemInfos = await ItemInfo.findAll({
             where: { id: realItemIds },
-            attributes: ['id', 'name']
+            attributes: ['id', 'name','Class']
           });
 
           const itemImages = await ItemImage.findAll({
