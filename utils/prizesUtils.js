@@ -17,7 +17,7 @@ const setClassName = (classitem) => {
             return ' Mage';
           case 16:
             // Ninja
-            return ' Nina';
+            return ' Ninja';
           default:
             return '';
         }
