@@ -626,6 +626,12 @@ class MarketService {
                 };
             }
 
+            if (userItem && userItem.characterid!==0) {
+               await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'El item está en un personaje'.blue);
+                return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder venderlo.' };
+            }
+
             const itemProhibido = [7035, 6042];
 
             if (itemProhibido.includes(userItem.itemid)) {

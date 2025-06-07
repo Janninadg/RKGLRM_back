@@ -31,7 +31,7 @@ import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
-import { setClassName } from '../utils/prizesUtils.js';
+import { setClassName, setTypeName } from '../utils/prizesUtils.js';
 
 class RefineriaService {
 
@@ -226,6 +226,21 @@ class RefineriaService {
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'El item no se encuentra en el slot actual'.blue);
                 return { success: false, code: '200', message: 'Tu item en el inventario no coincide con el slot actual. Por favor, actualiza la página.' };
+            }
+
+            if (itemUser && itemUser.characterid !== 0){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'El item está en un personaje'.blue);
+                return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder refinarlo.' };
+            }
+
+            const typeNotRef = [9,10,11,12,13,14];
+
+            if (itemUser && typeNotRef.includes(itemUser.type)){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'Este tipo de item no se puede refinar'.blue);
+                const typeName = setTypeName(itemUser.type);
+                return { success: false, code: '100', message: 'Este tipo de item no se puede refinar (Tipo : '+ typeName +').' };
             }
             
             if (itemUser && itemUser.level >= 15){

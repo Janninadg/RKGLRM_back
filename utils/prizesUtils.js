@@ -28,6 +28,54 @@ const setClassName = (classitem) => {
     }
 };
 
+const setTypeName = (type) => {
+    try {
+        switch (type) {
+           case 0:
+            // Swordman
+            return 'Helmet';
+          case 1:
+            // Archer
+            return 'Armor';
+          case 2:
+            // Black
+            return 'Shoulder';
+          case 3:
+            // Mage
+            return 'Arms';
+          case 4:
+            // Ninja
+            return 'Primary weapon';
+          case 5:
+            // Ninja
+            return 'Secondary weapon';
+          case 9:
+            // Ninja
+            return 'Cards';
+          case 10:
+            // Ninja
+            return 'Set';
+          case 11:
+            // Ninja
+            return 'Discount Card';
+          case 12:
+            // Ninja
+            return 'Poison';
+          case 13:
+            // Ninja
+            return 'Stone';
+          case 14:
+            // Ninja
+            return 'Stone';
+          default:
+            return 'None';
+        }
+  
+    } catch (error) {
+      console.error(`Error al entregar premios:`, error);
+      throw error;
+    }
+};
 
 const getAmountItem = async (itemid,transaction) => {
   try {
@@ -98,4 +146,4 @@ const calculatePowerUse = async (powertime,days) => {
   }
   };
 
-  export { calculatePowerUse,getAmountItem,setClassName };
+  export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
