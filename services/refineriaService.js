@@ -67,7 +67,8 @@ class RefineriaService {
             const allUserItems = await UserItemInfo.findAll({
                 attributes:['id','itemid','level','slot','exp'],
                 where: {
-                    userid: userGame.id
+                    userid: userGame.id,
+                    characterid: 0,
                 },
                 order: [['slot', 'ASC'], ['id', 'ASC']], // Ordenar por 'slot' y luego por 'id'
                 transaction: t,
