@@ -1167,7 +1167,8 @@ class MarketService {
             const mergedItemsFinal = mergedItems.map(item => {
                 // Buscar la información de useriteminfo correspondiente al itemid
                 // console.log(item)
-                const ii = itemInfoMap[item.uii.itemid] || {};
+                const iiRaw = itemInfoMap[item.uii.itemid];
+                const ii = iiRaw ? iiRaw.toJSON() : {};
                 const className = ii ? setClassName(ii.Class): ''; // obtener el texto del class
                 const fullName = ii.name ? `${ii.name}${className}` : 'Desconocido'; // concatenar si hay nombre
                 const imageUrl = imageMap[item.uii.itemid] || 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png';
