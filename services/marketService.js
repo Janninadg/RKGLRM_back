@@ -266,6 +266,7 @@ class MarketService {
                 attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
                 where: {
                 userid: userGame.id,
+                characterid:0,
                 },
                 raw: true,
                 transaction: t,
@@ -481,6 +482,7 @@ class MarketService {
                 attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
                 where: {
                 userid: userGame.id,
+                characterid:0,
                 },
                 raw: true,
                 transaction: t,
