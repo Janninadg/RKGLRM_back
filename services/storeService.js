@@ -24,6 +24,7 @@ import LogRewardsUser from '../models/logRewardUserModel.js';
 import ItemVirtual from '../models/ItemVirtualModel.js';
 import UserPoisons from '../models/userPoisonsModel.js';
 import ItemImage from '../models/itemImagesModel.js';
+import { setClassName } from '../utils/prizesUtils.js';
 
 class StoreService {
 
@@ -362,7 +363,8 @@ class StoreService {
                     });
 
                        if (itemStoreReal && itemStoreImg) {
-                        name = itemStoreReal.name;
+                        const fullName = itemStoreReal.name + setClassName(itemStoreReal.Class);
+                        name = fullName;
                         img = itemStoreImg.image;
                     }
                 }
@@ -498,7 +500,8 @@ class StoreService {
             } else {
               const info = itemInfoMap[item.itemid];
               const infoImg = imagesInfo[item.itemid];
-              itemData.name = info?.name || 'Nombre no encontrado';
+              const fullName = info ? info.name + setClassName(info.Class) : 'Nombre no encontrado';
+              itemData.name = fullName;
               itemData.img = infoImg?.img || '';
             }
       

@@ -31,6 +31,7 @@ import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
+import { setClassName } from '../utils/prizesUtils.js';
 
 class RefineriaService {
 
@@ -116,8 +117,9 @@ class RefineriaService {
 
                     // Convertir el item a un objeto JSON y añadir el campo 'img' y 'name'
                     const itemData = item.toJSON();
+                    const fullName = itemInfo ? itemInfo.name + setClassName(itemInfo.Class) : 'Unknown Item';
                     itemData.img = itemImage ? itemImage.image : '';
-                    itemData.name = itemInfo ? itemInfo.name : 'Unknown Item';
+                    itemData.name = fullName;
 
                     return itemData;
                 })

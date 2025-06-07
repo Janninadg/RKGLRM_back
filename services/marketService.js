@@ -961,6 +961,8 @@ class MarketService {
 
             if (!itemInfo) continue;
 
+             const fullName = itemInfo.name + setClassName(itemInfo.Class);
+
             // 8. Buscar imagen en ItemImages
             const itemImage = await ItemImage.findOne({
                 where: { item: tempUserItemInfo.itemid },
@@ -968,7 +970,7 @@ class MarketService {
             });
 
             purchaseDetails.push({
-                name: itemInfo.name,
+                name: fullName,
                 image: itemImage ? itemImage.image : null,
                 seller: marketRecord.vendedor,
                 date: record.date,
@@ -1045,6 +1047,8 @@ class MarketService {
                 });
           
                 if (!itemInfo) continue;
+
+                const fullName = itemInfo.name + setClassName(itemInfo.Class);
           
                 // Buscar imagen en ItemImage
                 const itemImage = await ItemImage.findOne({
@@ -1061,7 +1065,7 @@ class MarketService {
                 if (!sellRecord) continue;
           
                 sellsDetails.push({
-                  name: itemInfo.name,
+                  name: fullName,
                   image: itemImage ? itemImage.image : null,
                   buyer: sellRecord.buyer,
                   currency:sale.medio_pago,
@@ -1156,7 +1160,7 @@ class MarketService {
                 // Buscar la información de useriteminfo correspondiente al itemid
                 // console.log(item)
                 const ii = itemInfoMap[item.uii.itemid] || {};
-                const className = setClassName(ii.Class); // obtener el texto del class
+                const className = ii ? setClassName(ii.Class): ''; // obtener el texto del class
                 const fullName = ii.name ? `${ii.name}${className}` : 'Desconocido'; // concatenar si hay nombre
                 const imageUrl = imageMap[item.uii.itemid] || 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png';
 
