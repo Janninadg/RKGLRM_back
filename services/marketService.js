@@ -30,6 +30,7 @@ import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
+import { setClassName } from '../utils/prizesUtils.js';
 
 class MarketService {
 
@@ -1155,6 +1156,8 @@ class MarketService {
                 // Buscar la información de useriteminfo correspondiente al itemid
                 // console.log(item)
                 const ii = itemInfoMap[item.uii.itemid] || {};
+                const className = setClassName(ii.Class); // obtener el texto del class
+                const fullName = ii.name ? `${ii.name}${className}` : 'Desconocido'; // concatenar si hay nombre
                 const imageUrl = imageMap[item.uii.itemid] || 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png';
 
                  // Calcular diferencia de horas
@@ -1168,7 +1171,10 @@ class MarketService {
                 // Fusionar la información del item original con la información adicional
                 return {
                     ...item,
-                    ii,
+                    ii: {
+                        ...ii,
+                        name: fullName, // sobrescribe el name con el name + class
+                    },
                     url: imageUrl, // Añade la propiedad .url
                     return: returnFlag, // Añade la nueva propiedad .return
                 };

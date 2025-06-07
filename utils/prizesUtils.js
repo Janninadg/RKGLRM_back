@@ -1,5 +1,34 @@
 import ItemInfo from "../models/itemInfoModel.js";
 
+const setClassName = (classitem) => {
+    try {
+        switch (classitem) {
+           case 1:
+            // Swordman
+            return ' Swordman';
+          case 2:
+            // Archer
+            return ' Archer';
+          case 4:
+            // Black
+            return ' BlackSmith';
+          case 8:
+            // Mage
+            return ' Mage';
+          case 16:
+            // Ninja
+            return ' Nina';
+          default:
+            return '';
+        }
+  
+    } catch (error) {
+      console.error(`Error al entregar premios:`, error);
+      throw error;
+    }
+};
+
+
 const getAmountItem = async (itemid,transaction) => {
   try {
     const itemData = await ItemInfo.findOne({
@@ -69,4 +98,4 @@ const calculatePowerUse = async (powertime,days) => {
   }
   };
 
-  export { calculatePowerUse,getAmountItem };
+  export { calculatePowerUse,getAmountItem,setClassName };
