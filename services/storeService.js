@@ -476,7 +476,7 @@ class StoreService {
           // Mapas de referencia
           const itemInfoMap = {};
           itemInfos.forEach(info => {
-            itemInfoMap[info.id] = { name: info.name };
+            itemInfoMap[info.id] = { name: info.name, Class:info.Class };
           });
 
            const imagesInfo = {};
