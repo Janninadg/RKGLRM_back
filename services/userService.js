@@ -802,7 +802,7 @@ class UserService {
         FROM characterinfo
       ) AS ci ON u.id = ci.userid AND ci.rnk = 1
       LEFT JOIN claninfo clan ON u.clanid = clan.id
-      ORDER BY ci.level DESC, winLossDifference DESC, winrate DESC
+      ORDER BY winLossDifference DESC, winrate DESC
       LIMIT 50
         `,
         { type: sequelize.QueryTypes.SELECT }
