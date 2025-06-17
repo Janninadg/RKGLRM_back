@@ -34,6 +34,7 @@ import ConfigParameters from '../models/configParametersModel.js';
 import EventsReview from '../models/eventsReviewModel.js';
 import WebUser from '../models/webUsersModel.js';
 import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
+import EventLevelCharacter from '../models/eventLevelChModel.js';
 
 class UserService {
 
@@ -822,7 +823,7 @@ class UserService {
         transaction: t,
         lock: t.LOCK.UPDATE, // Bloqueo para modificación segura futura
       });
-      
+
       if (!userGameInfo) {
         await t.rollback();
         return { message: 'Usuario no encontrado',code:'999',succes:false };
@@ -838,6 +839,30 @@ class UserService {
       if (!characterReg) {
         await t.rollback();
         return { success: false, message: 'El personaje no te pertence o ya no existe, actualiza la página.',code:'999' };
+      }
+
+      if(characterReg.slot === 0){
+        await t.rollback();
+        return { success: false, message: 'No puedes eliminar un personaje principal.',code:'999' };
+      }
+
+      if(characterReg.slot === 0){
+        await t.rollback();
+        return { success: false, message: 'No puedes eliminar un personaje principal.',code:'999' };
+      }
+
+       // Verificar si el usuario ya seleccionó un personaje
+      const existingEntry = await EventLevelCharacter.findOne({
+        where: {
+            user: username,
+            characterid: character
+        },
+        transaction: t,
+      });
+
+      if(existingEntry){
+        await t.rollback();
+        return { success: false, message: 'No puedes eliminar este personaje porque lo estas usando en el evento de reto de nivel.',code:'999' };
       }
 
       // 4. Obtener cash del usuario
