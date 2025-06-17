@@ -880,25 +880,19 @@ class UserService {
         transaction: t,
       });
 
-      // 5. Verificar si ya se eliminó un personaje del mismo slot en las últimas 24 horas
-      const fechaLimite = new Date(Date.now() - 24 * 7 * 60 * 60 * 1000); // Hace 24 horas
+      // 5. Verificar si han pasado al menos 7 días desde la creación del personaje
+      const fechaCreacion = new Date(characterReg.createtime);
+      const hace7Dias = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      console.log('Ch date create: ',fechaCreacion);
+        console.log('Limit day 7: ',hace7Dias);
 
-      const yaEliminado = await LogRemoveCharacter.findOne({
-        where: {
-          slot: characterReg.slot,
-          fecha: {
-            [Op.gt]: fechaLimite, // Solo si fue hace menos de 24h
-          },
-        },
-        transaction: t,
-      });
 
-      if (yaEliminado) {
+      if (fechaCreacion > hace7Dias) {
         await t.rollback();
         return {
           success: false,
           code: '999',
-          message: `Ya has eliminado un personaje del slot ${characterReg.slot}. Tienes que esperar 7 días para eliminar este personaje.`
+          message: `Este personaje fue creado hace menos de 7 días. No puedes eliminarlo aún.`,
         };
       }
 
