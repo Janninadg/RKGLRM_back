@@ -26,6 +26,7 @@ router.post('/reg', UserController.registerUser);
 
 // Ruta para obtener el perfil de un usuario por su nombre de usuario
 router.get('/prf/:name/:token', UserController.getProfile);
+router.post('/deleteChr', UserController.removeCharacter);
 
 // Ruta para obtener el ranking
 router.get('/rnk', UserController.getRanking);

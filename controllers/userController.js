@@ -396,6 +396,39 @@ class UserController {
       console.error('Error al comentar evento:', error);
       return res.status(500).json({error: 'Error interno del servidor'});
     }
+  } 
+  
+  async removeCharacter(req, res) {
+    try {
+
+      const { user,token,character } = req.body;
+
+      console.log(character);
+
+  
+
+      console.log("---------------------------------------------------------------".magenta);
+      console.log("ELIMINAR PERSONAJE - FROM IP: ".blue,req.clientIp.green);
+      console.log('Usuario:'.blue,user.yellow);
+
+      //onsole.log(typePay);
+      //console.log(decrypt(CCIOMD,key));
+
+      //console.log(paramsString);
+
+      const result = await UserService.removeCharacter(user,token,character,req);
+  
+      console.log("---------------------------------------------------------------".magenta);
+      
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al realizar la compra de activos:', error);
+      return res.status(500).json({error: 'Error interno del servidor'});
+    }
   }  
 }
 

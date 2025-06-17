@@ -33,6 +33,7 @@ import AnunciosComment from '../models/anunciosCommentModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import EventsReview from '../models/eventsReviewModel.js';
 import WebUser from '../models/webUsersModel.js';
+import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
 
 class UserService {
 
@@ -745,7 +746,7 @@ class UserService {
   
       const characters = await CharacterInfo.findAll({
         where: { userid: userGameInfo.id },
-        attributes: ['id', 'level', 'Class', 'name', 'win', 'lose','exp'],
+        order:[['slot','ASC']],
       });
   
       for (const character of characters) {
@@ -753,14 +754,30 @@ class UserService {
         const classLevelInfo = await ClassLevelInfo.findOne({
           where: {
             Class: character.Class,
-            level: character.level + 1,
+            level: character.level,
           },
           attributes: ['exp'],
         });
   
+        const classLevelInfo2 = await ClassLevelInfo.findOne({
+          where: {
+            Class: character.Class,
+            level: character.level ? character.level - 1 : 0,
+          },
+          attributes: ['exp'],
+        });
+
         // Agregar la exp al personaje
         character.setDataValue('nextexp', classLevelInfo?.exp || 0);
+        character.setDataValue('iniexp', classLevelInfo2?.exp || 0);
       }
+
+      // Obtener precio desde ConfigParameter
+      const config = await ConfigParameters.findOne({
+        where: { name: 'price_remove' },
+        attributes: ['value'],
+        // transaction: t,
+      });
   
       const profileData = {
         cash: cash.cash, // Ajusta esto según la columna correcta en User
@@ -768,9 +785,137 @@ class UserService {
         powertimedate: userGameInfo.powertimedate,
         lastconnect: userGameInfo.lastconnect,
         characters: characters,
+        pricermv: JSON.parse(config.value),
       };
   
       return profileData;
+    } catch (error) {
+      console.error('Error al obtener el perfil del usuario:', error);
+      throw new Error('Error interno del servidor');
+    }
+  }
+
+  async removeCharacter(username,token,character) {
+    const t = await sequelize.transaction();
+    const currency = 1; // Por defecto, 1 es CASH
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: username,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        //await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '001', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      }
+
+      // 2. Obtener usuario
+      const userGameInfo = await UserGameInfo.findOne({
+        where: { name: username },
+        // attributes: ['id', 'gold', 'powertimedate', 'lastconnect'],
+        transaction: t,
+        lock: t.LOCK.UPDATE, // Bloqueo para modificación segura futura
+      });
+      
+      if (!userGameInfo) {
+        await t.rollback();
+        return { message: 'Usuario no encontrado',code:'999',succes:false };
+      }
+
+      // 3. Verificar que el personaje le pertenece
+      const characterReg = await CharacterInfo.findOne({
+        where: { id: character, userid: userGameInfo.id },
+        transaction: t,
+        lock: t.LOCK.UPDATE, // Si lo vas a eliminar después
+      });
+
+      if (!characterReg) {
+        await t.rollback();
+        return { success: false, message: 'El personaje no te pertence o ya no existe, actualiza la página.',code:'999' };
+      }
+
+      // 4. Obtener cash del usuario
+      const cash = await Cash.findOne({
+        where: { id: username },
+        // attributes: ['cash'],
+        transaction: t,
+        lock: t.LOCK.UPDATE, // Vamos a descontar cash
+      });
+
+      // 4. Obtener precio desde ConfigParameter
+      const config = await ConfigParameters.findOne({
+        where: { name: 'price_remove' },
+        attributes: ['value'],
+        transaction: t,
+      });
+
+      // 5. Verificar si ya se eliminó un personaje del mismo slot en las últimas 24 horas
+      const fechaLimite = new Date(Date.now() - 24 * 7 * 60 * 60 * 1000); // Hace 24 horas
+
+      const yaEliminado = await LogRemoveCharacter.findOne({
+        where: {
+          slot: characterReg.slot,
+          fecha: {
+            [Op.gt]: fechaLimite, // Solo si fue hace menos de 24h
+          },
+        },
+        transaction: t,
+      });
+
+      if (yaEliminado) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '999',
+          message: `Ya has eliminado un personaje del slot ${characterReg.slot}. Tienes que esperar 7 días para eliminar este personaje.`
+        };
+      }
+
+      let priceRemove = 0;
+      if (config) {
+        try {
+          const priceJson = JSON.parse(config.value);
+          priceRemove = priceJson[currency] || 0;
+        } catch {
+          priceRemove = 0;
+        }
+      }
+  
+      // 6. Validar que tenga suficiente cash
+      if (userGameInfo.gold < priceRemove) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '999',
+          message: `No tienes suficiente oro para eliminar el personaje. Se requieren ${priceRemove} de Oro.`,
+        };
+      }
+
+       // 6. Descontar el cash
+      userGameInfo.gold -= priceRemove;
+      await userGameInfo.save({ transaction: t });
+
+      // 7. Registrar la eliminación del personaje
+      await LogRemoveCharacter.create({
+        charname: characterReg.name,
+        level: characterReg.level,
+        slot: characterReg.slot,
+        user:username,
+        fecha: new Date(),
+      }, { transaction: t });
+
+      // 8. Eliminar el personaje de CharacterInfo
+      await characterReg.destroy({ transaction: t });
+      
+      // Commit de la transacción si todo fue exitoso
+      await t.commit();
+      return {success:true,code:'000',message:'El personaje fue eliminado con éxito'};
     } catch (error) {
       console.error('Error al obtener el perfil del usuario:', error);
       throw new Error('Error interno del servidor');
