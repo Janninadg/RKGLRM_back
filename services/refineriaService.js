@@ -145,7 +145,7 @@ class RefineriaService {
         
         try {
 
-            // return { success: false, code: '200', message: 'NO DISPONIBLE' };
+            return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
 
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
