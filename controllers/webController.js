@@ -20,36 +20,6 @@ class WebController {
         }
       }
 
-      async getStages(req, res, next) {
-        try {
-          const stages = await WebService.getStages();
-          //console.log(ranking);
-    
-          //const MNFoeO = generateKey();
-          //const TdkfEO = encrypt(JSON.stringify(ranking), MNFoeO);
-    
-          return res.status(200).json(stages);
-        } catch (error) {
-          console.error('Error al obtener los stages:', error);
-          return res.status(500).json({ error: 'Error interno del servidor' });
-        }
-      }
-
-      async getAnuncios(req, res, next) {
-        try {
-          const ann = await WebService.getAnuncios();
-          //console.log(ranking);
-    
-          //const MNFoeO = generateKey();
-          //const TdkfEO = encrypt(JSON.stringify(ranking), MNFoeO);
-    
-          return res.status(200).json(ann);
-        } catch (error) {
-          console.error('Error al obtener los anuncios:', error);
-          return res.status(500).json({ error: 'Error interno del servidor' });
-        }
-      }
-
       async getBuyAssets(req, res, next) {
         try {
           const byai = await WebService.getBuyAssets();
@@ -65,20 +35,6 @@ class WebController {
         }
       }
 
-      async getStreamers(req, res, next) {
-        try {
-          const resp = await WebService.getStreamers();
-          //console.log(ranking);
-    
-          //const MNFoeO = generateKey();
-          //const TdkfEO = encrypt(JSON.stringify(ranking), MNFoeO);
-    
-          return res.status(200).json(resp);
-        } catch (error) {
-          console.error('Error al obtener los streamers:', error);
-          return res.status(500).json({ error: 'Error interno del servidor' });
-        }
-      }
 }
 
 export default new WebController();

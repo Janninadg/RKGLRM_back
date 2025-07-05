@@ -4,25 +4,6 @@ import Banlist from '../models/banListModel.js';
 import sequelize from '../config/database.js';
 import colors from "colors";
 
-const EncryptFunction = async (str) => {
-  let result = '';
-  let i = 0;
-  let j = str.length - 1;
-
-  while (i <= j) {
-    if (i <= j) {
-      result += str[j];
-      j--;
-    }
-    if (i <= j) {
-      result += str[i];
-      i++;
-    }
-  }
-
-  return result;
-};
-
 const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t, req) => {
   let transaction;
     try {

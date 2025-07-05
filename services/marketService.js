@@ -75,24 +75,7 @@ class MarketService {
                 return { success: false, code: '200', message: 'El item no existe' };
             }
 
-            // Obtener el apodo del usuario desde la tabla USER
-            const userInfo = await User.findOne({
-                where: { id: user },
-                attributes: ['apodo'],
-                transaction: t,
-            });
-
-            if (!userInfo) {
-                await t.rollback();
-                console.log('[Error] No se encontró el apodo del usuario'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'No se encontró el apodo del usuario',
-                };
-            }
-
-            if (item.vendedor === userInfo.apodo) {
+            if (item.vendedor === user) {
                 await t.rollback();
                 console.log('[Error] Está intentando autocomprar items'.red);
                 return { success: false, code: '200', message: 'No puedes comprar tus propios items' };
@@ -105,7 +88,7 @@ class MarketService {
             }
 
             const sellerInfo = await User.findOne({
-                where: { apodo: item.vendedor },
+                where: { id: item.vendedor },
                 attributes: ['id'],
                 transaction: t,
             });
@@ -139,18 +122,18 @@ class MarketService {
                 case 0: //cash
                      // Verificar puntos de evento del usuario con bloqueo
                      // Sumar "price" en logbuycashitem
-                    const [sumCashItemResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
+                    // const [sumCashItemResult] = await sequelize.query(
+                    //     `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
+                    //     { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    // );
 
 
-                    // Sumar "buycash" en logbuypoweruser
-                    const [sumPowerUserResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
-                    const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+                    // // Sumar "buycash" en logbuypoweruser
+                    // const [sumPowerUserResult] = await sequelize.query(
+                    //     `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGameId}`,
+                    //     { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    // );
+                    // const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
 
                     uCoin = await Cash.findOne({
                         where: {id:user},
@@ -164,12 +147,12 @@ class MarketService {
                         lock: t.LOCK.UPDATE,
                     });
 
-                    if(totalCashSpent > 10000){
+                    // if(totalCashSpent > 10000){
                          coDis = uCoin.cash;
-                    } else {
-                         coDis = uCoin.cash - (10000 - totalCashSpent);
-                         flagC = 1;
-                    }
+                    // } else {
+                    //      coDis = uCoin.cash - (10000 - totalCashSpent);
+                    //      flagC = 1;
+                    // }
 
                     texCoin='Cash';
                     break;
@@ -177,13 +160,13 @@ class MarketService {
 
                 
                     // Sumar "gold" en loguseritem
-                    const [sumGoldResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(gold), 0) AS total FROM loguseritem WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
+                    // const [sumGoldResult] = await sequelize.query(
+                    //     `SELECT COALESCE(SUM(gold), 0) AS total FROM loguseritem WHERE userid = ${userGameId}`,
+                    //     { type: sequelize.QueryTypes.SELECT, transaction: t }
+                    // );
 
-                    //const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
-                    const totalGoldSpent = sumGoldResult.total;
+                    // //const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+                    // const totalGoldSpent = sumGoldResult.total;
 
                     uCoin = await UserGameInfo.findOne({
                         where: {name:user},
@@ -196,12 +179,12 @@ class MarketService {
                         lock: t.LOCK.UPDATE,
                     });
 
-                    if(totalGoldSpent > 12000){
+                    // if(totalGoldSpent > 12000){
                         coDis = uCoin.gold;
-                    } else {
-                        coDis = uCoin.gold - (12000 - totalGoldSpent);
-                        flagC = 1;
-                    }
+                    // } else {
+                    //     coDis = uCoin.gold - (12000 - totalGoldSpent);
+                    //     flagC = 1;
+                    // }
                     // coDis = uCoin.gold;
                     texCoin='Oro';
                     break;
@@ -216,10 +199,10 @@ class MarketService {
             if (!uCoin || coDis < totalCost) {
                 await t.rollback();
                 //console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
-                if(flagC){
-                    console.log('[Error] No tiene cash u oro disponible para realizar la compra. Aún no gasta lo obtenido en registro...'.red);
-                    return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra (No puedes usar el '+texCoin+ ' obtenido en el registro).' };
-                }
+                // if(flagC){
+                //     console.log('[Error] No tiene cash u oro disponible para realizar la compra. Aún no gasta lo obtenido en registro...'.red);
+                //     return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra (No puedes usar el '+texCoin+ ' obtenido en el registro).' };
+                // }
                 console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
                 return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra' };
             }
@@ -348,7 +331,7 @@ class MarketService {
             // Registrar la compra en sellsRecord
             await SellsRecord.create({
                 id_market: idmarket,
-                buyer: userInfo.apodo,
+                buyer: user,
                 date: new Date(),
             }, { transaction: t });
 
@@ -425,24 +408,7 @@ class MarketService {
                 return { success: false, code: '200', message: 'El item no existe' };
             }
 
-            // Obtener el apodo del usuario desde la tabla USER
-            const userInfo = await User.findOne({
-                where: { id: user },
-                attributes: ['apodo'],
-                transaction: t,
-            });
-
-            if (!userInfo) {
-                await t.rollback();
-                console.log('[Error] No se encontró el apodo del usuario'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'No se encontró el apodo del usuario',
-                };
-            }
-
-            if (item.vendedor !== userInfo.apodo) {
+            if (item.vendedor !== user) {
                 await t.rollback();
                 console.log('[Error] Está intentando retornar item que no es de su propiedad'.red);
                 return { success: false, code: '200', message: 'No puedes retornar un item que no te pertenece' };
@@ -769,25 +735,6 @@ class MarketService {
                 uCoin.gold -= commissionAmount;
                 await uCoin.save({ transaction: t });
             }
-
-            // Obtener el apodo del usuario desde la tabla USER
-            const userInfo = await User.findOne({
-                where: { id: user },
-                attributes: ['apodo'],
-                transaction: t,
-            });
-
-            if (!userInfo) {
-                await t.rollback();
-                console.log('[Error] No se encontró el apodo del usuario'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'No se encontró el apodo del usuario',
-                };
-            }
-
-            const nickname = userInfo.apodo;
          
 
             // 1. Insertar en TempUserItemInfo con el id del marketplace
@@ -807,7 +754,7 @@ class MarketService {
             // 2. Insertar en la tabla marketplace
             const market = await Marketplace.create({
                 itemid: temp.id,
-                vendedor: nickname,
+                vendedor: user,
                 precio: price,
                 medio_pago: currency,
                 fecha: new Date(), // Fecha actual
@@ -920,23 +867,10 @@ class MarketService {
                 return { success: false, code: '200', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
             }
 
-            // 2. Buscar apodo (nickname)
-            const userRecord = await User.findOne({
-                attributes: ['apodo'],
-                where: { id: user },
-                transaction: t,
-            });
-
-            if (!userRecord) {
-                await t.rollback();
-                return { success: false, code: '201', message: 'Usuario no encontrado.' };
-            }
-
-            const nickname = userRecord.apodo;
-
+           
             // 3. Buscar compras en SellsRecords
             const sellRecords = await SellsRecord.findAll({
-                where: { buyer: nickname },
+                where: { buyer: user },
                 order: [['date', 'DESC']],
                 transaction: t,
             });
@@ -1014,24 +948,11 @@ class MarketService {
                 return { success: false, code: '200', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
             }
 
-            // 2. Buscar apodo (nickname)
-            const userRecord = await User.findOne({
-                attributes: ['apodo'],
-                where: { id: user },
-                transaction: t,
-            });
-
-            if (!userRecord) {
-                await t.rollback();
-                return { success: false, code: '201', message: 'Usuario no encontrado.' };
-            }
-
-            const nickname = userRecord.apodo;
 
           // 3. Buscar en Marketplace ventas realizadas por el usuario
             const sales = await Marketplace.findAll({
                 where: {
-                vendedor: nickname,
+                vendedor: user,
                 estado: 0, // Vendido
                 },
                 transaction: t,

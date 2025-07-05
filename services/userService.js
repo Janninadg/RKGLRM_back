@@ -9,30 +9,21 @@ import Blackout from '../models/blackoutModel.js';
 import sequelize from '../config/database.js';
 import { signToken, expiredDate,verifyToken } from '../utils/authUtils.js';
 import TokenSession from '../models/tokenSessionModel.js';
-import Ticket from '../models/ticketsModel.js';
-import TicketOro from '../models/ticketsOroModel.js';
-import PendingPresents from '../models/pendingPresentsModel.js'
 import InitialIpUser from '../models/ipUserModel.js';
 import ExchangeRate from '../models/exchangeRateModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
-import { EncryptFunction, verifyPacketAndBan } from '../utils/securityUtils.js';
 import LogExchange from '../models/logExchanges.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import UserStageInfo from '../models/userStageInfo.js';
-import { calculatePowerUse } from '../utils/prizesUtils.js';
 // import BarraConexion from '../models/barProgressModel.js';
 import { decrypt, encrypt } from '../helpers/encryption.js';
 import config from '../config/config.js';
-import { hasUserClaimed, setPresentsReward } from '../utils/gameUtils.js';
-import LogRewardsUser from '../models/logRewardUserModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
-import EventPoint from '../models/eventPointsModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import TypeAsset from '../models/typeAssetsModel.js';
 import AnunciosComment from '../models/anunciosCommentModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import EventsReview from '../models/eventsReviewModel.js';
-import WebUser from '../models/webUsersModel.js';
 import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
 
@@ -253,7 +244,7 @@ class UserService {
       }
   
       // Verificar las credenciales en la tabla 'Webuser'
-      const user = await WebUser.findOne({ where: { user:id, password } });
+      const user = await User.findOne({ where: { id:id, password } });
   
       if (user) {
         // Si las credenciales son correctas, crear un token
@@ -502,7 +493,7 @@ class UserService {
     }
   }
   
-  async registerUser(req,username,apodo, password, phoneNumber,character,ip) {
+  async registerUser(req,username, password, phoneNumber,character,ip) {
     const transaction = await sequelize.transaction();
   
     try {
@@ -523,12 +514,12 @@ class UserService {
         return { success: false,message:'El usuario ingresado ya se encuentra registrado', code: '100' };
       }
 
-      const apodoUser = await User.findOne({ where: { apodo: apodo } });
+      // const apodoUser = await User.findOne({ where: { apodo: apodo } });
   
-      if (apodoUser) {
-        await transaction.rollback();
-        return { success: false,message:'El apodo ingresado ya se encuentra en uso', code: '100' };
-      }
+      // if (apodoUser) {
+      //   await transaction.rollback();
+      //   return { success: false,message:'El apodo ingresado ya se encuentra en uso', code: '100' };
+      // }
        
       if (
         !/^[a-zA-Z0-9]+$/.test(password) ||
@@ -539,14 +530,14 @@ class UserService {
           return { success: false,message:"La contraseña debe contener solo caracteres alfanuméricos y tener entre 6 y 8 caracteres", code: '100' };
       }
 
-      if (
-        !apodo ||
-        apodo.length < 3 ||
-        apodo.length > 11
-      ) {
-          await transaction.rollback();
-          return { success: false,message:"El apodo debe tener entre 3 y 11 caracteres", code: '100' };
-      }
+      // if (
+      //   !apodo ||
+      //   apodo.length < 3 ||
+      //   apodo.length > 11
+      // ) {
+      //     await transaction.rollback();
+      //     return { success: false,message:"El apodo debe tener entre 3 y 11 caracteres", code: '100' };
+      // }
 
       if (
         !username ||
@@ -557,7 +548,7 @@ class UserService {
           return { success: false,message:"El nombre de usuario debe tener entre 3 y 11 caracteres", code: '100' };
       }
 
-      const passwordEncrypt = await EncryptFunction(password);
+      // const passwordEncrypt = await EncryptFunction(password);
 
       // console.log(password);
       // console.log(passwordEncrypt);
@@ -565,20 +556,20 @@ class UserService {
       await User.create(
         {
           id: username,
-          password:passwordEncrypt,
-          apodo,
+          password:password,
+          // apodo,
           e_mail: phoneNumber,
         },
         { transaction }
       );
 
-      await WebUser.create(
-        {
-          user: username,
-          password
-        },
-        { transaction }
-      )
+      // await WebUser.create(
+      //   {
+      //     user: username,
+      //     password
+      //   },
+      //   { transaction }
+      // )
 
       //console.log(111111);
 
@@ -600,15 +591,14 @@ class UserService {
       //console.log(22222);
   
       await Cash.create({ id: username, cash: 10000 }, { transaction });
-      await EventPoint.create({ User: username, Points: 0 }, { transaction });
+      // await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
       // Token
       await TokenSession.create({ id: username, token: 0 }, { transaction });
 
       // Assets: piedras refineria, .... tickets etc
-      await UserAsset.create({ user: username, amount: 0, asset:1 }, { transaction }); //refineria piedra cash
-      await UserAsset.create({ user: username, amount: 0, asset:2 }, { transaction }); //refineria piedra oro
-      await UserAsset.create({ user: username, amount: 0, asset:3 }, { transaction }); //giro ruleta
+      await UserAsset.create({ user: username, amount: 0, asset:1 }, { transaction }); //refineria piedra 1
+      await UserAsset.create({ user: username, amount: 0, asset:2 }, { transaction }); //refineria piedra 2
 
       // await TicketOro.create({ id: username, tickets: 0 }, { transaction });
 
@@ -643,29 +633,31 @@ class UserService {
       //   }
       // );
 
-      const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
-      const presentIds = pr.i;
-      // presentIds.push(8000);
-      // presentIds.push(7000);
+      // const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
+      // const presentIds = pr.i;
+      // // presentIds.push(8000);
+      // // presentIds.push(7000);
 
-      const presentRecords = presentIds.map(present_id => ({
-        present_id,
-        user_id: userGameInfo.id,
-        added_time: new Date(),
-      }));
+      // const presentRecords = presentIds.map(present_id => ({
+      //   present_id,
+      //   user_id: userGameInfo.id,
+      //   added_time: new Date(),
+      // }));
 
-      const originRecords = presentIds.map(recompensa => ({
-        user:username,
-        origen:0,
-        recompensa,
-        tipo_recompensa: 0,
-        fecha: new Date(),
-      }));
+      // const originRecords = presentIds.map(recompensa => ({
+      //   user:username,
+      //   origen:0,
+      //   recompensa,
+      //   tipo_recompensa: 0,
+      //   fecha: new Date(),
+      // }));
       
-      await PendingPresents.bulkCreate(presentRecords, { transaction });
+      // await PendingPresents.bulkCreate(presentRecords, { transaction });
 
-      //LOGS REWARDS:
-      await LogRewardsUser.bulkCreate(originRecords, { transaction });
+      // //LOGS REWARDS:
+      // await LogRewardsUser.bulkCreate(originRecords, { transaction });
+
+
       // await LogRewardsUser.create({  
       //   user:username,
       //   origen:0,
@@ -701,7 +693,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 10K Cash y 12K Oro + '+ pr.m +' de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 10K Cash y 12K Oro de recompensa por registrarte!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
@@ -949,6 +941,7 @@ class UserService {
         u.name AS userName,
         ci.name AS charName,
         ci.level,
+        ci.Class,
         ci.win,
         ci.lose,
         COALESCE(clan.name, '-') AS clanName,
@@ -959,6 +952,7 @@ class UserService {
         SELECT
           userid,
           name,
+          Class,
           level,
           win,
           lose,
