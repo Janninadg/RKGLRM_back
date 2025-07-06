@@ -26,6 +26,7 @@ import ConfigParameters from '../models/configParametersModel.js';
 import EventsReview from '../models/eventsReviewModel.js';
 import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
+import LogRewardsUser from '../models/logRewardUserModel.js';
 
 class UserService {
 
@@ -263,7 +264,7 @@ class UserService {
   
         // Obtener información adicional del usuario desde usergameinfo
         const userInfo = await UserGameInfo.findOne({
-          where: { name: user.user },
+          where: { name: user.id },
           attributes: ['id', 'name', 'createtime', 'lastconnect'],
           transaction: t,
         });
@@ -278,7 +279,7 @@ class UserService {
   
         // Devolver el objeto con toda la información del usuario, el token y el código 2
         await t.commit();
-        return { _u: completeUserInfo, auth:token, tx:expired, success:true, message:'Ha iniciado sesión correctamente', code: '000' };
+        return { _u: completeUserInfo, auth:token, tx:expired, success:true, message:'Iniciaste sesión correctamente', code: '000' };
       } else {
         // Si las credenciales son incorrectas, retornar 3 (credenciales incorrectas)
         await t.rollback();

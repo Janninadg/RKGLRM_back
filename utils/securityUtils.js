@@ -87,4 +87,4 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
     }
 };
 
-export { verifyPacketAndBan,EncryptFunction };
+export { verifyPacketAndBan };
