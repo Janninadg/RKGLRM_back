@@ -32,7 +32,9 @@ import Anuncio from '../models/anunciosModel.js';
 
 import fs from 'fs/promises'; // Importar módulo de promesas para ESM
 import path from 'path';
+// import { v4 as uuidv4 } from 'uuid';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
+import FileManager from '../models/fileManagerModel.js';
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -1674,6 +1676,179 @@ class GMPanelService {
         await t.rollback();
         console.log(error);
         throw new Error('Error al generar cupon');
+    }
+  }
+
+  async exists(filepath) {
+    try {
+      await fs.access(filepath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async uploadFiles(user,token,archivos) {
+    const t = await sequelize.transaction();
+    
+    const ae = []; // archivos con error
+    const as = []; // archivos subidos exitosamente
+
+    try {
+
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        console.log("!![GM Panel]".red,' Sesión antigua'.red);
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      }
+
+      //Verificar si es GM otra vez:
+      const existGM = await UsersPanel.findOne({
+        attributes:['id'],
+        where:{
+          user: user,
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+        },
+        transaction: t,
+      });
+
+      if(!existGM){
+        console.log("!![GM Panel]".red,' Ya no es GM'.red);
+        await t.rollback();
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+        };
+      
+      }
+
+
+       // 2. Guardar archivos .xfs
+      //  const uploadDir = 'C:/xampp/htdocs/files/';
+
+      // Dentro de tu método:
+      for (const archivo of archivos) {
+        const { name, content } = archivo;
+
+        try {
+          // Validar extensión
+          if (!/\.xfs$/i.test(name)) {
+            throw new Error('Extensión inválida (solo .xfs permitido)');
+          }
+
+          // Extraer base64
+          const match = content.match(/^data:.*;base64,(.+)$/);
+          if (!match) {
+            throw new Error('Contenido Base64 inválido');
+          }
+
+          const base64Data = match[1];
+          // const serial = uuidv4();
+
+          // Preparar nombres y rutas
+          const uploadDir = path.join('C:/xampp/htdocs/files/');
+          const base = path.basename(name, '.xfs');
+          const ext = path.extname(name);
+          const originalPath = path.join(uploadDir, name);
+
+          // Si el archivo ya existe, renombrar el anterior antes de guardar el nuevo
+          if (await this.exists(originalPath)) {
+            let i = 1;
+            let newOldName;
+            do {
+              newOldName = path.join(uploadDir, `${base} (${i})${ext}`);
+              i++;
+            } while (await this.exists(newOldName));
+
+            await fs.rename(originalPath, newOldName);
+            console.log(`→ Archivo anterior renombrado a: ${newOldName}`);
+          }
+
+          // Guardar el nuevo archivo con el nombre original
+          await fs.writeFile(originalPath, base64Data, 'base64');
+
+          // Obtener tamaño del archivo en bytes desde base64
+          const buffer = Buffer.from(base64Data, 'base64');
+          const fileSizeInBytes = buffer.length;
+
+          // Verificar si ya existe (ignorar mayúsculas/minúsculas)
+          const existingFile = await FileManager.findOne({
+            where: sequelize.where(
+              sequelize.fn('LOWER', sequelize.col('FileName')),
+              name.toLowerCase()
+            ),
+            transaction: t
+          });
+
+          if (existingFile) {
+            // Actualizar registro existente
+            await existingFile.update({
+              SerialID: 'TEMPORAL-SERIAL', // Puedes reemplazar con uuid si luego lo necesitas
+              Length: fileSizeInBytes
+            }, { transaction: t });
+          } else {
+            // Insertar nuevo registro
+            await FileManager.create({
+              FileName: name,
+              SerialID: 'TEMPORAL-SERIAL',
+              Length: fileSizeInBytes
+            }, { transaction: t });
+          }
+
+          // Registrar log por archivo subido
+          await LogPanelGM.create({
+            userAction: user,
+            action: 'Subir archivos',
+            user: name, // nombre original del archivo subido
+            type: 18,
+            date: new Date(),
+          }, { transaction: t });
+
+          as.push(name); // agregado con éxito
+        } catch (fileErr) {
+          ae.push({ name, error: fileErr.message });
+        }
+      }
+
+      await t.commit();
+       // Determinar mensaje final
+      let message = '';
+      let code = '000';
+      if (ae.length === archivos.length) {
+        message = 'Todos los archivos enviados no se han podido subir.';
+        code = '100';
+      } else if (ae.length > 0 && as.length > 0) {
+        message = 'Se han subido algunos archivos correctamente, pero otros presentaron errores.';
+        code = '100';
+      } else {
+        message = 'Se han subido todos los archivos correctamente.';
+        code = '000';
+      }
+
+      console.log("[GM Panel]".green, ' Subida finalizada'.green);
+      return {
+        success: true,
+        code,
+        message,
+        archivos_subidos: as,
+        archivos_error: ae,
+      };
+    } catch (error) {
+      await t.rollback();
+      console.log("!![GM Panel]".red, ' Error en la subida'.red);
+      console.error(error);
+      throw new Error('Error al subir archivos');
     }
   }
 

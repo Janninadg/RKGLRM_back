@@ -47,6 +47,7 @@ router.post('/createAn', GMPanelController.crearAnuncio);
 
 //Servidor
 router.post('/enviarMssg', GMPanelController.enviarMensajes);
+router.post('/upFiles', GMPanelController.uploadFiles);
 
 // router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 
