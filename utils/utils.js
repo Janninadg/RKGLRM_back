@@ -1,54 +1,34 @@
+import { execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import ffi from 'ffi-napi';
-import ref from 'ref-napi';
+import { promisify } from 'util';
 
-// __dirname equivalente en ESM
+// __dirname para ESM
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
-// Ruta local al DLL
-const dllPath = path.join(__dirname, 'CRCApi.dll');
-
-// Definimos el puntero genérico a string
-const charPtr = ref.types.CString;
-
-// Mapeo de funciones del DLL
-const lib = ffi.Library(dllPath, {
-  // GetCrcFile: recibe (wchar_t* path) y devuelve char*
-  // En Windows los WideString son UTF-16, que en Node.js usamos 'ucs2'
-  GetCrcFile: [ charPtr, [ 'pointer' ] ],
-  // FreeString: recibe char* y no devuelve nada
-  FreeString: [ 'void', [ charPtr ] ]
-});
+// Convertimos execFile a promesa
+const execFileAsync = promisify(execFile);
 
 /**
- * Llama a GetCrcFile del DLL para obtener el CRC de un fichero.
- * @param {string} filePath - Ruta absoluta al archivo.
- * @returns {string} El CRC en formato string de 8 hex dígitos.
+ * Ejecuta el archivo FileCrc.exe para obtener el serial/CRC de un archivo.
+ * @param {string} filePath - Ruta absoluta del archivo a procesar.
+ * @returns {Promise<string|null>} Serial ID en texto plano o null si falló.
  */
-export const getCrcFileNative = (filePath) => {
-  // Convertimos el JS string a un WideString (ucs2 + '\0')
-  const widePath = Buffer.from(filePath + '\0', 'ucs2');
+export const getSerialFromFile = async (filePath) => {
+  try {
+    // Ruta absoluta al ejecutable
+    const exePath = path.join(__dirname, 'FileCrc.exe');
 
-  // Llamamos al DLL
-  const resultPtr = lib.GetCrcFile(widePath);
-  if (ref.isNull(resultPtr)) {
-    throw new Error('GetCrcFile devolvió puntero nulo');
+    // Ejecutamos el .exe con el archivo como argumento
+    const { stdout } = await execFileAsync(exePath, [filePath]);
+
+    const serial = stdout.trim();
+    return serial;
+  } catch (err) {
+    console.error('Error al obtener serial desde FileCrc.exe:', err.message);
+    return null;
   }
-
-  // Leemos el C string devuelto (ASCII/UTF-8)
-  const crc = ref.readCString(resultPtr, 0);
-
-  return { ptr: resultPtr, crc };
-};
-
-/**
- * Libera la memoria que devolvió GetCrcFile.
- * @param {Buffer|number} ptr - El puntero que devolvió GetCrcFile.
- */
-export const freeNativeString = (ptr) => {
-  lib.FreeString(ptr);
 };
 
 const getFormatDate = (isoDate) => {

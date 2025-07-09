@@ -35,7 +35,7 @@ import path from 'path';
 // import { v4 as uuidv4 } from 'uuid';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import FileManager from '../models/fileManagerModel.js';
-import { freeNativeString, getCrcFileNative } from '../utils/utils.js';
+import { getSerialFromFile } from '../utils/utils.js';
 
 
 class GMPanelService {
@@ -1773,10 +1773,8 @@ class GMPanelService {
 
           const fileSizeInBytes = buffer.length;
 
-          const { ptr, crc } = getCrcFileNative(filePath);
-          console.log('CRC del archivo:', crc);
-          // finalmente libera:
-          freeNativeString(ptr);
+           const serial = await getSerialFromFile(originalPath);
+          console.log('Serial ID generado:', serial);
 
           // Verificar si ya existe (ignorar mayúsculas/minúsculas)
           const existingFile = await FileManager.findOne({
@@ -1790,14 +1788,14 @@ class GMPanelService {
           if (existingFile) {
             // Actualizar registro existente
             await existingFile.update({
-              SerialID: 'TEMPORAL-SERIAL', // Puedes reemplazar con uuid si luego lo necesitas
+              SerialID: serial, // Puedes reemplazar con uuid si luego lo necesitas
               Length: fileSizeInBytes
             }, { transaction: t });
           } else {
             // Insertar nuevo registro
             await FileManager.create({
               FileName: name,
-              SerialID: 'TEMPORAL-SERIAL',
+              SerialID: serial,
               Length: fileSizeInBytes
             }, { transaction: t });
           }
