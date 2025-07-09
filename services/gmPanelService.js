@@ -1747,7 +1747,7 @@ class GMPanelService {
           // Validar extensión
           if (!/\.xfs$/i.test(name)) throw new Error('Extensión inválida');
 
-          const uploadDir = 'C:/xampp/htdocs/files/';
+          const uploadDir = 'C:/xampp/htdocs/ThisDownloader/';
           const base = path.basename(name, '.xfs');
           const ext = path.extname(name);
           const originalPath = path.join(uploadDir, name);
