@@ -145,7 +145,7 @@ class RefineriaService {
         
         try {
 
-            return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
+            // return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
 
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
@@ -236,20 +236,57 @@ class RefineriaService {
 
             const typeNotRef = [9,10,11,12,13,14];
 
-            if (itemUser && typeNotRef.includes(itemUser.type)){
+            // Comprobar si el item le pertenece actualmente al usuario...
+            const itemType = await ItemInfo.findOne({
+                where: {
+                    // id: idi,
+                    id: itemUser.itemid, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+            });
+          
+
+            if (itemUser && typeNotRef.includes(itemType.type)){
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'Este tipo de item no se puede refinar'.blue);
-                const typeName = setTypeName(itemUser.type);
+                const typeName = setTypeName(itemType.type);
                 return { success: false, code: '100', message: 'Este tipo de item no se puede refinar (Tipo : '+ typeName +').' };
             }
+
+            const maxLevelCreatures = await ConfigParameters.findOne({
+                where: {
+                name: 'max_ref_creatures'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const maxLevelItems= await ConfigParameters.findOne({
+                where: {
+                name: 'max_ref_items'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const maxLvlCreatures = parseInt(maxLevelCreatures.value);
+            const maxLvlItems = parseInt(maxLevelItems.value);
             
-            if (itemUser && itemUser.level >= 15){
+            // console.log(itemType.type)
+            //   console.log(itemUser)
+            if (itemType.type === 8 && itemUser.level >= maxLvlCreatures){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'La criatura llegó al nivel máximo de refinería'.blue);
+                return { success: false, code: '100', message: 'Tu criatura ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlCreatures+').' };
+            }
+
+            if (itemType.type !== 8 && itemUser.level >= maxLvlItems){
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'El item llegó al nivel máximo de refinería'.blue);
-                return { success: false, code: '100', message: 'Tu item ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. 15).' };
+                return { success: false, code: '100', message: 'Tu item ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlItems+').' };
             }
             
-
             // Verificar si tiene suficientes piedras a refinar....
             const userAsset = await UserAsset.findOne({
                 where: {

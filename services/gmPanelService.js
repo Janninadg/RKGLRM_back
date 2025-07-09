@@ -35,6 +35,8 @@ import path from 'path';
 // import { v4 as uuidv4 } from 'uuid';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import FileManager from '../models/fileManagerModel.js';
+import { freeNativeString, getCrcFileNative } from '../utils/utils.js';
+
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -1739,30 +1741,20 @@ class GMPanelService {
 
       // Dentro de tu método:
       for (const archivo of archivos) {
-        const { name, content } = archivo;
+        const { originalname: name, path: filePath } = archivo;
 
         try {
           // Validar extensión
-          if (!/\.xfs$/i.test(name)) {
-            throw new Error('Extensión inválida (solo .xfs permitido)');
-          }
+          if (!/\.xfs$/i.test(name)) throw new Error('Extensión inválida');
 
-          // Extraer base64
-          const match = content.match(/^data:.*;base64,(.+)$/);
-          if (!match) {
-            throw new Error('Contenido Base64 inválido');
-          }
-
-          const base64Data = match[1];
-          // const serial = uuidv4();
-
-          // Preparar nombres y rutas
-          const uploadDir = path.join('C:/xampp/htdocs/files/');
+          const uploadDir = 'C:/xampp/htdocs/files/';
           const base = path.basename(name, '.xfs');
           const ext = path.extname(name);
           const originalPath = path.join(uploadDir, name);
 
-          // Si el archivo ya existe, renombrar el anterior antes de guardar el nuevo
+          // Leer buffer desde disco
+          const buffer = await fs.readFile(filePath);
+
           if (await this.exists(originalPath)) {
             let i = 1;
             let newOldName;
@@ -1775,12 +1767,16 @@ class GMPanelService {
             console.log(`→ Archivo anterior renombrado a: ${newOldName}`);
           }
 
-          // Guardar el nuevo archivo con el nombre original
-          await fs.writeFile(originalPath, base64Data, 'base64');
+          await fs.writeFile(originalPath, buffer); // <- NO base64, sino buffer directo
 
-          // Obtener tamaño del archivo en bytes desde base64
-          const buffer = Buffer.from(base64Data, 'base64');
+          await fs.unlink(filePath);
+
           const fileSizeInBytes = buffer.length;
+
+          const { ptr, crc } = getCrcFileNative(filePath);
+          console.log('CRC del archivo:', crc);
+          // finalmente libera:
+          freeNativeString(ptr);
 
           // Verificar si ya existe (ignorar mayúsculas/minúsculas)
           const existingFile = await FileManager.findOne({

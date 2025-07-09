@@ -534,7 +534,9 @@ class GMPanelController {
 
        async uploadFiles(req, res, next) {
         try {
-          const { user,token,archivos} = req.body;
+          // const { user,token,archivos} = req.body;
+          const { user, token } = req.body;
+          const archivos = req.files; // <-- ahora los archivos están aquí, no en req.body
           console.log("[GM Panel]".green,' Subir archivos'.white,(' - Admin: '+user).white);
 
           const response = await GMPanelService.uploadFiles(user,token,archivos);

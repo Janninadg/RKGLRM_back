@@ -632,7 +632,15 @@ class MarketService {
                 return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder venderlo.' };
             }
 
-            const itemProhibido = [7035, 6042];
+            const itmprb = await ConfigParameters.findOne({
+                where: {
+                name: 'market_banned'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const itemProhibido = JSON.parse(itmprb.value);
 
             if (itemProhibido.includes(userItem.itemid)) {
                 await t.rollback();
