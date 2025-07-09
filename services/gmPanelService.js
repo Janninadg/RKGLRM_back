@@ -259,7 +259,7 @@ class GMPanelService {
             attributes:['id'],
             where:{
               user: user,
-              [Op.or]: [{ type: 0 }, { type: 9 },{type:2}],
+              [Op.or]: [{ type: 0 }, { type: 9 },{type:2},{type:4}],
             },
             // transaction: t,
           });
@@ -399,7 +399,7 @@ class GMPanelService {
             attributes:['id'],
             where:{
               user: user,
-              [Op.or]: [{ type: 0 }, { type: 9 }],
+              [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
             },
             transaction: t,
           });
@@ -520,7 +520,7 @@ class GMPanelService {
             attributes:['id'],
             where:{
               user: user,
-              [Op.or]: [{ type: 0 }, { type: 9 }],
+              [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
             },
             transaction: t,
           });
@@ -595,7 +595,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 }],
+            [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
           },
           transaction: t,
         });
@@ -773,7 +773,7 @@ class GMPanelService {
             attributes:['id'],
             where:{
               user: user,
-              [Op.or]: [{ type: 0 }, { type: 9 }],
+              [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
             },
             transaction: t,
           });
@@ -904,7 +904,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 }],
+            [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
           },
           transaction: t,
         });
@@ -1253,7 +1253,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -1358,7 +1358,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -1589,7 +1589,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -1719,7 +1719,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 9 },{type:4}],
         },
         transaction: t,
       });
@@ -1872,7 +1872,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -2072,7 +2072,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -2209,7 +2209,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
@@ -2327,7 +2327,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
           },
           transaction: t,
         });
@@ -2508,7 +2508,7 @@ class GMPanelService {
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
         },
         transaction: t,
       });
