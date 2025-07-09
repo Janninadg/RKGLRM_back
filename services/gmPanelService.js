@@ -1804,7 +1804,7 @@ class GMPanelService {
           await LogPanelGM.create({
             userAction: user,
             action: 'Subir archivos',
-            user: name, // nombre original del archivo subido
+            cupon: name, // nombre original del archivo subido
             type: 18,
             date: new Date(),
           }, { transaction: t });
