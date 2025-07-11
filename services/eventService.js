@@ -286,6 +286,10 @@ class EventService {
         return { success: false, code: '100', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
 
+      // var const
+
+      const goldPrizes = [];
+
       switch (estado) {
         case 0:
           // Eliminar partida:
@@ -561,64 +565,93 @@ class EventService {
               break;
             case 5:
               //Cerrar nuevo juego...:
-              await t.rollback(); // Revertir la transacción en caso de error
-              return { success: false, code: '301', message: 'El juego ya no está disponible...' };
+              // await t.rollback(); // Revertir la transacción en caso de error
+              // return { success: false, code: '301', message: 'El juego ya no está disponible...' };
 
               // Verifico token...
-              const tokenHot = await HotslotAuth.findOne({
+
+              const tokenHot = await GameAuth.findOne({
                 attributes: ['token'],
                 where: {
                   token: authGame,
                   user: user,
+                  type_game:type
                 },
                 transaction: t, // Asociar la transacción con esta consulta
               });
 
+            
               if(!tokenHot){
                 await t.rollback(); // Revertir la transacción en caso de error
                 return { success: false, code: '301', message: 'Has abierto este juego en otra pestaña...' };
               }
 
+              let hotProb = 0;
+
+              
+              const probsHot = await ConfigParameters.findOne({
+                  where: { name: 'hot_slot_prob' },
+                  transaction:t,
+              });
+
+              hotProb = parseFloat(probsHot.value);
+
+              console.log(hotProb);
+                
+                let gp = await ConfigParameters.findOne({
+                    where: { name: 'gold_prizes_hot' },
+                    transaction:t,
+                });
+
+                if (gp && typeof gp.value === 'string') {
+                  try {
+                    // Parseamos la cadena de texto como JSON
+                    const parsed = JSON.parse(gp.value);
+                    
+                    if (Array.isArray(parsed)) {
+                      goldPrizes.push(...parsed);
+                    } else {
+                      console.error('El valor no es un array:', parsed);
+                    }
+                  } catch (err) {
+                    console.error('Error al parsear los datos de game_4_probs:', err.message);
+                  }
+                }
+
               if(!matchFound){
 
                 //Decrementar tickets:
-                const userTickets = await Ticket.findOne({
-                  attributes: ['tickets'],
+                const  tickets = await UserAsset.findOne({
+                  // attributes: ['tickets'],
                   where: {
-                    id: user,
+                    user: user,
+                    asset:5
                   },
-                  transaction: t, // Asociar la transacción con esta consulta
+                  transaction:t, // Asociar la transacción con esta consulta
+                  lock: t.LOCK.UPDATE,
                 });
-      
-                // Revertir la transacción en caso de error
-                if(!userTickets || (userTickets && userTickets.tickets < 1)){
-                  await t.rollback();
-                  return { success: false, code: '001', message:`No tiene tickets suficientes para jugar en este evento. Refresca la página...` };
+
+                // await t.rollback(); // Revertir la transacción en caso de error
+                if(!tickets || tickets.amount < 1){
+                  await t.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`No tiene tickets suficientes para jugar al HotSlot` };
                 }
       
                 // Decrementar el ticket del usuario
-                await Ticket.decrement('tickets', {
-                  by: 1,
-                  where: {
-                    id: user,
-                  },
-                  transaction: t, // Asociar la transacción con esta operación
-                });
-      
-                const NewUserTickets = await Ticket.findOne({
-                  attributes: ['tickets'],
-                  where: {
-                    id: user,
-                  },
-                  transaction: t, // Asociar la transacción con esta consulta
-                });
+                await UserAsset.decrement('amount', {
+                    by: 1,
+                    where: {
+                      user: user,
+                      asset:5
+                    },
+                    transaction:t, // Asociar la transacción con esta operación
+                  });
 
-                if(Math.random() < 0.6){
+                if(Math.random() < hotProb){
                   //Pierdes :)
                   await t.commit();
-                  return {success:true,code:'003',xc:false,message:'¡Perdiste! Mejor suerte para la próxima...',ntc:NewUserTickets.tickets };
-                }
-                else{
+                  return {success:true,code:'003',xc:false,message:'¡Perdiste! Mejor suerte para la próxima...' };
+                } else {
 
                   const dataPr2 = await this.getAllPrizes(type,t);
 
@@ -641,15 +674,14 @@ class EventService {
                   newPr.push(premioIndex+1);
                   newNo.push(dataPr2[premioIndex].name);
 
-                  const arr1 = [6,7,8,9];
                   var valNext = false;
   
                   var message;
 
-                  if(newPr.length === 1  && arr1.includes(newPr[0]-1)){
+                  if(newPr.length === 1  && goldPrizes.includes(newPr[0]-1)){
                     valNext = true;
                     message = `Reclama tu(s) premio(s):  (${newNo.join(', ')}) o arriésgate y gira nuevamente...`;
-                  } else if(newPr.length === 1 && !arr1.includes(premioIndex)){
+                  } else if(newPr.length === 1 && !goldPrizes.includes(premioIndex)){
                     valNext = false;
                     message = `Reclama tu(s) premio(s):  (${newNo.join(', ')})`;
                   } else{
@@ -662,8 +694,8 @@ class EventService {
                   await Matches.create(
                     {
                       user: user,
-                      calabazas: JSON.stringify([]),
-                      premios:JSON.stringify(newPr),
+                      partida: JSON.stringify([]),
+                      premios_obtenidos:JSON.stringify(newPr),
                       picked:String(0),
                       nombres:JSON.stringify(newNo),
                       game:type,
@@ -674,21 +706,20 @@ class EventService {
                   );
 
                   await t.commit();
-                  return {success:true,code:'003',xc:true,_om2:newNo,_om3:newPr,_om4:valNext,message,ntc:NewUserTickets.tickets };
+                  return {success:true,code:'003',xc:true,_om2:newNo,_om3:newPr,_om4:valNext,message };
                 }
                 
               }
 
               // Actualizo partida...
 
-              const premioIn = JSON.parse(matchFound.premios);
+              const premioIn = JSON.parse(matchFound.premios_obtenidos);
               const premioName = JSON.parse(matchFound.nombres);
 
               let newPremios = [...premioIn];
               let newNombres = [...premioName];
-              const arr = [6,7,8,9];
 
-              if(Math.random() < 0.6){
+              if(Math.random() < hotProb){
 
                 // Eliminar partida:
                 await Matches.update(
@@ -698,17 +729,18 @@ class EventService {
                   },
                 );
 
-                if(premioIn.length === 1  && arr.includes(premioIn[0]-1)){
+                if(premioIn.length === 1  && goldPrizes.includes(premioIn[0]-1)){
                   // retornar 400 de cash
 
                   // Actualizar el cash en Cash
-                  await Cash.increment(
-                    'cash',
-                    { by: 400, where: { id: user }, transaction: t }
-                  );
+                  // await Cash.increment(
+                  //   'cash',
+                  //   { by: 400, where: { id: user }, transaction: t }
+                  // );
 
                   await t.commit();
-                  return {success:true,code:'003',xc:false,message:'Perdiste todos tus premios, pero se te retonó la mitad del valor del ticket...' };
+                  // return {success:true,code:'003',xc:false,message:'Perdiste todos tus premios, pero se te retonó la mitad del valor del ticket...' };
+                  return {success:true,code:'003',xc:false,message:'Perdiste todos tus premios...' };
                 }
 
                 //Pierdes :)
@@ -738,7 +770,7 @@ class EventService {
                 newNombres = [...premioName, dataPr[premioIndex].name];
                 var message;
 
-                if((premioIn.length === 1  && arr.includes(premioIn[0]-1)) ){
+                if((premioIn.length === 1  && goldPrizes.includes(premioIn[0]-1)) ){
                   valNext = false;
                   message = `Reclama tu(s) premio(s):  (${newNombres.join(', ')})`;
                 } else{
@@ -747,7 +779,7 @@ class EventService {
                 }
 
                 await Matches.update(
-                  { premios:JSON.stringify(newPremios),
+                  { premios_obtenidos:JSON.stringify(newPremios),
                     nombres:JSON.stringify(newNombres),
                   }, //cambiar a codigo_base
                   { where: { user: user,estado:1,game:type },
@@ -828,18 +860,21 @@ class EventService {
               return {success:true,code:'002',_msv:match,message:'Tienes una partida en curso...',_authg:tokenGen};
               break;
             case 5:
-              const slotAuth = await HotslotAuth.findOne({
+
+               const slotAuth = await GameAuth.findOne({
                 where: {
                   user: user, // Cambia esto para usar el nombre de usuario correcto
+                  type_game:type,
                 },
                 transaction: t, // Asociar la transacción con esta consulta
               });
     
               if(!slotAuth){
-                await HotslotAuth.create(
+                await GameAuth.create(
                   {
                     user: user,
                     token: tokenGen,
+                    type_game:type,
                     date: new Date(),
                   },
                   {
@@ -847,16 +882,36 @@ class EventService {
                   }
                 );
               } else{
-                await HotslotAuth.update(
+                await GameAuth.update(
                   { date: new Date(),
                     token: tokenGen,
                   },
                   {
-                      where: { user: user },
+                      where: { user: user,type_game:type },
                       transaction: t,
                   }
                 );
               }
+
+               let gp = await ConfigParameters.findOne({
+                    where: { name: 'gold_prizes_hot' },
+                    transaction:t,
+                });
+
+                if (gp && typeof gp.value === 'string') {
+                  try {
+                    // Parseamos la cadena de texto como JSON
+                    const parsed = JSON.parse(gp.value);
+                    
+                    if (Array.isArray(parsed)) {
+                      goldPrizes.push(...parsed);
+                    } else {
+                      console.error('El valor no es un array:', parsed);
+                    }
+                  } catch (err) {
+                    console.error('Error al parsear los datos de game_4_probs:', err.message);
+                  }
+                }
 
 
               if(!match){
@@ -866,18 +921,17 @@ class EventService {
 
               var message;
               var valNext=false;
-              var arr3 = [6,7,8,9];
 
-              var prem = JSON.parse(match.premios);
+              var prem = JSON.parse(match.premios_obtenidos);
               var nom = JSON.parse(match.nombres);
     
               if(prem.length === 2){
                 valNext = false;
                 message = `Reclama tus premios prendientes:  (${nom.join(', ')})`;
-              } else if(prem.length === 1 && arr3.includes(prem[0]-1)){
+              } else if(prem.length === 1 && goldPrizes.includes(prem[0]-1)){
                 valNext = true;
                 message = `Reclama tu premio prendiente:  (${nom.join(', ')}) o arriésgate y gira nuevamente...`;
-              } else if(prem.length === 1 && !arr3.includes(prem[0]-1)){
+              } else if(prem.length === 1 && !goldPrizes.includes(prem[0]-1)){
                 valNext = false;
                 message = `Reclama tu premio prendiente:  (${nom.join(', ')})`;
               }
@@ -1681,11 +1735,12 @@ class EventService {
           break;
         case 5:
            // Verifico token...
-           const authSlot = await HotslotAuth.findOne({
+            const authSlot = await GameAuth.findOne({
             attributes: ['token'],
             where: {
               token: authGame,
               user: user,
+              type_game:type,
             },
             transaction: t, // Asociar la transacción con esta consulta
           });
@@ -1697,12 +1752,13 @@ class EventService {
 
           //Obtener partida en curso
           const match4 = await Matches.findOne({
-            attributes: ['calabazas','premios','picked','nombres'],
+            // attributes: ['calabazas','premios','picked','nombres'],
             where: {
               user:user,
               estado:1,
               game:type,
             },
+            lock: t.LOCK.UPDATE,
             transaction: t, // Asociar la transacción con esta consulta
           });
 
@@ -1711,7 +1767,7 @@ class EventService {
             return { success: false, code: '001', message: 'No tienes premios para reclamar o una partida pendiente...' };
           }
 
-          prizes = JSON.parse(match4.premios);
+          prizes = JSON.parse(match4.premios_obtenidos);
           namesPrizes = JSON.parse(match4.nombres);
           break;
         default:
