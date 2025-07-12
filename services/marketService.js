@@ -1,25 +1,10 @@
 
 import { Sequelize,Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
-import { encrypt,generateKey } from '../helpers/encryption.js';
-import PanelGM from '../models/gmPanelModel.js';
 import UserGameInfo from '../models/userGameInfoModel.js';
-import Banlist from '../models/banListModel.js';
 import Cash from '../models/cashModel.js';
-import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
-import Cupon from '../models/cuponesModel.js';
-import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamersModel.js';
-import LogStream from '../models/logStreamsModel.js';
-import Linksgame from '../models/linksGameModel.js';
-import Anuncio from '../models/anunciosModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
-import EventPoint from '../models/eventPointsModel.js';
-import ItemStore from '../models/itemStoreModel.js';
-import PurchaseLogs from '../models/pucharseLogsModel.js';
-import PendingPresents from '../models/pendingPresentsModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import Marketplace from '../models/marketPlaceModel.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
@@ -28,7 +13,6 @@ import SellsRecord from '../models/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
-import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
 import { setClassName } from '../utils/prizesUtils.js';
 
@@ -598,7 +582,15 @@ class MarketService {
                 return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder venderlo.' };
             }
 
-            const itemProhibido = [7035, 6042];
+            const itmprb = await ConfigParameters.findOne({
+                where: {
+                name: 'market_banned'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const itemProhibido = JSON.parse(itmprb.value);
 
             if (itemProhibido.includes(userItem.itemid)) {
                 await t.rollback();
@@ -609,7 +601,6 @@ class MarketService {
                     message: 'Este item no puede ser vendido en el mercado.',
                 };
             }
-
 
             // Obtener el ID del usuario desde UserGameInfo
             const userGame = await UserGameInfo.findOne({
@@ -775,79 +766,6 @@ class MarketService {
             throw new Error('Error interno del servidor');
         }
     }
-
-    async socketSend(user){
-          try {
-              const objectSend = {
-                'user':user,
-                'type':4,
-              };
-
-              /*PRUEBA*/
-            //   console.log("[Object Send] ".green, objectSend);
-            //   const objectReceived = {
-            //     'user': user,
-            //     'reason':1,
-            //   }
-            //   console.log("[Object Received] ".magenta, objectReceived);
-
-            //   return {success:true, obj:objectReceived};
-             /*END*/
-
-              const activos = obtenerClientesActivos();
-              // console.log("[Servidor] Clientes activos:", activos);
-      
-              let res;
-      
-              if (activos.length > 0) {
-                  // enviarMensajeACliente(activos[0], mssg);
-                  try {
-                    // Espera la respuesta de la promesa
-                    res = await enviarMensajeACliente(activos[0], objectSend);
-                    // console.log("Respuesta recibida:", res);
-                    // Aquí puedes utilizar la variable 'res' que contiene la respuesta
-                    // return res; // O hacer lo que necesites con ella
-                    if(res.code && res.code==='999'){
-                        return res;
-                    }
-                  } catch (error) {
-                    console.error("Error al enviar mensaje:", error);
-                    return {
-                      success: false,
-                      code: '999',
-                      message: 'El servidor no puede realizar la comprobación para el mercado. Contacta con el administrador.'
-                    };
-                    // Maneja el error o lanza una excepción
-                  }
-              } else {
-                  console.log("!![Server] No hay clientes activos para enviar mensajes.".red);
-                  // console.log("!![Server]".blue,' No se pudo enviar el mensaje porque no hay clientes activos.'.blue);
-                  return {
-                    success: false,
-                    code: '999',
-                    message: 'Servidor inactivo, no se puede realizar la comprobación para el mercado. Contacta con el administrador.'
-                  };
-              }
-      
-            const response = JSON.parse(res);
-            console.log("[Object Received] ".magenta, response);
-            return {success:true,obj:response};
-          } catch (errorObj) {
-            console.error("Error al enviar mensaje:", errorObj);
-            // return errorObj;  // Devuelves el error estándar que tú mismo preparaste
-            console.log("!![Server] El servidor no puede realizar la comprobación para el mercado.".red);
-            if(errorObj.code && errorObj.code==='999'){
-                return errorObj;
-            } else{
-                return {
-                    success: false,
-                    code: '999',
-                    message: 'El servidor no puede realizar la comprobación para el mercado. Contacta con el administrador.'
-                  };
-            }
-
-        }
-        }
 
     async getHistoryPucharse(user,token) {
         const t = await sequelize.transaction(); // Iniciar una transacción

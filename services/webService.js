@@ -1,27 +1,10 @@
 
 import { Sequelize,Op } from 'sequelize';
-import sequelize from '../config/database.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
-import { encrypt,generateKey } from '../helpers/encryption.js';
-import PanelGM from '../models/gmPanelModel.js';
-import UserGameInfo from '../models/userGameInfoModel.js';
-import Banlist from '../models/banListModel.js';
-import Cash from '../models/cashModel.js';
-import TrackingPacket from '../models/trackingPacketModel.js';
-import ItemInfo from '../models/itemInfoModel.js';
-import Cupon from '../models/cuponesModel.js';
-import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamersModel.js';
-import LogStream from '../models/logStreamsModel.js';
 import Linksgame from '../models/linksGameModel.js';
-import Anuncio from '../models/anunciosModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import TypeAsset from '../models/typeAssetsModel.js';
-import AnunciosComment from '../models/anunciosCommentModel.js';
-import StreamPlatform from '../models/streamsPlatformsModel.js';
 import puppeteer from 'puppeteer'; // Importa Puppeteer
 import axios from 'axios';
-import StagesReset from '../models/stagesResetModel.js';
 
 const IMG_OFF = "https://res.cloudinary.com/dgh0ctded/image/upload/f_auto,q_auto/afbhaox5bxrydq17t8ik";
 

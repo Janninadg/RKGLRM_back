@@ -29,6 +29,26 @@ class UserController {
     }
   }
 
+  async verifyToken(req, res) {
+    try {
+      const { IOU9jO,MIOhKK, IOJKOl } = req.body;
+
+      const user = decrypt(MIOhKK,IOU9jO);
+      const token = decrypt(IOJKOl,IOU9jO);
+
+      const result = await UserService.verifyToken(user,token);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error al obtener los premios de la ruleta:', error.message);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
   // Obtener datos de usuario por ID
   async getUserById(req, res) {
     try {
@@ -242,18 +262,6 @@ class UserController {
     }
   }
 
-  async getRankingClanes(req, res, next) {
-    try {
-      const ranking = await UserService.getRankingClanes();
-      //console.log(ranking);
-
-      return res.status(200).json({rc:ranking});
-    } catch (error) {
-      console.error('Error al obtener el ranking:', error);
-      return res.status(500).json({ error: 'Error interno del servidor' });
-    }
-  }
-
   async getTickets(req, res) {
 
     try {
@@ -283,53 +291,6 @@ class UserController {
     }
   }
 
-  async resetStage(req, res) {
-    try {
-
-      console.log("RESET STAGE - FROM IP: ".blue,req.clientIp.green);
-
-      //enviar otro key para comparar...
-      const { W4aRzY,/*K2tFvE,T7hLpW,*/j1xYbZ } = req.body;
-
-      //const signature = K2tFvE;
-
-      //const ver = verifySignature(JSON.stringify(W4aRzY), signature, T7hLpW);
-      
-      // Calcula un resumen de los datos recibidos
-      const receivedDataHash = calculateDataHash(W4aRzY);
-      // Compara el resumen de los datos recibidos con el resumen incluido en los datos
-      const isDataIntegrityValid = receivedDataHash === j1xYbZ;
-
-      const { MOLjPO,OPJKOU,UIODMM,MFLDOO } = W4aRzY;
-
-      //console.log("DATA:",W4aRzY);
-      //console.log(signature);
-      //console.log("VER:",ver);
-      console.log("HASH:",isDataIntegrityValid);
-
-      const key = MOLjPO;
-      const user = decrypt(OPJKOU,key);
-      const token = decrypt(MFLDOO,key);
-      const idStage = Number(decrypt(UIODMM,key));
-      //const type = Number(decrypt(UIODMM,key));
-
-      const paramsString = `${MOLjPO}-${OPJKOU}-${UIODMM}-${MFLDOO}`;
-
-      const result = await UserService.resetStage(token,idStage,user,isDataIntegrityValid,paramsString, req);
-
-      if (result.success || result.code) {
-        return res.status(200).json(result);
-      } else {
-        return res.status(400).json(result);
-      }
-    } catch (error) {
-      console.error('Error al realizar la operación:', error);
-      return res.status(500).json({ message: 'Error interno del servidor' });
-    }
-  }
-
-
-
   async buyAssets(req, res) {
     try {
 
@@ -347,76 +308,6 @@ class UserController {
       //console.log(paramsString);
 
       const result = await UserService.buyAssets(user,token,assetid,type_payment,Number(cantidad),req);
-  
-      console.log("---------------------------------------------------------------".magenta);
-      
-      if (result.success || result.code) {
-        return res.status(200).json(result);
-      } else {
-        return res.status(400).json(result);
-      }
-    } catch (error) {
-      console.error('Error al realizar la compra de activos:', error);
-      return res.status(500).json({error: 'Error interno del servidor'});
-    }
-  }  
-
-
-  async setComentarioAnuncio(req, res) {
-    try {
-
-      const { user,token,anuncio,comentario } = req.body;
-
-      const result = await UserService.setComentarioAnuncio(user,token,anuncio,comentario ,req);
-  
-      if (result.success || result.code) {
-        return res.status(200).json(result);
-      } else {
-        return res.status(400).json(result);
-      }
-    } catch (error) {
-      console.error('Error al comentar anuncio:', error);
-      return res.status(500).json({error: 'Error interno del servidor'});
-    }
-  }  
-
-  async calificarEvento(req, res) {
-    try {
-
-      const { user,token,evento,comentario,estrellas } = req.body;
-
-      const result = await UserService.calificarEvento(user,token,evento,comentario,estrellas ,req);
-  
-      if (result.success || result.code) {
-        return res.status(200).json(result);
-      } else {
-        return res.status(400).json(result);
-      }
-    } catch (error) {
-      console.error('Error al comentar evento:', error);
-      return res.status(500).json({error: 'Error interno del servidor'});
-    }
-  } 
-  
-  async removeCharacter(req, res) {
-    try {
-
-      const { user,token,character } = req.body;
-
-      console.log(character);
-
-  
-
-      console.log("---------------------------------------------------------------".magenta);
-      console.log("ELIMINAR PERSONAJE - FROM IP: ".blue,req.clientIp.green);
-      console.log('Usuario:'.blue,user.yellow);
-
-      //onsole.log(typePay);
-      //console.log(decrypt(CCIOMD,key));
-
-      //console.log(paramsString);
-
-      const result = await UserService.removeCharacter(user,token,character,req);
   
       console.log("---------------------------------------------------------------".magenta);
       

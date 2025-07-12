@@ -1,36 +1,14 @@
 
 import { Sequelize,Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
-import { encrypt,generateKey } from '../helpers/encryption.js';
-import PanelGM from '../models/gmPanelModel.js';
 import UserGameInfo from '../models/userGameInfoModel.js';
-import Banlist from '../models/banListModel.js';
-import Cash from '../models/cashModel.js';
-import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
-import Cupon from '../models/cuponesModel.js';
-import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamersModel.js';
-import LogStream from '../models/logStreamsModel.js';
-import Linksgame from '../models/linksGameModel.js';
-import Anuncio from '../models/anunciosModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
-import EventPoint from '../models/eventPointsModel.js';
-import ItemStore from '../models/itemStoreModel.js';
-import PurchaseLogs from '../models/pucharseLogsModel.js';
-import PendingPresents from '../models/pendingPresentsModel.js';
-import LogRewardsUser from '../models/logRewardUserModel.js';
-import Marketplace from '../models/marketPlaceModel.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
-import TempUserItemInfo from '../models/tempUserItemInfoModel.js';
-import SellsRecord from '../models/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
-import GameActive from '../models/gameActiveModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
-import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import { setClassName, setTypeName } from '../utils/prizesUtils.js';
 
 class RefineriaService {
@@ -145,7 +123,7 @@ class RefineriaService {
         
         try {
 
-            return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
+            // return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
 
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
@@ -236,19 +214,56 @@ class RefineriaService {
 
             const typeNotRef = [9,10,11,12,13,14];
 
-            if (itemUser && typeNotRef.includes(itemUser.type)){
+            // Comprobar si el item le pertenece actualmente al usuario...
+            const itemType = await ItemInfo.findOne({
+                where: {
+                    // id: idi,
+                    id: itemUser.itemid, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+            });
+
+
+ if (itemUser && typeNotRef.includes(itemType.type)){
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'Este tipo de item no se puede refinar'.blue);
-                const typeName = setTypeName(itemUser.type);
+                const typeName = setTypeName(itemType.type);
                 return { success: false, code: '100', message: 'Este tipo de item no se puede refinar (Tipo : '+ typeName +').' };
             }
+
+            const maxLevelCreatures = await ConfigParameters.findOne({
+                where: {
+                name: 'max_ref_creatures'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const maxLevelItems= await ConfigParameters.findOne({
+                where: {
+                name: 'max_ref_items'
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            const maxLvlCreatures = parseInt(maxLevelCreatures.value);
+            const maxLvlItems = parseInt(maxLevelItems.value);
             
-            if (itemUser && itemUser.level >= 15){
+            // console.log(itemType.type)
+            //   console.log(itemUser)
+            if (itemType.type === 8 && itemUser.level >= maxLvlCreatures){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'La criatura llegó al nivel máximo de refinería'.blue);
+                return { success: false, code: '100', message: 'Tu criatura ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlCreatures+').' };
+            }
+
+            if (itemType.type !== 8 && itemUser.level >= maxLvlItems){
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'El item llegó al nivel máximo de refinería'.blue);
-                return { success: false, code: '100', message: 'Tu item ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. 15).' };
+                return { success: false, code: '100', message: 'Tu item ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlItems+').' };
             }
-            
 
             // Verificar si tiene suficientes piedras a refinar....
             const userAsset = await UserAsset.findOne({
@@ -423,78 +438,7 @@ class RefineriaService {
         }
     }
 
-    async socketSend(user){
-        try {
-            const objectSend = {
-              'user':user,
-              'type':4,
-            };
-
-            /*PRUEBA*/
-          //   console.log("[Object Send] ".green, objectSend);
-          //   const objectReceived = {
-          //     'user': user,
-          //     'reason':1,
-          //   }
-          //   console.log("[Object Received] ".magenta, objectReceived);
-
-          //   return {success:true, obj:objectReceived};
-           /*END*/
-
-            const activos = obtenerClientesActivos();
-            // console.log("[Servidor] Clientes activos:", activos);
-    
-            let res;
-    
-            if (activos.length > 0) {
-                // enviarMensajeACliente(activos[0], mssg);
-                try {
-                  // Espera la respuesta de la promesa
-                  res = await enviarMensajeACliente(activos[0], objectSend);
-                  // console.log("Respuesta recibida:", res);
-                  // Aquí puedes utilizar la variable 'res' que contiene la respuesta
-                  // return res; // O hacer lo que necesites con ella
-                  if(res.code && res.code==='999'){
-                      return res;
-                  }
-                } catch (error) {
-                  console.error("Error al enviar mensaje:", error);
-                  return {
-                    success: false,
-                    code: '999',
-                    message: 'El servidor no puede realizar la comprobación para la refineria. Contacta con el administrador.'
-                  };
-                  // Maneja el error o lanza una excepción
-                }
-            } else {
-                console.log("!![Server] No hay clientes activos para enviar mensajes.".red);
-                // console.log("!![Server]".blue,' No se pudo enviar el mensaje porque no hay clientes activos.'.blue);
-                return {
-                  success: false,
-                  code: '999',
-                  message: 'Servidor inactivo, no se puede realizar la comprobación para la refineria. Contacta con el administrador.'
-                };
-            }
-    
-          const response = JSON.parse(res);
-          console.log("[Object Received] ".magenta, response);
-          return {success:true,obj:response};
-        } catch (errorObj) {
-          console.error("Error al enviar mensaje:", errorObj);
-          // return errorObj;  // Devuelves el error estándar que tú mismo preparaste
-          console.log("!![Server] El servidor no puede realizar la comprobación para la refineria.".red);
-          if(errorObj.code && errorObj.code==='999'){
-              return errorObj;
-          } else{
-              return {
-                  success: false,
-                  code: '999',
-                  message: 'El servidor no puede realizar la comprobación para la refineria. Contacta con el administrador.'
-                };
-          }
-
-      }
-      }
+  
 }
 
 export default new RefineriaService();

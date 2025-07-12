@@ -20,17 +20,16 @@ const router = express.Router();
 
 
 router.post('/gtAss', UserController.getAssetsUser);
+router.post('/sesAct', UserController.verifyToken);
 
 // Registrar usuario
 router.post('/reg', UserController.registerUser);
 
 // Ruta para obtener el perfil de un usuario por su nombre de usuario
 router.get('/prf/:name/:token', UserController.getProfile);
-router.post('/deleteChr', UserController.removeCharacter);
 
 // Ruta para obtener el ranking
 router.get('/rnk', UserController.getRanking);
-router.get('/rnkc', UserController.getRankingClanes);
 
 // Ruta para obtener tipo de cambio
 router.get('/exch', UserController.getExchangeRate);
@@ -40,14 +39,8 @@ router.post('/exch/ok', UserController.exchangeCash);
 
 //Stages:
 router.post('/stStgs', UserController.getTickets);
-router.post('/rstStgs', UserController.resetStage);
 
 //Shopping
 router.post('/shopAst', UserController.buyAssets);
-
-//Comentarios:
-
-router.post('/comAn', UserController.setComentarioAnuncio);
-router.post('/calEvt', UserController.calificarEvento);
 
 export default router;

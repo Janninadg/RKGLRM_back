@@ -2,7 +2,6 @@ import MarketService from '../services/marketService.js';
 import { encrypt,decrypt,generateKey } from '../helpers/encryption.js';
 import { verifySignature,calculateDataHash } from '../helpers/signedData.js';
 import colors from "colors";
-import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 
 class MarketController {
     async buyItems(req, res, next) {

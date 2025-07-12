@@ -14,18 +14,13 @@ import ExchangeRate from '../models/exchangeRateModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
 import LogExchange from '../models/logExchanges.js';
 import TicketsMode from '../models/ticketsModeModel.js';
-import UserStageInfo from '../models/userStageInfo.js';
 // import BarraConexion from '../models/barProgressModel.js';
 import { decrypt, encrypt } from '../helpers/encryption.js';
 import config from '../config/config.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import TypeAsset from '../models/typeAssetsModel.js';
-import AnunciosComment from '../models/anunciosCommentModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
-import EventsReview from '../models/eventsReviewModel.js';
-import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
-import EventLevelCharacter from '../models/eventLevelChModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 
 class UserService {
@@ -36,6 +31,33 @@ class UserService {
       return users;
     } catch (error) {
       console.error('Error al obtener la lista de usuarios:', error);
+      throw new Error('Error en el servidor');
+    }
+  }
+  
+  async verifyToken(user,token) {
+    const t = await sequelize.transaction();
+    try {
+      // Verificar token:
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '001', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
+      }
+
+      await t.commit();
+      return {success:true,code: '000'};
+    } catch (error) {
+      await t.rollback();
+      console.error('Error al verificar token:', error);
       throw new Error('Error en el servidor');
     }
   }
@@ -579,7 +601,7 @@ class UserService {
       await UserGameInfo.create(
         {
           name: username,
-          gold:12000,
+          gold:0,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
@@ -591,7 +613,7 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 10000 }, { transaction });
+      await Cash.create({ id: username, cash: 0 }, { transaction });
       // await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
       // Token
@@ -667,21 +689,21 @@ class UserService {
       //   fecha: new Date(), 
       // }, { transaction });
 
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:12000,
-        tipo_recompensa: 1,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:12000,
+      //   tipo_recompensa: 1,
+      //   fecha: new Date(), 
+      // }, { transaction });
 
-      await LogRewardsUser.create({  
-        user:username,
-        origen:0,
-        recompensa:10000,
-        tipo_recompensa: 2,
-        fecha: new Date(), 
-      }, { transaction });
+      // await LogRewardsUser.create({  
+      //   user:username,
+      //   origen:0,
+      //   recompensa:10000,
+      //   tipo_recompensa: 2,
+      //   fecha: new Date(), 
+      // }, { transaction });
 
       // await LogRewardsUser.create({  
       //   user:username,
@@ -694,7 +716,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 10K Cash y 12K Oro de recompensa por registrarte!';
+      const message = '¡Te has registrado correctamente!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
@@ -789,151 +811,6 @@ class UserService {
     }
   }
 
-  async removeCharacter(username,token,character) {
-    const t = await sequelize.transaction();
-    const currency = 1; // Por defecto, 1 es CASH
-    try {
-
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: username,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!sessionToken){
-        //await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '001', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
-      }
-
-      // 2. Obtener usuario
-      const userGameInfo = await UserGameInfo.findOne({
-        where: { name: username },
-        // attributes: ['id', 'gold', 'powertimedate', 'lastconnect'],
-        transaction: t,
-        lock: t.LOCK.UPDATE, // Bloqueo para modificación segura futura
-      });
-
-      if (!userGameInfo) {
-        await t.rollback();
-        return { message: 'Usuario no encontrado',code:'999',succes:false };
-      }
-
-      // 3. Verificar que el personaje le pertenece
-      const characterReg = await CharacterInfo.findOne({
-        where: { id: character, userid: userGameInfo.id },
-        transaction: t,
-        lock: t.LOCK.UPDATE, // Si lo vas a eliminar después
-      });
-
-      if (!characterReg) {
-        await t.rollback();
-        return { success: false, message: 'El personaje no te pertence o ya no existe, actualiza la página.',code:'999' };
-      }
-
-      if(characterReg.slot === 0){
-        await t.rollback();
-        return { success: false, message: 'No puedes eliminar un personaje principal.',code:'999' };
-      }
-
-      if(characterReg.slot === 0){
-        await t.rollback();
-        return { success: false, message: 'No puedes eliminar un personaje principal.',code:'999' };
-      }
-
-       // Verificar si el usuario ya seleccionó un personaje
-      const existingEntry = await EventLevelCharacter.findOne({
-        where: {
-            user: username,
-            characterid: character
-        },
-        transaction: t,
-      });
-
-      if(existingEntry){
-        await t.rollback();
-        return { success: false, message: 'No puedes eliminar este personaje porque lo estas usando en el evento de reto de nivel.',code:'999' };
-      }
-
-      // 4. Obtener cash del usuario
-      const cash = await Cash.findOne({
-        where: { id: username },
-        // attributes: ['cash'],
-        transaction: t,
-        lock: t.LOCK.UPDATE, // Vamos a descontar cash
-      });
-
-      // 4. Obtener precio desde ConfigParameter
-      const config = await ConfigParameters.findOne({
-        where: { name: 'price_remove' },
-        attributes: ['value'],
-        transaction: t,
-      });
-
-      // 5. Verificar si han pasado al menos 7 días desde la creación del personaje
-      const fechaCreacion = new Date(characterReg.createtime);
-      const hace7Dias = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      console.log('Ch date create: ',fechaCreacion);
-        console.log('Limit day 7: ',hace7Dias);
-
-
-      if (fechaCreacion > hace7Dias) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '999',
-          message: `Este personaje fue creado hace menos de 7 días. No puedes eliminarlo aún.`,
-        };
-      }
-
-      let priceRemove = 0;
-      if (config) {
-        try {
-          const priceJson = JSON.parse(config.value);
-          priceRemove = priceJson[currency] || 0;
-        } catch {
-          priceRemove = 0;
-        }
-      }
-  
-      // 6. Validar que tenga suficiente cash
-      if (userGameInfo.gold < priceRemove) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '999',
-          message: `No tienes suficiente oro para eliminar el personaje. Se requieren ${priceRemove} de Oro.`,
-        };
-      }
-
-       // 6. Descontar el cash
-      userGameInfo.gold -= priceRemove;
-      await userGameInfo.save({ transaction: t });
-
-      // 7. Registrar la eliminación del personaje
-      await LogRemoveCharacter.create({
-        charname: characterReg.name,
-        level: characterReg.level,
-        slot: characterReg.slot,
-        user:username,
-        fecha: new Date(),
-      }, { transaction: t });
-
-      // 8. Eliminar el personaje de CharacterInfo
-      await characterReg.destroy({ transaction: t });
-      
-      // Commit de la transacción si todo fue exitoso
-      await t.commit();
-      return {success:true,code:'000',message:'El personaje fue eliminado con éxito'};
-    } catch (error) {
-      console.error('Error al obtener el perfil del usuario:', error);
-      throw new Error('Error interno del servidor');
-    }
-  }
-
   async getRanking() {
     try {
       const rankingData = await sequelize.query(
@@ -978,42 +855,6 @@ class UserService {
       throw new Error('Error interno del servidor');
     }
   }
-
-  async getRankingClanes() {
-    try {
-      const rankingData = await sequelize.query(
-        `
-        SELECT 
-            u.clanid,
-            clan.name AS clanName,
-            SUM(ci.win) AS totalWins,
-            SUM(ci.lose) AS totalLoses,
-            CASE 
-                WHEN (SUM(ci.win) + SUM(ci.lose)) > 0 
-                THEN ((SUM(ci.win) - SUM(ci.lose)) * 0.255)
-                ELSE 0 
-            END AS winrate
-        FROM characterinfo ci
-        INNER JOIN usergameinfo u ON ci.userid = u.id
-        INNER JOIN claninfo clan ON u.clanid = clan.id
-        WHERE u.clanid != 0
-        GROUP BY u.clanid, clan.name
-        ORDER BY winrate DESC
-        `,
-        { type: sequelize.QueryTypes.SELECT }
-    );
-  
-      /**   CASE
-          WHEN ci.lose = 0 AND ci.win = 0 THEN 1
-          WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
-          WHEN ci.lose > 0 THEN ci.win / ci.lose
-        END AS winrate*/
-      return rankingData;
-    } catch (error) {
-      console.error('Error al obtener el ranking:', error);
-      throw new Error('Error interno del servidor');
-    }
-  }
   
   async getTickets(userId,type,mode) {
     try {
@@ -1028,148 +869,6 @@ class UserService {
 
       return userTicket ? {tickets:userTicket.tickets} : {tickets:0};
     } catch (error) {
-      console.error('Error al obtener la cantidad de tickets:', error);
-      throw new Error('Error en el servidor');
-    }
-  }
-
-  async resetStage(token,idStage,user,isDataIntegrityValid,paramsString, req) {
-    const t = await sequelize.transaction();
-    try {
-      // Verificar el paquete utilizando la clase PacketVerifier
-
-      const verifyPacketEqual = (isDataIntegrityValid);// && (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
-      const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-      console.log(banInfo);
-      if (banInfo) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return banInfo;
-      }
-  
-      const trx = await sequelize.transaction();
-      // Si la cadena de parámetros no existe, insertarla en trackingpacket
-      await TrackingPacket.create(
-        {
-          packet: paramsString,
-          user: user,
-          fecha_uso: new Date(),
-        },
-        {
-          transaction: trx, // Asociar la transacción con esta operación
-        }
-      );
-
-      await trx.commit();
-
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '300', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
-      }
-
-      //Verificar cantidad de tickets:
-      const tcksStage = await TicketsMode.findOne({
-        where:{
-          user: user,
-          type:1,
-          mode:idStage,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-        lock: t.LOCK.UPDATE,
-      });
-
-      if(!tcksStage || tcksStage.tickets <= 0){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '200', message: 'No tienes tickets suficientes para resetear este stage' };
-      }
-
-      //Obtener id de usuario:
-      const usergetId = await UserGameInfo.findOne({
-        attributes:['id'],
-        where:{
-          name: user
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if (!usergetId) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
-      }
-
-       // Obtener todos los id's de personajes
-       const personajes = await CharacterInfo.findAll({
-        attributes: ['id'],
-        where: {
-          userid: usergetId.id,
-        },
-        raw: true,
-        transaction: t,
-      });
-
-      // Mapear los resultados a un array de números
-      const arrayPersonajes = personajes.map((item) => item.id)
-      //console.log(arrayPersonajes);
-
-      if(arrayPersonajes.length <= 0){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '100', message: 'No tienes personajes creados' };
-      }
-
-      //Si si tiene verificar que hayan personajes para todos los stages
-
-      var arrId = [];
-
-      for(const p of arrayPersonajes){
-        //console.log(p);
-        const ExistPersonajeInStage = await UserStageInfo.findOne({
-          attributes: ['id'],
-          where: {
-            characterid: p,
-            stage: idStage,
-          },
-          transaction: t, // Asociar la transacción con esta consulta
-        });
-
-        if(ExistPersonajeInStage){
-          arrId.push(ExistPersonajeInStage.id);
-        }
-      }
-
-      if(arrId.length<= 0){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '100', message: 'Aún no has usado ninguno de tus personaje en este stage' };
-      }
-
-      // Como si existe...eliminamos:
-      // Eliminar los registros
-      await UserStageInfo.destroy({
-        where: {
-          id: {
-            [Op.in]: arrId,
-          },
-        },
-        transaction: t,
-      });
-
-      // Decrementar:
-      tcksStage.tickets -= 1;
-      await tcksStage.save({ transaction: t });
-
-      // Commit de la transacción si todo fue exitoso
-      await t.commit();
-      return { success: true, code: '000', message: 'Se ha reseteado el stage correctamente' };
-    } catch (error) {
-      await t.rollback();
       console.error('Error al obtener la cantidad de tickets:', error);
       throw new Error('Error en el servidor');
     }
@@ -1395,271 +1094,7 @@ class UserService {
     }
   }
 
-  async setComentarioAnuncio(user,token,anuncio,comentario ,req) {
-    const t = await sequelize.transaction();
-  
-    try {
 
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        // console.log('[ERROR]'.red,'Sesión antigua'.red);
-        return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
-      }
-
-      // Verificar token blackout:
-      const blackoutToken = await Blackout.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          user: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(blackoutToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        // console.log('[ERROR]'.red,'Sesión antigua'.red);
-        return { success: false, code: '999', message: 'Sesión inválida, ya ha cerrado sesión. Actualice o cierre la página.' };
-      }
-
-      const userInfo = await User.findOne({
-        where: {
-          id: user,
-        },
-        transaction: t,
-      });
-
-      const now = new Date();
-
-      // Ajustar la hora a la zona horaria de Perú (UTC -5)
-      const localTimePeru = new Date(now.setUTCHours(now.getUTCHours() - 5));
-
-      // Verificar que no haya más de 5 comentarios en el último minuto
-      const unMinutoAtras = new Date(localTimePeru - 60 * 1000);
-      const comentariosRecientes = await AnunciosComment.count({
-        where: {
-          anuncio: anuncio,
-          apodo: userInfo.apodo,
-          fecha: {
-            [Op.gt]: unMinutoAtras, // Comentarios hechos en el último minuto
-          },
-        },
-        transaction: t,
-      });
-
-      if (comentariosRecientes >= 5) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '100',
-          message: 'Estás comentando demasiado rápido, evita hacer spam.',
-        };
-      }
-
-      if (!comentario || comentario.length === 0 || comentario.length > 200) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '200',
-          message: 'Tu comentario no tiene el rango de caracteres admitidos (1-200).',
-        };
-      }
-
-      // Obtener el diccionario de palabras malas desde ConfigParameters
-      const badWordsConfig = await ConfigParameters.findOne({
-        where: { name: 'badwords' },
-        attributes: ['value'], // Suponiendo que "value" es la columna donde está almacenado el JSON
-        transaction: t,
-      });
-
-      let palabrasMalas;
-
-      if (!badWordsConfig) {
-        palabrasMalas = [];
-      } else{
-        palabrasMalas = JSON.parse(badWordsConfig.value);
-      }
-      
-      const contienePalabrasMalas = palabrasMalas.some((palabra) =>
-        comentario.toLowerCase().includes(palabra.toLowerCase())
-      );
-
-      if (contienePalabrasMalas) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '200',
-          message: 'Tu comentario tiene palabras que no están permitidas, vuelve a intentarlo.',
-        };
-      }
-
-      // Si todo está bien, guardar el comentario
-      await AnunciosComment.create(
-        {
-          anuncio: anuncio,
-          apodo: userInfo.apodo,
-          comentario: comentario,
-          fecha: localTimePeru,
-        },
-        { transaction: t }
-      );
-
-      // Confirmar la transacción
-      await t.commit();
-     
-      return { success: true, code: '000', message: 'Se ha guardado tu comentario'};
-    } catch (error) {
-      await t.rollback();
-      console.log(error);
-      throw new Error('Error al realizar al comentar');
-    }
-  }
-
-  async calificarEvento(user,token,evento,comentario,estrellas ,req) {
-    const t = await sequelize.transaction();
-  
-    try {
-
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        // console.log('[ERROR]'.red,'Sesión antigua'.red);
-        return { success: false, code: '999', message: 'Token inválido o sesión antigua para realizar este comentario...' };
-      }
-
-       // Verificar token blackout:
-       const blackoutToken = await Blackout.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          user: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(blackoutToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        // console.log('[ERROR]'.red,'Sesión antigua'.red);
-        return { success: false, code: '999', message: 'Sesión inválida, ya ha cerrado sesión. Actualice o cierre la página.' };
-      }
-
-      const userInfo = await User.findOne({
-        where: {
-          id: user,
-        },
-        transaction: t,
-      });
-
-      const now = new Date();
-
-      // Ajustar la hora a la zona horaria de Perú (UTC -5)
-      const localTimePeru = new Date(now.setUTCHours(now.getUTCHours() - 5));
-
-      const eventCalf = await EventsReview.count({
-        where: {
-          evento: evento,
-          apodo: userInfo.apodo,
-        },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (eventCalf) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '100',
-          message: 'Ya has calificado este evento.',
-        };
-      }
-
-      if (estrellas > 5 || estrellas < 1) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '200',
-          message: 'La calificación debe de estar entre 1 a 5 estrellas.',
-        };
-      }
-
-      if (!comentario || comentario.length === 0 || comentario.length > 200) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '200',
-          message: 'Tu comentario no tiene el rango de caracteres admitidos (1-200).',
-        };
-      }
-
-      // Obtener el diccionario de palabras malas desde ConfigParameters
-      const badWordsConfig = await ConfigParameters.findOne({
-        where: { name: 'badwords' },
-        attributes: ['value'], // Suponiendo que "value" es la columna donde está almacenado el JSON
-        transaction: t,
-      });
-
-      let palabrasMalas;
-
-      if (!badWordsConfig) {
-        palabrasMalas = [];
-      } else{
-        palabrasMalas = JSON.parse(badWordsConfig.value);
-      }
-      
-      const contienePalabrasMalas = palabrasMalas.some((palabra) =>
-        comentario.toLowerCase().includes(palabra.toLowerCase())
-      );
-
-      if (contienePalabrasMalas) {
-        await t.rollback();
-        return {
-          success: false,
-          code: '200',
-          message: 'Tu comentario tiene palabras que no están permitidas, vuelve a intentarlo.',
-        };
-      }
-
-      // Si todo está bien, guardar el comentario
-      await EventsReview.create(
-        {
-          evento: evento,
-          apodo: userInfo.apodo,
-          review: comentario,
-          points: Number(estrellas),
-          fecha: localTimePeru,
-        },
-        { transaction: t }
-      );
-
-      // Confirmar la transacción
-      await t.commit();
-     
-      return { success: true, code: '000', message: 'Se ha guardado tu calificación'};
-    } catch (error) {
-      await t.rollback();
-      console.log(error);
-      throw new Error('Error al realizar al comentar');
-    }
-  }
 }
 
 export default new UserService();
