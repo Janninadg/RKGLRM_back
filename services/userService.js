@@ -50,7 +50,7 @@ class UserService {
 
       if(!sessionToken){
         await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '001', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
+        return { success: false, code: '001', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta...' };
       }
 
       await t.commit();

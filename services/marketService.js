@@ -204,18 +204,29 @@ class MarketService {
             });
 
             // Paso 2: Validar si tiene personajes
+
+              const cfpL= await ConfigParameters.findOne({
+                            where: {
+                            name: 'max_level_characters'
+                            },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE
+                        });
+            
+            const maxLevelCharacters = parseInt(cfpL.value);
+
             if (!characters || characters.length === 0) {
                 await t.rollback();
                 console.log('[Error] No tiene personajes'.red);
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelCharacters+' para comprar en el mercado',
                 };
             }
 
             // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 33);
+            const hasLevel20OrMore = characters.some(char => char.level >= maxLevelCharacters);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -223,7 +234,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelCharacters+' para comprar en el mercado',
                 };
             }
             
@@ -630,18 +641,30 @@ class MarketService {
             });
 
             // Paso 2: Validar si tiene personajes
+
+
+            const cfpL= await ConfigParameters.findOne({
+                            where: {
+                            name: 'max_level_characters'
+                            },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE
+                        });
+            
+            const maxLevelCharacters = parseInt(cfpL.value);
+
             if (!characters || characters.length === 0) {
                 await t.rollback();
                 console.log('[Error] No tiene personajes'.red);
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelCharacters+' para vender en el mercado',
                 };
             }
 
             // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 33);
+            const hasLevel20OrMore = characters.some(char => char.level >= maxLevelCharacters);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -649,7 +672,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelCharacters+' para vender en el mercado',
                 };
             }
 
@@ -696,6 +719,10 @@ class MarketService {
                     texCoin='Cash';
                     break;
                 case 1: //oro
+                    await t.rollback();
+                    console.log('[Error] Medio de pago no disponible'.red);
+                    return { success: false, code: '200', message: 'Medio de pago no disponible' };
+
                     uCoin = await UserGameInfo.findOne({
                         where: {name:user},
                         transaction: t,
