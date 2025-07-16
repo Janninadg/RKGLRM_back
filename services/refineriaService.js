@@ -10,6 +10,7 @@ import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
 import { setClassName, setTypeName } from '../utils/prizesUtils.js';
+import TypeAsset from '../models/typeAssetsModel.js';
 
 class RefineriaService {
 
@@ -34,7 +35,7 @@ class RefineriaService {
             }
 
             const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                // attributes: ['id'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
@@ -109,7 +110,7 @@ class RefineriaService {
             // console.log("FINAL :",uniqueUserItemsWithImagesAndNames);
 
             await t.commit(); // Confirmar la transacción
-            return { success: true, code: '000', _ui: uniqueUserItemsWithImagesAndNames };
+            return { success: true, code: '000', _ui: uniqueUserItemsWithImagesAndNames, bag: userGame.bag };
 
         } catch (error) {
             await t.rollback();
@@ -367,7 +368,7 @@ class RefineriaService {
 
 
             let success = true;
-            let message = '¡Tu item se ha refinado con éxito!';
+            let message = 'Felicidades, tuviste éxito en el refinado del item '+itemType.name;
             let code = '000';
 
             switch (selectedIndex) {
@@ -396,7 +397,7 @@ class RefineriaService {
                     lvl = itemUser.level;
 
                     success = false;
-                    message = 'La refinería de tu item fracasó y bajo un nivel. Inténtalo nuevamente.';
+                    message = 'La refinería de tu item fracasó y bajó un nivel. Inténtalo nuevamente.';
                     code = '100';
                     console.log('[ERROR]'.red,'Fracasó la refinería, bajo de nivel de tu item'.red);
                     break;
@@ -438,6 +439,100 @@ class RefineriaService {
         }
     }
 
+    async getHistoryRefinery(user, token) {
+        const t = await sequelize.transaction();
+        try {
+            // 1) Validar sesión
+            const session = await TokenSession.findOne({
+            where: { token, id: user },
+            transaction: t
+            });
+            if (!session) {
+            await t.rollback();
+            return { success: false, code: '999', message: 'Sesión inválida o expirada.' };
+            }
+
+            // 2) Traer todos los logs de refinería
+            const logs = await RefineryLog.findAll({
+            where: { user: user.toString() },
+            order: [['fecha', 'DESC']],
+            transaction: t
+            });
+
+            // 3) Extraer y cargar en batch:
+            const typeIds   = [...new Set(logs.map(log => log.typeasset))];
+            const itemIds   = [...new Set(logs.map(log => log.itemid))];
+
+            // 3a) Tipos de asset
+            const types = await TypeAsset.findAll({
+            where: { id: typeIds },
+            attributes: ['id', 'tipo'],
+            transaction: t
+            });
+            const typeMap = {};
+            types.forEach(x => { typeMap[x.id] = x.tipo; });
+
+            // 3b) Info de ítems
+            const items = await ItemInfo.findAll({
+            where: { id: itemIds },
+            attributes: ['id', 'name'],
+            transaction: t
+            });
+            const nameMap = {};
+            items.forEach(x => { nameMap[x.id] = x.name; });
+
+            // 3c) Imágenes de ítems
+            const images = await ItemImage.findAll({
+            where: { item: itemIds },
+            attributes: ['item', 'image'],
+            transaction: t
+            });
+            const imageMap = {};
+            images.forEach(x => { imageMap[x.item] = x.image; });
+
+           // 4) Mapear logs al formato final usando Promise.all
+            const history = await Promise.all(logs.map(async (log) => {
+            // traducir estado
+            let resultado;
+            switch (log.refinerystate) {
+                case 0: resultado = 'Refinado +1 (éxito)'; break;
+                case 1: resultado = 'Refinado sin éxito (perdió la piedra)'; break;
+                case 2: resultado = 'Refinado sin éxito -1 (perdió piedra y bajó nivel)'; break;
+                case 3: resultado = 'Refinado sin éxito (perdió el ítem y la piedra)'; break;
+                default: resultado = 'Desconocido'; break;
+            }
+
+            const id = log.itemid;
+            // console.log(log.itemid);
+
+            // Buscar imagen en ItemImage
+            const itemImageRecord = await ItemImage.findOne({
+                where: { item: log.itemid },
+                attributes: ['image'],
+                transaction: t,
+            });
+            // console.log(itemImageRecord.image)
+
+            return {
+                itemid:       id,
+                name:         nameMap[id]    || '???',
+                img:          itemImageRecord ? itemImageRecord.image : null,
+                currentLevel: log.currentlevel,
+                result:       resultado,
+                assetType:    typeMap[log.typeasset] || 'Desconocido',
+                date:         log.fecha
+            };
+            }));
+
+            await t.commit();
+            return { success: true, code: '000', hrf: history };
+
+        } catch (err) {
+            await t.rollback();
+            console.error('Error al obtener historial de refinería:', err);
+            return { success: false, code: '999', message: 'Error interno.' };
+        }
+        }
   
 }
 

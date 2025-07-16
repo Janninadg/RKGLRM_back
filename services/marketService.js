@@ -85,11 +85,12 @@ class MarketService {
 
             // Obtener el ID del usuario desde UserGameInfo usando su name
              const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                // attributes: ['id'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
-                // transaction: t, // Asociar la transacción con esta consulta
+                transaction: t,
+                lock: t.LOCK.UPDATE,
             });
     
             if (!userGame) {
@@ -256,7 +257,11 @@ class MarketService {
 
             //console.log(distinctSlotsArray);
 
-            for (let i = 0; i <= 89; i++) {
+            // Determinar el rango según la cantidad de bags (1→30, 2→60, 3→90)
+            const bagCount = userGame.bag;                          // 1, 2 o 3
+            const maxSlotIndex = bagCount * 30 - 1;                  // 0–29, 0–59 ó 0–89
+
+            for (let i = 0; i <= maxSlotIndex; i++) {
                 if (!distinctSlotsArray.includes(i)) {
                     slotFree = i;
                     break;
@@ -424,11 +429,12 @@ class MarketService {
             // Verificar si tiene slots disponibles... 3 boxes 30 items
              // Obtener el ID de usuario desde UserGameInfo por su nombre
              const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                // attributes: ['id'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
-                // transaction: t, // Asociar la transacción con esta consulta
+                transaction: t,
+                lock: t.LOCK.UPDATE,
             });
     
             if (!userGame) {
@@ -455,7 +461,11 @@ class MarketService {
 
             //console.log(distinctSlotsArray);
 
-            for (let i = 0; i <= 89; i++) {
+            // Determinar el rango según la cantidad de bags (1→30, 2→60, 3→90)
+            const bagCount = userGame.bag;                          // 1, 2 o 3
+            const maxSlotIndex = bagCount * 30 - 1;                  // 0–29, 0–59 ó 0–89
+
+            for (let i = 0; i <= maxSlotIndex; i++) {
                 if (!distinctSlotsArray.includes(i)) {
                     slotFree = i;
                     break;

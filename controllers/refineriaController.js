@@ -23,6 +23,25 @@ class RefineriaController {
         }
       }
 
+       async getHistory(req, res, next) {
+        try {
+          const { user,token } = req.body;
+    
+          const response = await RefineriaService.getHistoryRefinery(user,token);
+          //console.log(ranking);
+    
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al obtener historial:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+
       async refinyItem(req, res, next) {
         try {
           const { user,token,assetid,idi,slot,itemid } = req.body;
