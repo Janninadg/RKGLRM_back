@@ -305,11 +305,11 @@ class RefineriaService {
                 return { success: false, code: '100', message: 'Tu item ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlItems+').' };
             }
 
-            if(assetid === 2) {
-               await t.rollback(); // Revertir la transacción en caso de error
-                console.log('[INFO]'.blue,'Piedra de oro no disponible'.blue);
-                return { success: false, code: '100', message: 'Ya no está disponible la refinería con piedras de oro' };
-            }
+            // if(assetid === 2) {
+            //    await t.rollback(); // Revertir la transacción en caso de error
+            //     console.log('[INFO]'.blue,'Piedra de oro no disponible'.blue);
+            //     return { success: false, code: '100', message: 'Ya no está disponible la refinería con piedras de oro' };
+            // }
             
             // Verificar si tiene suficientes piedras a refinar....
             const userAsset = await UserAsset.findOne({
