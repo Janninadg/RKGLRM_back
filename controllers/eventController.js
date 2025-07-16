@@ -306,9 +306,10 @@ class EventController {
           console.log('Evento:'.blue,'Buscaminas'.red);
           break;
         case 5: 
-          console.log('Evento:'.blue,'....'.red);
+          console.log('Evento:'.blue,'Hot Slot'.red);
           break;
         default:
+          console.log('Evento:'.blue,'....'.red);
           break;
       }
 
