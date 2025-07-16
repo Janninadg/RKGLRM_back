@@ -245,7 +245,25 @@ class RefineriaService {
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
             });
-          
+
+            if(itemType.type === 8 && assetid == 2){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'Intento refinar criaturas con piedra de oro'.blue);
+                return { success: false, code: '100', message: 'Esta piedra solo puede ser usada con items (NO criaturas).' };
+            }
+
+             if(itemType.type !== 8 && assetid == 2 && itemUser.level >= 4){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'Intento de refinar items de nivel +4 con piedra de oro'.blue);
+                return { success: false, code: '100', message: 'Solo puedes usar esta piedra para refinar items hasta el nivel 4.' };
+            }
+
+             if(itemType.type !== 8 && assetid == 1 && itemUser.level < 4){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'Intento de refinar items de nivel menor a 4 con piedra de cash'.blue);
+                return { success: false, code: '100', message: 'Solo puedes usar esta piedra para refinar items con nivel mayor a 4.' };
+            }
+
 
             if (itemUser && typeNotRef.includes(itemType.type)){
                 await t.rollback(); // Revertir la transacción en caso de error
