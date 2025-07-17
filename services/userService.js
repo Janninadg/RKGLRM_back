@@ -917,26 +917,32 @@ class UserService {
           return { success: false, code: '100', message: `El activo no se encuentra disponible, actualiza la página por favor.`};
         }
 
+        let assetName = '';
+
       switch (AssetBuy.asset) {
         case 1:
           origen = 10;
           tiporec = 14;
-          console.log('Asset:'.blue,'Piedra de refinería 1'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Piedra Frozen'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          assetName = 'piedra(s) frozen';
           break;
         case 2:
           origen = 11;
           tiporec = 15;
-          console.log('Asset:'.blue,'Piedra de refinería 2'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Piedra White'.yellow,(' [' +String(cantidad)+ ']').yellow);
+           assetName = 'piedra(s) white';
           break;
         case 3:
           origen = 8;
           tiporec = 12;
-          console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Piedra 1'.yellow,(' [' +String(cantidad)+ ']').yellow);
+           assetName = 'piedra(s) 1';
           break;
         case 4:
           origen = 15;
           tiporec = 18;
-          console.log('Asset:'.blue,'Pica de minar'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Piedra 2'.yellow,(' [' +String(cantidad)+ ']').yellow);
+           assetName = 'piedra(s) 2';
           break;
         default:
           origen = 0;
@@ -1087,7 +1093,7 @@ class UserService {
       console.log('[EXITO]'.green,'Compra exitosa'.green);
 
      
-      return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa'};
+      return { success: true, code: '000', message: 'Has comprado '+cantidad+' '+ assetName+' a '+price * cantidad+' de '+typem};
     } catch (error) {
       await t.rollback();
       throw new Error('Error al realizar la compra');

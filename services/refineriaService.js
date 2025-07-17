@@ -226,7 +226,7 @@ class RefineriaService {
             });
 
 
- if (itemUser && typeNotRef.includes(itemType.type)){
+            if (itemUser && typeNotRef.includes(itemType.type)){
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'Este tipo de item no se puede refinar'.blue);
                 const typeName = setTypeName(itemType.type);
@@ -258,6 +258,18 @@ class RefineriaService {
                 await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'La criatura llegó al nivel máximo de refinería'.blue);
                 return { success: false, code: '100', message: 'Tu criatura ya no se puede refinar porque alcanzó el nivel máximo a refinar (Lvl. '+maxLvlCreatures+').' };
+            }
+
+            if (itemType.type === 8 && [1, 2].includes(assetid)){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'No se puede refinar una criatura con piedras para items'.blue);
+                return { success: false, code: '100', message: 'No puedes refinar criaturas con piedras para items.' };
+            }
+
+              if (itemType.type !== 8 && [3, 4].includes(assetid)){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'No se puede refinar un item con piedras para criaturas'.blue);
+                return { success: false, code: '100', message: 'No puedes refinar items con piedras para criaturas.' };
             }
 
             if (itemType.type !== 8 && itemUser.level >= maxLvlItems){
@@ -334,11 +346,11 @@ class RefineriaService {
 
             if ((currentDay >= 1 && currentDay <= 4)) {
                 // De lunes a jueves
-                selectedRefineryProbs = assetid === 1 ? refineryProbsValues : refineryProbs2Values;
+                selectedRefineryProbs = (assetid === 1 || assetid === 3) ? refineryProbsValues : refineryProbs2Values;
             } else if (currentDay >= 5 || currentDay === 0) {
             // } else {
                 // De viernes a domingo (o domingo)
-                selectedRefineryProbs = assetid === 1 ? refineryProbsUpValues : refineryProbsUp2Values;
+                selectedRefineryProbs = (assetid === 1 || assetid === 3) ? refineryProbsUpValues : refineryProbsUp2Values;
             }
 
             // Realizar el calculo de probabilidad:
@@ -368,7 +380,7 @@ class RefineriaService {
 
 
             let success = true;
-            let message = 'Felicidades, tuviste éxito en el refinado del item '+itemType.name;
+            let message = 'Felicidades, tuviste éxito en el refinado del item: +'+(itemUser.level+1)+' '+itemType.name;
             let code = '000';
 
             switch (selectedIndex) {
@@ -382,7 +394,7 @@ class RefineriaService {
                 case 1:
                     // Perdio la piedra, no refino
                     success = false;
-                    message = 'La refinería de tu item fracasó. Inténtalo nuevamente.';
+                    message = 'Fracasaste en el refinado del item';
                     code = '100';
 
                     console.log('[ERROR]'.red,'Fracasó la refinería'.red);
@@ -397,7 +409,7 @@ class RefineriaService {
                     lvl = itemUser.level;
 
                     success = false;
-                    message = 'La refinería de tu item fracasó y bajó un nivel. Inténtalo nuevamente.';
+                    message = 'Fracasaste en el refinado del item y el nivel se redujo en el intento.';
                     code = '100';
                     console.log('[ERROR]'.red,'Fracasó la refinería, bajo de nivel de tu item'.red);
                     break;
@@ -405,7 +417,7 @@ class RefineriaService {
                     // Perdio la piedra y el item.... ups
            
                     success = false;
-                    message = 'La refinería de tu item fracasó y lo perdiste.';
+                    message = 'Fracasaste en el refinado del item y lo perdiste en el intento.';
                     console.log('[ERROR]'.red,'Fracasó la refinería, perdiste tu item'.red);
                     code = '300';
 
