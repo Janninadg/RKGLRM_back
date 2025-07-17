@@ -109,54 +109,57 @@ const getAmountItem = async (itemid,transaction) => {
 };
 
 // Helper puro para calcular el power base de 0 días
-function computeBasePower() {
-  const equivalentDay = 1440;             // minutos en un día
-  const codigoBase7 = 1064269940 - 420;   // línea base de 7 días
-  const horaBase      = new Date("2023-07-03T01:20:00Z");
-  const nowLimaStr    = new Date().toLocaleString('en-US', { timeZone: 'America/Lima' });
-  const nowLima       = new Date(nowLimaStr);
+// function computeBasePower() {
+//   const equivalentDay = 1440;             // minutos en un día
+//   const codigoBase7 = 1064269940 - 420;   // línea base de 7 días
+//   const horaBase      = new Date("2023-07-03T01:20:00Z");
+//   const nowLimaStr    = new Date().toLocaleString('en-US', { timeZone: 'America/Lima' });
+//   const nowLima       = new Date(nowLimaStr);
 
-  // Diferencia en segundos desde la horaBase
-  const diffSec = Math.trunc((nowLima - horaBase) / 1000);
+//   // Diferencia en segundos desde la horaBase
+//   const diffSec = Math.trunc((nowLima - horaBase) / 1000);
 
-  // A partir de 7 días, restamos 7 * equivalentDay para llevarlo a “0 días”
-  return codigoBase7 + diffSec - (7 * equivalentDay);
-}
+//   // A partir de 7 días, restamos 7 * equivalentDay para llevarlo a “0 días”
+//   return codigoBase7 + diffSec - (7 * equivalentDay);
+// }
 
 
-const calculatePowerUse = async (powertime, days) => {
-  const equivalentDay = 1440;
-  // 1) obtenemos el power de base (0 días) sin recursión
-  const basePower = computeBasePower();
+const calculatePowerUse = async (powertime,days) => {
+  var codigo_base = 1064269940 - 420; //7 días
+  // var codigo_base = 1064457769; //30 días
+  var equivalentDay = 1440;
 
-  // 2) si el powertime es “antiguo” (< basePower), resetéalo
-  if (powertime <= basePower) {
-    powertime = 0;
-  }
+  var horaBase = new Date("2023-07-03 01:20:00");
+  //var horaBase = new Date("2023-10-18 11:49:00");
+  var horaFinal = new Date();
+  // Obtén la fecha y hora actual en la zona horaria de Perú
+  var fechaHora = new Date().toLocaleString('en-US', { timeZone: 'America/Lima' });
 
-  // 3) si partimos de cero, volvemos a calcular desde la horaBase
-  if (powertime === 0) {
-    const codigoBase7 = 1064269940 - 420;
-    const horaBase      = new Date("2023-07-03T01:20:00Z");
-    const nowLimaStr    = new Date().toLocaleString('en-US', { timeZone: 'America/Lima' });
-    const nowLima       = new Date(nowLimaStr);
-    const diffSec       = Math.trunc((nowLima - horaBase) / 1000);
+  // Convierte la cadena de fecha y hora a un objeto Date
+  var fechaHoraObjeto = new Date(fechaHora);
 
-    let result = codigoBase7 + diffSec;
+  if(powertime <= 0){
+    var diferenciaMilisegundos = (fechaHoraObjeto - horaBase)/60;
+    //console.log(diferenciaMilisegundos);
+    // Convertir la diferencia a segundos
+    var diferenciaSegundos = diferenciaMilisegundos / 1000;
+    //console.log(Math.trunc(diferenciaSegundos));
 
-    if (days === 7) {
-      // ya está en 7 días
-    } else if (days < 7) {
-      result -= (7 - days) * equivalentDay;
-    } else {
-      result += (days - 7) * equivalentDay;
+
+    if(days == 7){
+        codigo_base = codigo_base + Math.trunc(diferenciaSegundos); //7 dias
+    } else if(days < 7){
+        codigo_base = codigo_base + Math.trunc(diferenciaSegundos) - (7-days)*equivalentDay; //<7 dias
+    } else{
+        codigo_base = codigo_base + Math.trunc(diferenciaSegundos) + (days-7)*equivalentDay; //>7 dias
     }
 
-    return result;
+    //codigo_base = codigo_base + Math.trunc(diferenciaSegundos)-18300; //2 dias
+    //console.log(diferenciaSegundos);
+    return codigo_base;
+  } else{
+    return powertime + days*equivalentDay;
   }
-
-  // 4) si ya tenemos powertime > 0, simplemente lo desplazamos
-  return powertime + days * equivalentDay;
-};
+  };
 
   export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
