@@ -942,44 +942,33 @@ class UserService {
   }
 
   async getRanking() {
-    try {
+     try {
       const rankingData = await sequelize.query(
         `
         SELECT 
-        u.name AS userName,
-        ci.name AS charName,
-        ci.level,
-        ci.win,
-        ci.lose,
-        COALESCE(clan.name, '-') AS clanName,
-        (ci.win - ci.lose) AS winLossDifference,
-        ((ci.win - ci.lose) * 0.255) AS winrate
-      FROM usergameinfo u
-      INNER JOIN (
-        SELECT
-          userid,
-          name,
-          level,
-          win,
-          lose,
-          ROW_NUMBER() OVER (PARTITION BY userid ORDER BY win DESC) AS rnk
-        FROM characterinfo
-      ) AS ci ON u.id = ci.userid AND ci.rnk = 1
-      LEFT JOIN claninfo clan ON u.clanid = clan.id
-      ORDER BY winLossDifference DESC, winrate DESC
-      LIMIT 50
+          u.name AS userName,
+          ci.name AS charName,
+          ci.level,
+          ar.win,
+          ar.lose,
+          COALESCE(clan.name, '-') AS clanName,
+          (ar.win - ar.lose) AS winLossDifference,
+          ((ar.win - ar.lose) * 0.255) AS winrate,
+          ar.position
+        FROM autoranking ar
+        INNER JOIN usergameinfo u ON ar.userid = u.id
+        INNER JOIN characterinfo ci ON ci.id = ar.id
+        LEFT JOIN claninfo clan ON u.clanid = clan.id
+        WHERE ar.enable = 1
+        ORDER BY ar.position ASC
+        LIMIT 50
         `,
         { type: sequelize.QueryTypes.SELECT }
       );
-  
-      /**   CASE
-          WHEN ci.lose = 0 AND ci.win = 0 THEN 1
-          WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
-          WHEN ci.lose > 0 THEN ci.win / ci.lose
-        END AS winrate*/
+
       return rankingData;
     } catch (error) {
-      console.error('Error al obtener el ranking:', error);
+      console.error('Error al obtener el ranking desde autoranking:', error);
       throw new Error('Error interno del servidor');
     }
   }
