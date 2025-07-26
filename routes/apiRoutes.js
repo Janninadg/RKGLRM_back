@@ -3,6 +3,7 @@ import authRoutes from './authRoutes.js';
 import userRoutes from './userRoutes.js';
 import marketRoutes from './marketRoutes.js';
 import webRoutes from './webRoutes.js';
+import eventRoutes from './eventRoutes.js';
 import refineriaRoutes from './refineriaRoutes.js';
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.use('/users', userRoutes);
 
 // Montar rutas de eventos bajo api/web
 router.use('/web', webRoutes);
+
+// Montar rutas de eventos bajo api/events
+router.use('/events', eventRoutes);
 
 // Montar rutas de tienda bajo api/market
 router.use('/market', marketRoutes);
