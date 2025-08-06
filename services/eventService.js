@@ -1873,11 +1873,12 @@ class EventService {
       // Obtener el tipo, nombre,uri:
       // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
       const cuponPrize = await Cupon.findOne({
-        attributes: ['type', 'id_prize', 'name_prize', 'uri','limite','users'],
+        // attributes: ['type', 'id_prize', 'name_prize', 'uri','limite','users'],
         where: {
           ticket: cupon,
         },
         transaction: t, // Asociar la transacción con esta consulta
+        lock: t.LOCK.UPDATE,
       });
   
       if (!cuponPrize) {
@@ -1897,12 +1898,13 @@ class EventService {
       //Verificar si el usuario ya redimio anteriormente el cupon:
 
       const userRedeem = await TempCupon.findOne({
-        attributes: ['id'],
+        // attributes: ['id'],
         where: {
           user: user,
           ticket: cupon,
         },
         transaction: t, // Asociar la transacción con esta consulta
+        lock: t.LOCK.UPDATE,
       });
 
       if (userRedeem) {
@@ -2077,10 +2079,13 @@ class EventService {
           return { success: false, code: '201', message: 'Tipo de premio no válido' };
       }
 
-      await Cupon.increment(
-        'users',
-        { by: 1, where: { ticket: cupon }, transaction: t }
-      );
+      // await Cupon.increment(
+      //   'users',
+      //   { by: 1, where: { ticket: cupon }, transaction: t }
+      // );
+
+      cuponPrize.users += 1;
+      await cuponPrize.save({ transaction: t });
 
       await TempCupon.create(
         {
