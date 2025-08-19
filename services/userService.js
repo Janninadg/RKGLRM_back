@@ -589,6 +589,14 @@ class UserService {
         return { success: false,message:'El usuario ingresado ya se encuentra registrado', code: '100' };
       }
 
+      const existingEmail = await User.findOne({ where: { e_mail: email } });
+
+       if (existingEmail) {
+        await transaction.rollback();
+        return { success: false,message:'El usuario correo ingresado ya se encuentra registrado', code: '100' };
+      }
+
+
       const apodoUser = await User.findOne({ where: { apodo: apodo } });
   
       if (apodoUser) {
