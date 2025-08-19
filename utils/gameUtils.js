@@ -6,32 +6,32 @@ const setPresentsReward = (character) => {
           case 0:
             // Swordman
             return {
-              i: [1043, 1143, 1243, 1343, 1443, 1543],
-              m: 'un Set Damned de Swordman'
+              i: [1013, 1113, 1213, 1313, 1437, 1537],
+              m: 'un Set Bone de Swordman'
             };
           case 1:
             // Archer
             return {
-              i: [2043, 2143, 2243, 2343, 2443, 2543],
-              m: 'un Set Damned de Archer'
+              i: [2013, 2113, 2213, 2343, 2437, 2537],
+              m: 'un Set Bone de Archer'
             };
           case 2:
             // Black
             return {
-              i: [3043, 3143, 3243, 3343, 3443, 3543],
-              m: 'un Set Damned de Black'
+              i: [3013, 3113, 3213, 3313, 3437, 3537],
+              m: 'un Set Bone de Black'
             };
           case 3:
             // Mage
             return {
-              i: [4043, 4143, 4243, 4343, 4443, 4543],
-              m: 'un Set Damned de Mage'
+              i: [4013, 4113, 4213, 4313, 4437, 4537],
+              m: 'un Set Bone de Mage'
             };
           case 4:
             // Ninja
             return {
-              i: [5043, 5143, 5243, 5343, 5443, 5543],
-              m: 'un Set Damned de Ninja'
+              i: [5013, 5113, 5213, 5313, 5437, 5537],
+              m: 'un Set Bone de Ninja'
             };
           default:
             return null;

@@ -273,15 +273,81 @@ class UserService {
         // Obtener información adicional del usuario desde usergameinfo
         const userInfo = await UserGameInfo.findOne({
           where: { name: user.user },
-          attributes: ['id', 'name', 'createtime', 'lastconnect'],
+          attributes: ['id','name', 'createtime', 'lastconnect'],
           transaction: t,
         });
 
-        const userTable = await User.findOne({ where: { id } });
+        const userTable = await User.findOne(
+          { 
+            where: { id },
+            attributes: ['apodo','e_mail','phone'],
+          });
   
+        let rank = {
+          name: "Sin rango",
+          icon: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
+          progress: 0,
+          max: 0,
+          progressPercent: 0,
+          remaining: 0,
+          level:0,
+        };
+
+         if (userInfo) {
+          const characters = await CharacterInfo.findAll({
+            where: { userid: userInfo.id },
+            order:[['slot','ASC']],
+          });
+
+          if (characters.length > 0) {
+            // Buscar personaje de mayor nivel
+            const topCharacter = characters.reduce((prev, curr) =>
+              curr.level > prev.level ? curr : prev
+            , characters[0]);
+
+            // Buscar exp de nivel actual y anterior
+            const classLevelInfo = await ClassLevelInfo.findOne({
+              where: { Class: topCharacter.Class, level: topCharacter.level },
+              attributes: ['exp'],
+            });
+
+            const classLevelInfo2 = await ClassLevelInfo.findOne({
+              where: { Class: topCharacter.Class, level: topCharacter.level ? topCharacter.level - 1 : 0 },
+              attributes: ['exp'],
+            });
+
+            const iniexp = classLevelInfo2?.exp || 0;
+            const nextexp = classLevelInfo?.exp || 0;
+            const currentExp = topCharacter.exp || 0;
+            const maxExp = nextexp - iniexp;
+            const currEco = currentExp - iniexp;
+            const progressPercent = nextexp > 0 ? Math.floor((currEco / maxExp) * 100) : 0;
+            const remaining = nextexp > 0 ? nextexp - currentExp : 0;
+
+            rank = {
+              name: "Explorador", // aquí podrías mapear el rango real
+              icon: "https://cdn-icons-png.flaticon.com/512/616/616408.png",
+              progress: currentExp,
+              max: nextexp,
+              progressPercent,
+              remaining,
+              level: topCharacter.level,
+            };
+          }
+        }
   
         // Combinar la información del usuario
-        const completeUserInfo = { ...userTable.toJSON(), ...userInfo.toJSON() };
+       // 6. Combinar datos finales
+        const completeUserInfo = {
+          ...userTable.toJSON(),
+          ...userInfo.toJSON(),
+          // apodo: user.apodo || null,
+          // name: user.name || null,
+          color: user.color || null,
+          role: user.role || null,
+          avatar: user.photo || null,
+          rank,
+        };
 
         // const claim = hasUserClaimed(user.id);
   
@@ -502,7 +568,7 @@ class UserService {
     }
   }
   
-  async registerUser(req,username,apodo, password, phoneNumber,character,ip) {
+  async registerUser(req,username,apodo, password, phoneNumber,character,email,ip) {
     const transaction = await sequelize.transaction();
   
     try {
@@ -567,7 +633,8 @@ class UserService {
           id: username,
           password:passwordEncrypt,
           apodo,
-          e_mail: phoneNumber,
+          e_mail: email,
+          phone:phoneNumber,
         },
         { transaction }
       );
@@ -582,16 +649,16 @@ class UserService {
 
       //console.log(111111);
 
-      // const powertimefinal = await calculatePowerUse(0,15);
+      const powertimefinal = await calculatePowerUse(0,7);
 
       await UserGameInfo.create(
         {
           name: username,
-          gold:12000,
+          gold:15000,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
-          // powertime: powertimefinal,
+          powertime: powertimefinal,
           //powertimedate: fechaActual,
         },
         { transaction }
@@ -599,7 +666,7 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 10000 }, { transaction });
+      await Cash.create({ id: username, cash: 0 }, { transaction });
       await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
       // Token
@@ -677,7 +744,7 @@ class UserService {
       await LogRewardsUser.create({  
         user:username,
         origen:0,
-        recompensa:12000,
+        recompensa:15000,
         tipo_recompensa: 1,
         fecha: new Date(), 
       }, { transaction });
@@ -685,8 +752,8 @@ class UserService {
       await LogRewardsUser.create({  
         user:username,
         origen:0,
-        recompensa:10000,
-        tipo_recompensa: 2,
+        recompensa:7,
+        tipo_recompensa: 6,
         fecha: new Date(), 
       }, { transaction });
 
@@ -701,7 +768,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 10K Cash y 12K Oro + '+ pr.m +' de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 7 días de Power user y 15K Oro + '+ pr.m +' de recompensa por registrarte!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
