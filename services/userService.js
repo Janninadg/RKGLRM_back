@@ -325,8 +325,8 @@ class UserService {
             const remaining = nextexp > 0 ? nextexp - currentExp : 0;
 
             rank = {
-              name: "Explorador", // aquí podrías mapear el rango real
-              icon: "https://cdn-icons-png.flaticon.com/512/4208/4208039.png",
+              name: "Principiante", // aquí podrías mapear el rango real
+              icon: "https://cdn-icons-png.flaticon.com/512/6000/6000521.png",
               progress: currentExp,
               max: nextexp,
               progressPercent,
