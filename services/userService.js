@@ -285,7 +285,7 @@ class UserService {
   
         let rank = {
           name: "Sin rango",
-          icon: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
+          icon: 'https://cdn-icons-png.flaticon.com/512/4208/4208039.png',
           progress: 0,
           max: 0,
           progressPercent: 0,
@@ -326,7 +326,7 @@ class UserService {
 
             rank = {
               name: "Explorador", // aquí podrías mapear el rango real
-              icon: "https://cdn-icons-png.flaticon.com/512/616/616408.png",
+              icon: "https://cdn-icons-png.flaticon.com/512/4208/4208039.png",
               progress: currentExp,
               max: nextexp,
               progressPercent,
