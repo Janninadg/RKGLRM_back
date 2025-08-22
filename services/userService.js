@@ -647,14 +647,17 @@ class UserService {
         { transaction }
       );
 
+      const firstLetter = username.charAt(0).toUpperCase();
+      const color = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+
       await WebUser.create(
         {
           user: username,
-          password
+          password,
+          avatar: `https://dummyimage.com/60x60/${color}/ffffff&text=${firstLetter}`,
         },
         { transaction }
-      )
-
+      );
       //console.log(111111);
 
       const powertimefinal = await calculatePowerUse(0,7);
