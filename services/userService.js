@@ -1024,19 +1024,22 @@ class UserService {
       const rankingData = await sequelize.query(
         `
         SELECT 
-          u.name AS userName,
           ci.name AS charName,
           ci.level,
+          ci.class AS charClass,
           ar.win,
           ar.lose,
           COALESCE(clan.name, '-') AS clanName,
           (ar.win - ar.lose) AS winLossDifference,
           ((ar.win - ar.lose) * 0.255) AS winrate,
-          ar.position
+          ar.position,
+          wu.color AS userColor,
+          wu.photo AS photoUrl
         FROM autoranking ar
         INNER JOIN usergameinfo u ON ar.userid = u.id
         INNER JOIN characterinfo ci ON ci.id = ar.id
         LEFT JOIN claninfo clan ON u.clanid = clan.id
+        LEFT JOIN webusers wu ON wu.user = u.name
         WHERE ar.enable = 1
         ORDER BY ar.position ASC
         LIMIT 50
