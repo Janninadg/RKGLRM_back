@@ -708,7 +708,7 @@ class UserService {
         {
           user: username,
           password,
-          avatar: `https://dummyimage.com/60x60/${color}/ffffff&text=${firstLetter}`,
+          photo: `https://dummyimage.com/60x60/${color}/ffffff&text=${firstLetter}`,
         },
         { transaction }
       );
