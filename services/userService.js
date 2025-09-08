@@ -35,6 +35,8 @@ import EventsReview from '../models/eventsReviewModel.js';
 import WebUser from '../models/webUsersModel.js';
 import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
+import ForumUserRole from '../models/Forum/ForumRole.js';
+import Role from '../models/Forum/Role.js';
 
 class UserService {
 
@@ -284,13 +286,13 @@ class UserService {
           });
   
         let rank = {
-          name: "Sin rango",
+          name: "Principiante", // default inicial
           icon: 'https://cdn-icons-png.flaticon.com/512/4208/4208039.png',
           progress: 0,
           max: 0,
           progressPercent: 0,
           remaining: 0,
-          level:0,
+          level: 0,
         };
 
          if (userInfo) {
@@ -325,7 +327,7 @@ class UserService {
             const remaining = nextexp > 0 ? nextexp - currentExp : 0;
 
             rank = {
-              name: "Principiante", // aquí podrías mapear el rango real
+              name: "Principiante", // Default
               icon: "https://cdn-icons-png.flaticon.com/512/6000/6000521.png",
               progress: currentExp,
               max: nextexp,
@@ -335,6 +337,58 @@ class UserService {
             };
           }
         }
+
+        // Obtener roles del usuario
+        const forumUserRoles = await ForumUserRole.findAll({
+          where: { user_id: userTable.apodo }, // user_id = apodo
+          attributes: ['role_id', 'principal'],
+          raw: true,
+        });
+
+        // Si se encontraron roles, traer la info de cada uno desde Role
+        let roles = [];
+        let userColor = "#FFFFFF"; // color por defecto
+
+        if (forumUserRoles.length > 0) {
+          const roleIds = forumUserRoles.map(r => r.role_id);
+          const rolesInfo = await Role.findAll({
+            where: { id: roleIds },
+            attributes: ['id', 'name'],
+            raw: true,
+          });
+
+           const gameRole = await Role.findOne({
+              where: { id: roleIds, type: 'game' },
+              attributes: ['name'],
+              raw: true,
+            });
+
+           if (gameRole) {
+              rank.name = gameRole.name; // reemplaza solo el nombre
+            }
+
+            const principalRole = forumUserRoles.find(fr => fr.principal === 1);
+            if (principalRole) {
+              const roleInfo = await Role.findOne({
+                where: { id: principalRole.role_id },
+                attributes: ['color'],
+                raw: true,
+              });
+              if (roleInfo && roleInfo.color) {
+                userColor = roleInfo.color;
+              }
+            }
+
+          // Combinar con principal
+          roles = rolesInfo.map(r => {
+            const principal = forumUserRoles.find(fr => fr.role_id === r.id)?.principal || 0;
+            return {
+              id: r.id,
+              name: r.name,
+              principal,
+            };
+          });
+        }
   
         // Combinar la información del usuario
        // 6. Combinar datos finales
@@ -343,8 +397,8 @@ class UserService {
           ...userInfo.toJSON(),
           // apodo: user.apodo || null,
           // name: user.name || null,
-          color: user.color || null,
-          role: user.role || null,
+          color: userColor,
+          roles,
           avatar: user.photo || null,
           rank,
         };
@@ -692,6 +746,21 @@ class UserService {
 
       //Insertar IP:
       await InitialIpUser.create({ user: username, ip: ip }, { transaction });
+
+      // Asignar roles iniciales
+      const initialRoles = [
+        { roleId: 1, principal: 1 },   // Principiante (game) → principal
+        { roleId: 16, principal: 0 },  // Usuario (forum)
+      ];
+
+      // Insertar en ForumUserRole
+      for (const r of initialRoles) {
+        await ForumUserRole.create({
+          user_id: apodo,   // user_id = apodo
+          role_id: r.roleId,
+          principal: r.principal,
+        }, { transaction });
+      }
 
       // await BarraConexion.create({ User: username, BarCount: 0,ResTime:0 }, { transaction });
 
@@ -1307,12 +1376,12 @@ class UserService {
         case 3:
           origen = 8;
           tiporec = 12;
-          console.log('Asset:'.blue,'Giro de Ruleta'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Ticket de Cash'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
         case 4:
           origen = 15;
           tiporec = 18;
-          console.log('Asset:'.blue,'Pica de minar'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Ticket de Oro'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
         case 5:
           origen = 16;

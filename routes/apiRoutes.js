@@ -8,6 +8,7 @@ import storeRoutes from './storeRoutes.js';
 import marketRoutes from './marketRoutes.js';
 import webRoutes from './webRoutes.js';
 import refineriaRoutes from './refineriaRoutes.js';
+import forumRoutes from './forumRoutes.js';
 
 const router = express.Router();
 
@@ -39,5 +40,8 @@ router.use('/market', marketRoutes);
 
 // Montar rutas de tienda bajo api/market
 router.use('/refineria', refineriaRoutes);
+
+// Montar rutas de foro bajo api/forum
+router.use('/forum', forumRoutes);
 
 export default router;

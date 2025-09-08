@@ -1312,7 +1312,7 @@ class EventService {
       }
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,t);
+      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,t);
 
       if(GameRes.code){
         console.log('Win:'.magenta,'false'.red);
@@ -1385,8 +1385,9 @@ class EventService {
           var typename;
           //Acciones según modalidad:
           switch (modalidad) {
-            //Cash
+            //Cash, oro
             case 1:
+            case 2:
 
               typename = 'giros';
 
@@ -1394,7 +1395,7 @@ class EventService {
                 // attributes: ['tickets'],
                 where: {
                   user: userId,
-                  asset:3
+                  asset: modalidad === 1 ? 3 : 4
                 },
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
@@ -1406,13 +1407,13 @@ class EventService {
                   by: 1,
                   where: {
                     user: userId,
-                    asset:3
+                    asset: modalidad === 1 ? 3 : 4
                   },
                   transaction: t, // Asociar la transacción con esta operación
                 });
               } else{
                 await t.rollback(); 
-                return { success: false, code: '200', message: 'No tienes giros suficientes para girar la ruleta.' };
+                return { success: false, code: '200', message: 'No tienes tickets suficientes para girar la ruleta.' };
                 break;
               }
 
@@ -1489,85 +1490,7 @@ class EventService {
            Object.assign(params, GameRes.params);
 
           break;
-        // //Countdown
-        // case 5:
-        //   //Verificar piezas:
-
-        //   const userGame = await Matches.findOne({
-        //     attributes: ['premios','picked'],
-        //         where: {
-        //             user: userId,
-        //             game: 5,
-        //         },
-        //     });
-
-        //   // Revertir la transacción en caso de error
-        //   if(!userGame){
-        //     await t.rollback();
-        //     return { success: false, code: '001', message:`No tiene el rompecabezas completo para obtener un cofre nuevo...` };
-        //   }
-
-        //   console.log(userGame.picked);
-        //   if(JSON.parse(userGame.picked)[0] === 0){
-        //     await t.rollback();
-        //     return { success: false, code: '001', message:`No tiene Cofres de tipo Básico disponibles para abrir...` };
-        //   }
-
-        //   // Resta cofre:
-
-        //   cofres = JSON.parse(userGame.picked);
-        //   cofres[0] -= 1;
-        //   //const decrementedArr = newArr.map((element) => element - 1);
-
-        //   await Matches.update(
-        //     { 
-        //       //premios:JSON.stringify(decrementedArr),
-        //       picked: JSON.stringify(cofres),
-        //     }, //cambiar a codigo_base
-        //     { where: { user: userId,game:5, },
-        //       transaction: t
-        //     },
-        //   );
-
-        //   break;
-        case 6:
-          // //Verificar piezas:
-
-          // const userGame2 = await Matches.findOne({
-          //   attributes: ['premios','picked'],
-          //       where: {
-          //           user: userId,
-          //           game: 5,
-          //       },
-          //   });
-
-          // // Revertir la transacción en caso de error
-          // if(!userGame2){
-          //   await t.rollback();
-          //   return { success: false, code: '001', message:`No tiene el rompecabezas completo para obtener un cofre nuevo...` };
-          // }
-
-          // console.log(userGame2.picked);
-          // if(JSON.parse(userGame2.picked)[1] === 0){
-          //   await t.rollback();
-          //   return { success: false, code: '001', message:`No tiene Cofres de tipo Oceanus disponibles para abrir...` };
-          // }
-
-          // // Resta cofre:
-
-          // cofres = JSON.parse(userGame2.picked);
-          // cofres[1] -= 1;
-          // //const decrementedArr = newArr.map((element) => element - 1);
-
-          // await Matches.update(
-          //   { 
-          //     //premios:JSON.stringify(decrementedArr),
-          //     picked: JSON.stringify(cofres),
-          //   }, //cambiar a codigo_base
-          //   { where: { user: userId,game:5, },
-          //     transaction: t
-          //   },
-          // );
+      
 
           return { success: false, code: '001', message: 'No existe este tipo de juego' };
         default:
@@ -1578,28 +1501,6 @@ class EventService {
       var resWin = await gamesService.setWinPrizes(type,typePrize,prizesGame,userId,t);
       if(!resWin.success) return resWin;
   
-      //const key = generateKey();
-      //const MnOpQr = encrypt(JSON.stringify(prizesGame), key) + '-' + key;
-  
-     // Confirmar la transacción si todas las operaciones tienen éxito
-
-      // if(type === 5 || type === 6){
-      //   // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      //   //console.log('AAAAA AQUI');
-      //   const allPrizesFinal = await PrizesGame.findAll({
-      //     attributes: ['name', 'url'],
-      //     where: {
-      //       //orderPrize: orderPrize,
-      //       type_game: type,
-      //     },
-      //     order: [['orderPrize', 'ASC']],
-      //     transaction: t, // Asociar la transacción con esta consulta
-      //   });
-
-      //     await t.commit();
-      //   return { success: true, code: '000', _pw:selectedItem,allpz:allPrizesFinal,_cf:cofres, message };
-      // }
-
       await TempPrize.create(
         {
           user: userId,

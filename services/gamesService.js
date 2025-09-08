@@ -37,7 +37,7 @@ import TicketsMode from '../models/ticketsModeModel.js';
 
 class GamesService {
 
-    async getPrizeByGame(game,clase,user,transaction) {
+    async getPrizeByGame(game,clase,user,modalidad,transaction) {
         try {
             let allP;
             let rP;
@@ -110,7 +110,7 @@ class GamesService {
                         //orderPrize: orderPrize,
                         type_game: game,
                         },
-                        order: [['orderPrize', 'ASC']],
+                        order: [['clase','ASC'],['orderPrize', 'ASC']],
                         transaction, // Asociar la transacción con esta consulta
                     })
 
@@ -119,9 +119,20 @@ class GamesService {
                         transaction,
                     });
 
+                    const rouletteProbabiliy2 = await ConfigParameters.findOne({
+                        where: { name: 'roulette_prob2' },
+                        transaction,
+                    });
+
+                     const incProb = await ConfigParameters.findOne({
+                        where: { name: 'inc_roul_prob' },
+                        transaction,
+                    });
+
                     // console.log(rouletteProbabiliy);
         
-                   const prob = rouletteProbabiliy ? parseFloat(rouletteProbabiliy.value) : 0;
+                    //Modalidad 1: cash, 2 : oro
+                   const prob = modalidad === 1 ? rouletteProbabiliy.value : rouletteProbabiliy2.value;
 
                    console.log("Prob: ",prob);
 
@@ -131,7 +142,7 @@ class GamesService {
                             // attributes: ['tickets'],
                             where: {
                               user: user,
-                              asset:3
+                              asset: modalidad === 1 ? 3 : 4
                             },
                             transaction, // Asociar la transacción con esta consulta
                             lock: transaction.LOCK.UPDATE,
@@ -140,7 +151,7 @@ class GamesService {
                          // await t.rollback(); // Revertir la transacción en caso de error
                          if(!giros || giros.amount < 1){
                             await transaction.rollback(); // Revertir la transacción en caso de error
-                            return { success: false, code: '001', message:`No tiene giros suficientes para jugar a la ruleta` };
+                            return { success: false, code: '001', message:`No tiene tickets suficientes para jugar a la ruleta` };
                         }
 
                         // Decrementar el giro del usuario
@@ -148,7 +159,7 @@ class GamesService {
                             by: 1,
                             where: {
                               user: user,
-                              asset:3
+                              asset: modalidad === 1 ? 3 : 4
                             },
                             transaction, // Asociar la transacción con esta operación
                           });
@@ -188,6 +199,8 @@ class GamesService {
                         _pwb:allPrizes[selectedItem].clase,
                         pr: allPrizes
                     });
+
+                    console.log(allPrizes[selectedItem])
 
                     return {all: allPrizes[selectedItem], win:true,params};
                 default:
