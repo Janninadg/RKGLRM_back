@@ -97,7 +97,8 @@ class ForumService {
           author,
           forum: {
             name: category?.name || 'General',
-            url: '#',
+            url: category.url,
+            color: category.color,
           },
           date: createdAt.toISOString(),
           dateFormatted: createdAt.toLocaleDateString('es-ES', {
@@ -672,25 +673,27 @@ async incrementView(post_id) {
 }
 
 
-    async getLatestPostsByCategory(limit = 5) {
+   async getLatestPostsByCategory(limit = 5) {
   try {
     // 1. Traer categorías
     const categories = await ForumCategory.findAll();
-
     const results = [];
 
     for (const category of categories) {
       // 2. Traer últimos X posts de la categoría
       const posts = await ForumPost.findAll({
-        where: { category_id: category.id, enable:1 },
+        where: { category_id: category.id, enable: 1 },
         limit,
-        order: [['created_at', 'DESC']],
+        order: [
+          ['is_pinned', 'DESC'], // destacados primero
+          ['created_at', 'DESC'], // luego por fecha
+        ],
       });
 
       const formattedPosts = [];
       for (const post of posts) {
-        // 3. Buscar autor (User + WebUser)
-        const user = await User.findOne({ where: { apodo: post.user_id } }); // user_id = apodo
+        // 3. Autor (User + WebUser)
+        const user = await User.findOne({ where: { apodo: post.user_id } });
         const webuser = user
           ? await WebUser.findOne({ where: { user: user.id } })
           : null;
@@ -700,21 +703,76 @@ async incrementView(post_id) {
           where: { post_id: post.id },
         });
 
-        // 5. Autor
+        // 5. Último reply
+        const lastReply = await ForumReply.findOne({
+          where: { post_id: post.id },
+          order: [['created_at', 'DESC']],
+        });
+
+        let lastPoster = null;
+        if (lastReply) {
+          const replyUser = await User.findOne({
+            where: { apodo: lastReply.user_id },
+          });
+          const replyWebUser = replyUser
+            ? await WebUser.findOne({ where: { user: replyUser.id } })
+            : null;
+
+          lastPoster = {
+            name: replyUser?.apodo || 'Desconocido',
+            url: '#',
+            avatar:
+              replyWebUser?.photo || 'https://i.pravatar.cc/100?img=11',
+            color: await this.getUserColorByApodo(replyUser?.apodo),
+          };
+        }
+
+        // 6. Badges
+        const badges = [];
+        if (post.is_pinned) {
+          badges.push({
+            name: 'pin',
+            title: 'Anclado',
+            icon: '<i class="fa fa-thumb-tack"></i>',
+          });
+        }
+
+        // 7. Autor
         const author = {
-          name: user?.apodo || "Desconocido",
-          url: "#",
-          avatar: webuser?.photo || "https://i.pravatar.cc/100?img=15",
-          color: await this.getUserColorByApodo(user?.apodo), // <-- usamos la función
+          name: user?.apodo || 'Desconocido',
+          url: '#',
+          avatar: webuser?.photo || 'https://i.pravatar.cc/100?img=10',
+          color: await this.getUserColorByApodo(user?.apodo),
         };
+
+        // 8. Fechas
+        const createdAt = new Date(post.created_at);
+        const updatedAt = new Date(post.updated_at);
 
         formattedPosts.push({
           id: post.id,
           title: post.title,
-          content: post.content,
-          created_at: post.created_at,
-          repliesCount,
+          url: `/foro/post/${post.id}`,
+          badges,
           author,
+          forum: {
+            name: category?.name || 'General',
+            url: category.url,
+            color: category.color,
+          },
+          date: createdAt.toISOString(),
+          dateFormatted: createdAt.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'long',
+          }),
+          replies: repliesCount,
+          views: post.views || 0,
+          lastPoster,
+          lastDate: updatedAt.toISOString(),
+          lastDateFormatted: updatedAt.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'long',
+          }),
         });
       }
 
@@ -722,6 +780,8 @@ async incrementView(post_id) {
         category: {
           id: category.id,
           name: category.name,
+          url: category.url,
+          color: category.color,
         },
         posts: formattedPosts,
       });
@@ -729,11 +789,14 @@ async incrementView(post_id) {
 
     return results;
   } catch (error) {
-    console.error("Error en ForumService.getLatestPostsByCategory:", error);
+    console.error(
+      'Error en ForumService.getLatestPostsByCategory:',
+      error
+    );
     return {
       success: false,
-      code: "500",
-      message: "Error obteniendo posts por categoría",
+      code: '500',
+      message: 'Error obteniendo posts por categoría',
     };
   }
 }
