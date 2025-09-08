@@ -52,6 +52,11 @@ const ForumPost = sequelize.define('ForumPost', {
     allowNull: false,
     defaultValue: DataTypes.NOW,
   },
+  enable: {
+    type: DataTypes.TINYINT(1),
+    allowNull: false,
+    defaultValue: 1,
+  },
 }, {
   tableName: 'forum_posts',
   timestamps: false,
