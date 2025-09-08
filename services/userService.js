@@ -1088,7 +1088,7 @@ class UserService {
     }
   }
 
- async getRanking() {
+async getRanking() {
   try {
     const rankingData = await sequelize.query(
       `
@@ -1106,12 +1106,13 @@ class UserService {
         COALESCE(r.color, '#fff') AS userColor,
         wu.photo AS photoUrl
       FROM autoranking ar
-      INNER JOIN usergameinfo u ON ar.userid = u.id
+      INNER JOIN usergameinfo ugi ON ar.userid = ugi.id
+      INNER JOIN user u ON u.id = ugi.name   -- 🔹 Para obtener apodo
       INNER JOIN characterinfo ci ON ci.id = ar.id
-      LEFT JOIN claninfo clan ON u.clanid = clan.id
-      LEFT JOIN webusers wu ON wu.user = u.name
+      LEFT JOIN claninfo clan ON ugi.clanid = clan.id
+      LEFT JOIN webusers wu ON wu.user = ugi.name
       LEFT JOIN forum_roles fr 
-        ON fr.user_id = u.name AND fr.principal = 1
+        ON fr.user_id = u.apodo AND fr.principal = 1  -- 🔹 Usar apodo aquí
       LEFT JOIN roles r 
         ON r.id = fr.role_id
       WHERE ar.enable = 1
@@ -1127,6 +1128,7 @@ class UserService {
     throw new Error('Error interno del servidor');
   }
 }
+
 
 
   async getRankingClanes() {
