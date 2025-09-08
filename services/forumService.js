@@ -17,6 +17,7 @@ class ForumService {
     try {
       // 1. Obtener posts
      const posts = await ForumPost.findAll({
+        where:{ enable:1 },
         limit,
         order: [
           ['is_pinned', 'DESC'],   // Destacados primero
@@ -681,7 +682,7 @@ async incrementView(post_id) {
     for (const category of categories) {
       // 2. Traer últimos X posts de la categoría
       const posts = await ForumPost.findAll({
-        where: { category_id: category.id },
+        where: { category_id: category.id, enable:1 },
         limit,
         order: [['created_at', 'DESC']],
       });
