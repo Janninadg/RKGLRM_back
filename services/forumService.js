@@ -215,7 +215,7 @@ class ForumService {
   async getAllCategories() {
     try {
       const categories = await ForumCategory.findAll({
-        order: [['name', 'ASC']],
+        order: [['id', 'ASC']],
       });
 
       return categories;
