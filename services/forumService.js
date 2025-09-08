@@ -673,133 +673,142 @@ async incrementView(post_id) {
 }
 
 
-   async getLatestPostsByCategory(limit = 5) {
-  try {
-    // 1. Traer categorías
-    const categories = await ForumCategory.findAll();
-    const results = [];
+   async getLatestPostsByCategory(categories=2,limit = 5) {
+    try {
+      // 1. Determinar categorías a consultar
+      let categoriesToFetch;
+      if (categories === 'all') {
+        categoriesToFetch = await ForumCategory.findAll();
+      } else if (Array.isArray(categories)) {
+        categoriesToFetch = await ForumCategory.findAll({
+          where: { id: categories },
+        });
+      } else if (typeof categories === 'number') {
+        const category = await ForumCategory.findOne({ where: { id: categories } });
+        categoriesToFetch = category ? [category] : [];
+      } else {
+        categoriesToFetch = [];
+      }
 
-    for (const category of categories) {
-      // 2. Traer últimos X posts de la categoría
-      const posts = await ForumPost.findAll({
-        where: { category_id: category.id, enable: 1 },
-        limit,
-        order: [
-          ['is_pinned', 'DESC'], // destacados primero
-          ['created_at', 'DESC'], // luego por fecha
-        ],
-      });
+      const results = [];
 
-      const formattedPosts = [];
-      for (const post of posts) {
-        // 3. Autor (User + WebUser)
-        const user = await User.findOne({ where: { apodo: post.user_id } });
-        const webuser = user
-          ? await WebUser.findOne({ where: { user: user.id } })
-          : null;
-
-        // 4. Contar replies
-        const repliesCount = await ForumReply.count({
-          where: { post_id: post.id },
+      for (const category of categoriesToFetch) {
+        // 2. Traer últimos X posts de la categoría
+        const posts = await ForumPost.findAll({
+          where: { category_id: category.id, enable: 1 },
+          limit,
+          order: [
+            ['is_pinned', 'DESC'],
+            ['created_at', 'DESC'],
+          ],
         });
 
-        // 5. Último reply
-        const lastReply = await ForumReply.findOne({
-          where: { post_id: post.id },
-          order: [['created_at', 'DESC']],
-        });
-
-        let lastPoster = null;
-        if (lastReply) {
-          const replyUser = await User.findOne({
-            where: { apodo: lastReply.user_id },
-          });
-          const replyWebUser = replyUser
-            ? await WebUser.findOne({ where: { user: replyUser.id } })
+        const formattedPosts = [];
+        for (const post of posts) {
+          // 3. Autor (User + WebUser)
+          const user = await User.findOne({ where: { apodo: post.user_id } });
+          const webuser = user
+            ? await WebUser.findOne({ where: { user: user.id } })
             : null;
 
-          lastPoster = {
-            name: replyUser?.apodo || 'Desconocido',
-            url: '#',
-            avatar:
-              replyWebUser?.photo || 'https://i.pravatar.cc/100?img=11',
-            color: await this.getUserColorByApodo(replyUser?.apodo),
-          };
-        }
+          // 4. Contar replies
+          const repliesCount = await ForumReply.count({
+            where: { post_id: post.id },
+          });
 
-        // 6. Badges
-        const badges = [];
-        if (post.is_pinned) {
-          badges.push({
-            name: 'pin',
-            title: 'Anclado',
-            icon: '<i class="fa fa-thumb-tack"></i>',
+          // 5. Último reply
+          const lastReply = await ForumReply.findOne({
+            where: { post_id: post.id },
+            order: [['created_at', 'DESC']],
+          });
+
+          let lastPoster = null;
+          if (lastReply) {
+            const replyUser = await User.findOne({
+              where: { apodo: lastReply.user_id },
+            });
+            const replyWebUser = replyUser
+              ? await WebUser.findOne({ where: { user: replyUser.id } })
+              : null;
+
+            lastPoster = {
+              name: replyUser?.apodo || 'Desconocido',
+              url: '#',
+              avatar: replyWebUser?.photo || 'https://i.pravatar.cc/100?img=11',
+              color: await this.getUserColorByApodo(replyUser?.apodo),
+            };
+          }
+
+          // 6. Badges
+          const badges = [];
+          if (post.is_pinned) {
+            badges.push({
+              name: 'pin',
+              title: 'Anclado',
+              icon: '<i class="fa fa-thumb-tack"></i>',
+            });
+          }
+
+          // 7. Autor
+          const author = {
+            name: user?.apodo || 'Desconocido',
+            url: '#',
+            avatar: webuser?.photo || 'https://i.pravatar.cc/100?img=10',
+            color: await this.getUserColorByApodo(user?.apodo),
+          };
+
+          // 8. Fechas
+          const createdAt = new Date(post.created_at);
+          const updatedAt = new Date(post.updated_at);
+
+          formattedPosts.push({
+            id: post.id,
+            title: post.title,
+            url: `/foro/post/${post.id}`,
+            badges,
+            author,
+            forum: {
+              name: category?.name || 'General',
+              url: category.url,
+              color: category.color,
+            },
+            date: createdAt.toISOString(),
+            dateFormatted: createdAt.toLocaleDateString('es-ES', {
+              day: 'numeric',
+              month: 'long',
+            }),
+            replies: repliesCount,
+            views: post.views || 0,
+            lastPoster,
+            lastDate: updatedAt.toISOString(),
+            lastDateFormatted: updatedAt.toLocaleDateString('es-ES', {
+              day: 'numeric',
+              month: 'long',
+            }),
           });
         }
 
-        // 7. Autor
-        const author = {
-          name: user?.apodo || 'Desconocido',
-          url: '#',
-          avatar: webuser?.photo || 'https://i.pravatar.cc/100?img=10',
-          color: await this.getUserColorByApodo(user?.apodo),
-        };
-
-        // 8. Fechas
-        const createdAt = new Date(post.created_at);
-        const updatedAt = new Date(post.updated_at);
-
-        formattedPosts.push({
-          id: post.id,
-          title: post.title,
-          url: `/foro/post/${post.id}`,
-          badges,
-          author,
-          forum: {
-            name: category?.name || 'General',
+        results.push({
+          category: {
+            id: category.id,
+            name: category.name,
             url: category.url,
             color: category.color,
           },
-          date: createdAt.toISOString(),
-          dateFormatted: createdAt.toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'long',
-          }),
-          replies: repliesCount,
-          views: post.views || 0,
-          lastPoster,
-          lastDate: updatedAt.toISOString(),
-          lastDateFormatted: updatedAt.toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'long',
-          }),
+          posts: formattedPosts,
         });
       }
 
-      results.push({
-        category: {
-          id: category.id,
-          name: category.name,
-          url: category.url,
-          color: category.color,
-        },
-        posts: formattedPosts,
-      });
+      return results;
+    } catch (error) {
+      console.error('Error en ForumService.getLatestPostsByCategory:', error);
+      return {
+        success: false,
+        code: '500',
+        message: 'Error obteniendo posts por categoría',
+      };
     }
-
-    return results;
-  } catch (error) {
-    console.error(
-      'Error en ForumService.getLatestPostsByCategory:',
-      error
-    );
-    return {
-      success: false,
-      code: '500',
-      message: 'Error obteniendo posts por categoría',
-    };
   }
-}
 
   /**
    * Obtiene el color del usuario según su rol principal

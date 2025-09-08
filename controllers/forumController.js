@@ -164,7 +164,7 @@ class ForumController {
     async getLatestPostsByCategory(req, res) {
         try {
             // const { limit } = req.query; // opcional, por defecto 5
-            const result = await ForumService.getLatestPostsByCategory(5);
+            const result = await ForumService.getLatestPostsByCategory(2,5);
             res.status(200).json(result);
         } catch (error) {
             console.error('Error en ForumController.getLatestPostsByCategory:', error);
