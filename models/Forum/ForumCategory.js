@@ -19,6 +19,16 @@ const ForumCategory = sequelize.define('ForumCategory', {
     allowNull: true,
     collate: 'utf8mb4_general_ci',
   },
+  url: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    collate: 'utf8mb4_general_ci',
+  },
+  color: {
+    type: DataTypes.STRING(10),
+    allowNull: false,
+    collate: 'utf8mb4_general_ci',
+  },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
