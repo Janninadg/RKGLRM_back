@@ -9,6 +9,7 @@ import marketRoutes from './marketRoutes.js';
 import webRoutes from './webRoutes.js';
 import refineriaRoutes from './refineriaRoutes.js';
 import forumRoutes from './forumRoutes.js';
+import uploadRoutes from "./uploadRoutes.js";
 
 const router = express.Router();
 
@@ -43,5 +44,9 @@ router.use('/refineria', refineriaRoutes);
 
 // Montar rutas de foro bajo api/forum
 router.use('/forum', forumRoutes);
+
+// ...
+router.use("/uploads", uploadRoutes);
+
 
 export default router;
