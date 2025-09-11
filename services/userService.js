@@ -792,8 +792,11 @@ class UserService {
 
       const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
       const presentIds = pr.i;
-      // presentIds.push(8000);
-      // presentIds.push(7000);
+
+      presentIds.push(12222);
+      presentIds.push(12222);
+      presentIds.push(12292);
+      presentIds.push(12292);
 
       const presentRecords = presentIds.map(present_id => ({
         present_id,
@@ -848,7 +851,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 7 días de Power user y 15K Oro + '+ pr.m +' de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 7 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] de recompensa por registrarte!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
