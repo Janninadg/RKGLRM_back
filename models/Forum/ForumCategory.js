@@ -29,6 +29,12 @@ const ForumCategory = sequelize.define('ForumCategory', {
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
+  img: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    defaultValue: '/pictures/foro/cat/default.png',
+    collate: 'utf8mb4_general_ci',
+  },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,

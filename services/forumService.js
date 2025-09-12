@@ -1,4 +1,5 @@
 // services/forumService.js
+import { Op, fn, col, literal } from "sequelize";
 import ForumPost from '../models/Forum/ForumPost.js';
 import ForumCategory from '../models/Forum/ForumCategory.js';
 import ForumReply from '../models/Forum/ForumReply.js';
@@ -213,21 +214,158 @@ class ForumService {
   }
 
    // 🔹 Obtener todas las categorías
-  async getAllCategories() {
-    try {
-      const categories = await ForumCategory.findAll({
-        order: [['id', 'ASC']],
+ async getAllCategories() {
+   try {
+    const categories = await ForumCategory.findAll({
+      order: [["id", "ASC"]],
+      raw: true,
+    });
+
+    const result = [];
+
+    for (const category of categories) {
+      const catId = category.id;
+
+      // 📊 Totales por categoría
+      const postsCount = await ForumPost.count({ where: { category_id: catId } });
+      const totalViews = await ForumPost.sum("views", { where: { category_id: catId } });
+      const totalLikes = await ForumPost.sum("likes", { where: { category_id: catId } });
+
+      // 🔧 fix → usar IN
+      const repliesCount = await ForumReply.count({
+        where: {
+          post_id: {
+            [Op.in]: literal(`(SELECT id FROM forum_posts WHERE category_id = ${catId})`),
+          },
+        },
       });
 
-      return categories;
-    } catch (error) {
-      console.error('Error en ForumService.getAllCategories:', error);
-      return {
-        success: false,
-        code: '500',
-        message: 'Error al obtener las categorías',
-      };
+      const uniqueWriters = await ForumPost.aggregate("user_id", "count", {
+        distinct: true,
+        where: { category_id: catId },
+      });
+
+      // 👑 Usuarios destacados
+      const topPoster = await ForumPost.findOne({
+        attributes: ["user_id", [fn("COUNT", col("id")), "count"]],
+        where: { category_id: catId },
+        group: ["user_id"],
+        order: [[literal("count"), "DESC"]],
+        raw: true,
+      });
+
+      const topReplier = await ForumReply.findOne({
+        attributes: ["user_id", [fn("COUNT", col("id")), "count"]],
+        where: {
+          post_id: {
+            [Op.in]: literal(`(SELECT id FROM forum_posts WHERE category_id = ${catId})`),
+          },
+        },
+        group: ["user_id"],
+        order: [[literal("count"), "DESC"]],
+        raw: true,
+      });
+
+      const topLikedUser = await ForumPost.findOne({
+        attributes: ["user_id", [fn("SUM", col("likes")), "likes"]],
+        where: { category_id: catId },
+        group: ["user_id"],
+        order: [[literal("likes"), "DESC"]],
+        raw: true,
+      });
+
+      const topViewedUser = await ForumPost.findOne({
+        attributes: ["user_id", [fn("SUM", col("views")), "views"]],
+        where: { category_id: catId },
+        group: ["user_id"],
+        order: [[literal("views"), "DESC"]],
+        raw: true,
+      });
+
+      result.push({
+        id: category.id,
+        name: category.name,
+        url: category.url,
+        color: category.color,
+        img: category.img,
+        description: category.description,
+       stats: [
+          {
+            stat: "Posts",
+            number: postsCount || 0,
+            icon: "fa fa-file-text"
+          },
+          {
+            stat: "Replies",
+            number: repliesCount || 0,
+            icon: "fa fa-comments"
+          },
+          {
+            stat: "Views",
+            number: totalViews || 0,
+            icon: "fa fa-eye"
+          },
+          {
+            stat: "Likes",
+            number: totalLikes || 0,
+            icon: "fa fa-thumbs-up"
+          },
+          {
+            stat: "Writers",
+            number: uniqueWriters || 0,
+            icon: "fa fa-user"
+          }
+        ],
+       topUsers: {
+          poster: topPoster && topPoster.count > 0
+             ? {
+                user: topPoster.user_id,
+                type: "con más publicaciones",
+                number: topPoster.count,
+                icon: "fa fa-file-text",
+                text:"posts"
+              }
+            : null,
+          replier: topReplier && topReplier.count > 0
+            ? {
+                user: topReplier.user_id,
+                type: "con más comentarios",
+                number: topReplier.count,
+                icon: "fa fa-comments",
+                text:"replies"
+              }
+            : null,
+          liked: topLikedUser && topLikedUser.likes > 0
+            ? {
+                user: topLikedUser.user_id,
+                type: "cuyos posts recibieron más likes",
+                number: topLikedUser.likes,
+                icon: "fa fa-thumbs-up",
+                text:"likes"
+              }
+            : null,
+          viewed: topViewedUser && topViewedUser.views > 0
+            ? {
+                user: topViewedUser.user_id,
+                type: "cuyos posts fueron más vistos",
+                number: topViewedUser.views,
+                icon: "fa fa-eye",
+                text:"views"
+              }
+            : null,
+        },
+      });
     }
+
+    return result;
+  } catch (error) {
+    console.error("Error en ForumService.getAllCategories:", error);
+    return {
+      success: false,
+      code: "500",
+      message: "Error al obtener las categorías",
+    };
+  }
   }
 
    // 🔹 Crear respuesta en un post
