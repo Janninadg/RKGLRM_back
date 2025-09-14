@@ -1401,7 +1401,7 @@ class EventService {
                 lock: t.LOCK.UPDATE,
               });
 
-              if(giros.amount > 0){
+              if(giros && giros.amount > 0){
                 // Decrementar el ticket del usuario
                 await UserAsset.decrement('amount', {
                   by: 1,
