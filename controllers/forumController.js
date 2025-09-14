@@ -96,6 +96,7 @@ class ForumController {
     try {
       const { user, token, post_id, flag } = req.body;
 
+      // console.log(user);
       const result = await ForumService.toggleLike({
         user,
         token,
@@ -142,9 +143,9 @@ class ForumController {
 
     async getPostById(req, res) {
         try {
-            const { post_id } = req.params;
+            const { post_id, apodo } = req.params;
 
-            const result = await ForumService.getPostById(post_id);
+            const result = await ForumService.getPostById(post_id, apodo);
 
             if (result.success) {
             return res.status(200).json(result);

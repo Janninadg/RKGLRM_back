@@ -31,7 +31,7 @@ router.post('/toggleLike', ForumController.toggleLike);
 router.post('/toggleReplyLike', ForumController.toggleReplyLike);
 
 // Obtener un post completo por id
-router.get('/post/:post_id', ForumController.getPostById);
+router.get('/post/:post_id/:apodo?', ForumController.getPostById);
 
 router.get('/latestPostsByCategory', ForumController.getLatestPostsByCategory);
 

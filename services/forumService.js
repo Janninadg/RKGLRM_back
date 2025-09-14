@@ -517,23 +517,30 @@ class ForumService {
         let action = '';
         if (flag === 1) {
             if (!existingLike) {
-            // crear like
-            await ForumPostLike.create(
-                { post_id, user_id: apodo, created_at: new Date() },
-                { transaction: t }
-            );
-            action = 'created';
+              // crear like
+              await ForumPostLike.create(
+                  { post_id, user_id: apodo, created_at: new Date() },
+                  { transaction: t }
+              );
+              action = 'created';
             } else {
-            action = 'already_liked';
+              await existingLike.destroy({ transaction: t });
+              action = 'removed';
             }
         } else if (flag === 0) {
             if (existingLike) {
-            await existingLike.destroy({ transaction: t });
-            action = 'removed';
+              await existingLike.destroy({ transaction: t });
+              action = 'removed';
             } else {
-            action = 'nothing_to_remove';
+              action = 'nothing_to_remove';
             }
         }
+
+         const totalLikes = await ForumPostLike.count("likes", { where: { category_id: post.category_id } });
+
+        await ForumPost.update( { likes: totalLikes }, //cambiar a codigo_base
+          { where: { id: post_id },
+        },)
 
         await t.commit();
 
@@ -659,7 +666,7 @@ class ForumService {
     }
   }
 
-  async getPostById(post_id) {
+  async getPostById(post_id,apodo) {
     try {
         // 1) Obtener el post sin includes
         const post = await ForumPost.findByPk(post_id);
@@ -701,7 +708,7 @@ class ForumService {
         // 5) Obtener últimos 2 likes (ordenados por fecha) y mapear a apodos
         const recentLikeRecords = await ForumPostLike.findAll({
         where: { post_id },
-        limit: 2,
+        // limit: 2,
         order: [['created_at', 'DESC']],
         });
 
@@ -711,34 +718,40 @@ class ForumService {
         if (u) recentLikeUsers.push(u.apodo);
         }
 
+        // console.log(apodo)
+        // console.log(recentLikeUsers)
+        const flagLiked = apodo ? recentLikeUsers.includes(apodo) : false;
+
         // 6) Obtener replies + autor + likes
         const replies = await ForumReply.findAll({
-        where: { post_id },
-        order: [['created_at', 'ASC']],
+          where: { post_id },
+          order: [['created_at', 'ASC']],
         });
 
         const replyData = [];
         for (const reply of replies) {
-        const replyUser = await User.findOne({ where: { apodo: reply.user_id } });
-        const replyWebUser = replyUser
-            ? await WebUser.findOne({ where: { user: replyUser.id } })
-            : null;
+          const replyUser = await User.findOne({ where: { apodo: reply.user_id } });
+          const replyWebUser = replyUser
+              ? await WebUser.findOne({ where: { user: replyUser.id } })
+              : null;
 
-        const replyLikes = await ForumReplyLike.count({
-            where: { reply_id: reply.id },
-        });
+          const replyLikes = await ForumReplyLike.count({
+              where: { reply_id: reply.id },
+          });
 
-        replyData.push({
-            id: reply.id,
-            content: reply.content,
-            created_at: reply.created_at,
-            likes: replyLikes,
-            author: {
-            apodo: reply.user_id,
-            color: await this.getUserColorByApodo(replyUser?.apodo), // <-- usamos la función
-            photo: replyWebUser ? replyWebUser.photo : null,
-            },
-        });
+          replyData.push({
+              id: reply.id,
+              content: reply.content,
+              created_at: reply.created_at,
+              likes: replyLikes,
+              author: {
+                apodo: reply.user_id,
+                color: await this.getUserColorByApodo(replyUser?.apodo), // <-- usamos la función
+                photo: replyWebUser ? replyWebUser.photo : null,
+                role: await this.getNameRoleByApodo(user?.apodo),
+                stats: await this.getUserStatsByApodo(replyUser?.apodo)
+              },
+          });
         }
 
         // 7) Armar y devolver respuesta final
@@ -755,8 +768,9 @@ class ForumService {
             category,                 // ahora proviene de category_id
             author,
             likes: totalLikes,
-            recentLikes: recentLikeUsers,
+            recentLikes: recentLikeUsers.slice(0, 2), // 👈 solo los 2 primeros,
             replies: replyData,
+            flagLiked
         },
         };
     } catch (error) {
