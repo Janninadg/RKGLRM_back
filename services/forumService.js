@@ -329,7 +329,7 @@ class ForumService {
           replier: topReplier && topReplier.count > 0
             ? {
                 user: topReplier.user_id,
-                type: "con más comentarios",
+                type: "con más comentarios hechos",
                 number: topReplier.count,
                 icon: "fa fa-comments",
                 text:"replies"
