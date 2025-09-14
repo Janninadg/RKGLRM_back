@@ -465,108 +465,101 @@ class ForumService {
     }
   }
 
-    async toggleLike({ user, token, post_id, flag }) {
-        const t = await sequelize.transaction();
+   async toggleLike({ user, token, post_id, flag }) {
+    const t = await sequelize.transaction();
 
-        try {
-        // 1. Validar sesión
-        const sessionToken = await TokenSession.findOne({
-            where: { token: token, id: user },
-            transaction: t,
-        });
+    try {
+      // 1. Validar sesión
+      const sessionToken = await TokenSession.findOne({
+        where: { token, id: user },
+        transaction: t,
+        lock: t.LOCK.UPDATE, // 🔒 bloquea fila
+      });
+      if (!sessionToken) {
+        await t.rollback();
+        return { success: false, code: '100', message: 'Token inválido o sesión iniciada en otro navegador...' };
+      }
 
-        if (!sessionToken) {
-            await t.rollback();
-            return {
-            success: false,
-            code: '100',
-            message: 'Token inválido o sesión iniciada en otro navegador...',
-            };
+      // 2. Validar post
+      const post = await ForumPost.findByPk(post_id, {
+        transaction: t,
+        lock: t.LOCK.UPDATE, // 🔒 bloquea fila del post
+      });
+      if (!post) {
+        await t.rollback();
+        return { success: false, code: '101', message: 'El post no existe' };
+      }
+
+      // 3. Validar usuario
+      const userData = await User.findByPk(user, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!userData) {
+        await t.rollback();
+        return { success: false, code: '102', message: 'Usuario no encontrado' };
+      }
+      const apodo = userData.apodo;
+
+      // 4. Buscar like existente
+      const existingLike = await ForumPostLike.findOne({
+        where: { post_id, user_id: apodo },
+        transaction: t,
+        lock: t.LOCK.UPDATE, // 🔒 asegura consistencia
+      });
+
+      let action = '';
+      if (flag === 1) {
+        if (!existingLike) {
+          await ForumPostLike.create(
+            { post_id, user_id: apodo, created_at: new Date() },
+            { transaction: t }
+          );
+          action = 'created';
+        } else {
+          await existingLike.destroy({ transaction: t });
+          action = 'removed';
         }
-
-        // 2. Validar post
-        const post = await ForumPost.findByPk(post_id, { transaction: t });
-        if (!post) {
-            await t.rollback();
-            return {
-            success: false,
-            code: '101',
-            message: 'El post no existe',
-            };
+      } else if (flag === 0) {
+        if (existingLike) {
+          await existingLike.destroy({ transaction: t });
+          action = 'removed';
+        } else {
+          action = 'nothing_to_remove';
         }
+      }
 
-        // 3. Buscar apodo
-        const userData = await User.findByPk(user, { transaction: t });
-        if (!userData) {
-            await t.rollback();
-            return {
-            success: false,
-            code: '102',
-            message: 'Usuario no encontrado',
-            };
-        }
+      // 5. Contar likes (solo del post actual, no de toda la categoría)
+      const totalLikes = await ForumPostLike.count({
+        where: { post_id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
 
-        const apodo = userData.apodo;
+      // 6. Actualizar el post con el conteo
+      await ForumPost.update(
+        { likes: totalLikes },
+        { where: { id: post_id }, transaction: t }
+      );
 
-        // 4. Buscar like existente
-        const existingLike = await ForumPostLike.findOne({
-            where: { post_id, user_id: apodo },
-            transaction: t,
-        });
+      await t.commit();
 
-        let action = '';
-        if (flag === 1) {
-            if (!existingLike) {
-              // crear like
-              await ForumPostLike.create(
-                  { post_id, user_id: apodo, created_at: new Date() },
-                  { transaction: t }
-              );
-              action = 'created';
-            } else {
-              await existingLike.destroy({ transaction: t });
-              action = 'removed';
-            }
-        } else if (flag === 0) {
-            if (existingLike) {
-              await existingLike.destroy({ transaction: t });
-              action = 'removed';
-            } else {
-              action = 'nothing_to_remove';
-            }
-        }
-
-         const totalLikes = await ForumPostLike.count("likes", { where: { category_id: post.category_id } });
-
-        await ForumPost.update( { likes: totalLikes }, //cambiar a codigo_base
-          { where: { id: post_id },
-        },)
-
-        await t.commit();
-
-        return {
-            success: true,
-            code: '000',
-            message:
-            action === 'created'
-                ? 'Like agregado'
-                : action === 'removed'
-                ? 'Like eliminado'
-                : 'Sin cambios',
-            like: {
-                post_id,
-                user: apodo,
-                liked: action === 'created' ? true : false,
-            },
-        };
+      return {
+        success: true,
+        code: '000',
+        message:
+          action === 'created'
+            ? 'Like agregado'
+            : action === 'removed'
+            ? 'Like eliminado'
+            : 'Sin cambios',
+        like: {
+          post_id,
+          user: apodo,
+          liked: action === 'created',
+        },
+      };
     } catch (error) {
       await t.rollback();
       console.error('Error en ForumService.toggleLike:', error);
-      return {
-        success: false,
-        code: '500',
-        message: 'Error interno al gestionar el like',
-      };
+      return { success: false, code: '500', message: 'Error interno al gestionar el like' };
     }
   }
 
