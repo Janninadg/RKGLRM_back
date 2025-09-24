@@ -171,15 +171,15 @@ class StreamersService {
             }
     
             // Verificar si el usuario supera el límite permitido
-            if (cuponesGenerados >= limite) {
-                await t.rollback();
-                return {
-                    success: false,
-                    code: codigoError,
-                    message: msg,
-                  };
+            // if (cuponesGenerados >= limite) {
+            //     await t.rollback();
+            //     return {
+            //         success: false,
+            //         code: codigoError,
+            //         message: msg,
+            //       };
              
-            }
+            // }
 
           //Crear Log de cupon
           await LogStream.create(

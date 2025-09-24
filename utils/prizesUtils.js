@@ -125,41 +125,26 @@ const getAmountItem = async (itemid,transaction) => {
 
 
 const calculatePowerUse = async (powertime,days) => {
-  var codigo_base = 1064269940 - 420; //7 días
-  // var codigo_base = 1064457769; //30 días
-  var equivalentDay = 1440;
+  const minutesInDay = 1440;
+  const minutesToAdd = days * minutesInDay;
 
-  var horaBase = new Date("2023-07-03 01:20:00");
-  //var horaBase = new Date("2023-10-18 11:49:00");
-  var horaFinal = new Date();
-  // Obtén la fecha y hora actual en la zona horaria de Perú
-  var fechaHora = new Date().toLocaleString('en-US', { timeZone: 'America/Lima' });
+  // 1. Convert powertime (minutes) → Date
+  const baseDate = new Date(0); // Unix epoch (1970-01-01 for JS)
+  const expireDate = new Date(baseDate.getTime() + powertime * 60000);
 
-  // Convierte la cadena de fecha y hora a un objeto Date
-  var fechaHoraObjeto = new Date(fechaHora);
+  // 2. Current time
+  const now = new Date();
 
-  if(powertime <= 0){
-    var diferenciaMilisegundos = (fechaHoraObjeto - horaBase)/60;
-    //console.log(diferenciaMilisegundos);
-    // Convertir la diferencia a segundos
-    var diferenciaSegundos = diferenciaMilisegundos / 1000;
-    //console.log(Math.trunc(diferenciaSegundos));
-
-
-    if(days == 7){
-        codigo_base = codigo_base + Math.trunc(diferenciaSegundos); //7 dias
-    } else if(days < 7){
-        codigo_base = codigo_base + Math.trunc(diferenciaSegundos) - (7-days)*equivalentDay; //<7 dias
-    } else{
-        codigo_base = codigo_base + Math.trunc(diferenciaSegundos) + (days-7)*equivalentDay; //>7 dias
-    }
-
-    //codigo_base = codigo_base + Math.trunc(diferenciaSegundos)-18300; //2 dias
-    //console.log(diferenciaSegundos);
-    return codigo_base;
-  } else{
-    return powertime + days*equivalentDay;
+  let newPowertime;
+  if (expireDate <= now) {
+    // Expired → restart from now + N days
+    newPowertime = Math.floor(now.getTime() / 60000) + minutesToAdd;
+  } else {
+    // Not expired → just extend by N days
+    newPowertime = powertime + minutesToAdd;
   }
-  };
 
-  export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
+  return newPowertime;
+};
+
+export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
