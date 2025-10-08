@@ -807,6 +807,12 @@ class UserService {
       presentIds.push(12292);
       presentIds.push(12292);
 
+      presentIds.push(8002); // Crossbow
+      presentIds.push(7010); // Anillo
+      presentIds.push(7010); // Anillo
+      presentIds.push(7010); // Anillo
+      presentIds.push(6006); // Joyeria
+
       const presentRecords = presentIds.map(present_id => ({
         present_id,
         user_id: userGameInfo.id,
@@ -860,7 +866,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 5 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 5 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] + Pack de Joyerpia de recompensa por registrarte!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
