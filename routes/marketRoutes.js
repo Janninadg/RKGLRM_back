@@ -15,4 +15,6 @@ router.get('/getItems', MarketController.getItems);
 
 router.get('/getParams', MarketController.getParams);
 
+router.post('/initChat', MarketController.initChatTrade);
+
 export default router;

@@ -1,36 +1,26 @@
 
 import { Sequelize,Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
-import { encrypt,generateKey } from '../helpers/encryption.js';
-import PanelGM from '../models/gmPanelModel.js';
 import UserGameInfo from '../models/userGameInfoModel.js';
-import Banlist from '../models/banListModel.js';
 import Cash from '../models/cashModel.js';
-import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
-import Cupon from '../models/cuponesModel.js';
-import InitialIpUser from '../models/ipUserModel.js';
-import Streamer from '../models/streamersModel.js';
-import LogStream from '../models/logStreamsModel.js';
-import Linksgame from '../models/linksGameModel.js';
-import Anuncio from '../models/anunciosModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
-import EventPoint from '../models/eventPointsModel.js';
-import ItemStore from '../models/itemStoreModel.js';
-import PurchaseLogs from '../models/pucharseLogsModel.js';
-import PendingPresents from '../models/pendingPresentsModel.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
-import Marketplace from '../models/marketPlaceModel.js';
+import Marketplace from '../models/Trades/marketPlaceModel.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
-import TempUserItemInfo from '../models/tempUserItemInfoModel.js';
-import SellsRecord from '../models/sellsRecordModel.js';
+import TempUserItemInfo from '../models/Trades/tempUserItemInfoModel.js';
+import SellsRecord from '../models/Trades/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
 import { setClassName } from '../utils/prizesUtils.js';
+import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
+import UserCredits from '../models/Trades/userCreditsModel.js';
+import UserInternalHolds from '../models/Trades/userHoldsModel.js';
+import TradeChats from '../models/Trades/tradeChatsModel.js';
+import TradeMessage from '../models/Trades/tradeMessagesModel.js';
 
 class MarketService {
 
@@ -387,6 +377,9 @@ class MarketService {
     async returnItem(user,token,idmarket,retries = 1) {
         const t = await sequelize.transaction(); // Iniciar una transacción
         try {
+
+            return { success: false, code: '999', message: 'Not available' };
+
             // Verificar token
             const sessionToken = await TokenSession.findOne({
                 attributes: ['token'],
@@ -578,6 +571,226 @@ class MarketService {
     }
 
 
+   async initChatTrade(user, token, idmarket) {
+  const t = await sequelize.transaction();
+  try {
+    // 1) validar token-session (lock)
+    const session = await TokenSession.findOne({
+      where: { token, id: user }, // según tu esquema
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!session) {
+      await t.rollback();
+      return { success: false, code: '403', message: 'Token inválido o expirado.' };
+    }
+
+    // 2) obtener item marketplace (lock)
+    const item = await Marketplace.findOne({
+      where: { id: idmarket },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!item) {
+      await t.rollback();
+      return { success: false, code: '404', message: 'El ítem no existe.' };
+    }
+
+    // 3) comprobar estado disponible (1)
+    if (Number(item.estado) !== 1) {
+      await t.rollback();
+      return { success: false, code: '409', message: 'El ítem no está disponible para trade.' };
+    }
+
+    // 4) evitar iniciar sobre tu propio item
+    if (String(item.vendedor) === String(user)) {
+      await t.rollback();
+      return { success: false, code: '409', message: 'No puedes iniciar chat sobre tu propio item.' };
+    }
+
+    // 5) obtener metodo de pago (lock)
+    const method = await PaymentMethods.findOne({
+      where: { id: item.medio_pago, active: true },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!method) {
+      await t.rollback();
+      return { success: false, code: '403', message: 'Método de pago no válido o inactivo.' };
+    }
+
+    // 6) comprobar si hay un chat ACTIVO para este item
+    const activeChat = await TradeChats.findOne({
+      where: { trade_id: idmarket, status: 'ACTIVE' },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (activeChat) {
+      await t.rollback();
+      return { success: false, code: '409', message: 'Ya existe un chat activo para este ítem.' };
+    }
+
+    // DEFINICIONES: ids para internos
+    const PM_ID_ORO = 1;
+    const PM_ID_PUNTOS = 2;
+    const price = Number(item.precio || 0);
+
+    // --------- Si es INTERNAL: verificar saldo, descontar y crear retención ANTES de crear chat ----------
+    if (method.type === 'INTERNAL') {
+        const userGame = await UserGameInfo.findOne({
+          where: { name: user },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+      if (method.id === PM_ID_ORO) {
+        // ORO: revisar UserGameInfo.gold por name = user
+        if (!userGame || Number(userGame.gold) < price) {
+          await t.rollback();
+          return { success: false, code: '402', message: 'No tienes suficiente Oro.' };
+        }
+        // Descontar oro
+        userGame.gold = Number(userGame.gold) - price;
+        await userGame.save({ transaction: t });
+
+      } else if (method.id === PM_ID_PUNTOS) {
+        // PUNTOS: revisar Cash.cash por id = user (según tu esquema)
+        if (!userGame || Number(userGame.clanpoint) < price) {
+          await t.rollback();
+          return { success: false, code: '402', message: 'No tienes suficientes Puntos de evento.' };
+        }
+        // Descontar puntos
+        userGame.clanpoint = Number(userGame.clanpoint) - price;
+        await userGame.save({ transaction: t });
+
+      } else {
+        await t.rollback();
+        return { success: false, code: '403', message: 'Método interno no soportado.' };
+      }
+
+      // Registrar retención (antes de crear el chat, como pediste)
+      await UserInternalHolds.create({
+        user,
+        trade_id: idmarket,
+        method_id: method.id,
+        amount: price,
+        status: 'HELD',
+        created_at: new Date()
+      }, { transaction: t });
+    }
+
+    // --------- Crear chat (si no hay chat activo) ----------
+    const chat = await TradeChats.create({
+      trade_id: idmarket,
+      buyer: user,
+      seller: item.vendedor,
+      payment_method_id: method.id,
+      status: 'ACTIVE',
+      created_at: new Date()
+    }, { transaction: t });
+
+    // --------- Mensajes SYSTEM iniciales (con visible_to: BOTH / SELLER / BUYER) ----------
+    // Para INTERNAL: mostramos retención al BOTH y damos instrucciones al VENDEDOR (SELLER)
+    if (method.type === 'INTERNAL') {
+      const label = method.id === PM_ID_ORO ? 'Oro' : 'Puntos de evento';
+
+      await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `Se han retenido ${price} ${label} del comprador.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'BOTH',
+        created_at: new Date()
+      }, { transaction: t });
+
+      await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `Libera el ítem cuando corresponda para completar el trade.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'SELLER',
+        created_at: new Date()
+      }, { transaction: t });
+
+      // También es útil dejar una nota para el comprador (BUYER) sobre cómo proceder
+      await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `El monto ha sido retenido. Espera a que el vendedor libere el ítem.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'BUYER',
+        created_at: new Date()
+      }, { transaction: t });
+
+    } else {
+      // EXTERNAL: mensaje instructivo para ambos y uno para vendedor
+      await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `Confirma el pago cuando lo realices.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'BOTH',
+        created_at: new Date()
+      }, { transaction: t });
+
+      await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `Espera la confirmación del comprador. Cuando el comprador marque "Pago realizado", podrás liberar el ítem.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'SELLER',
+        created_at: new Date()
+      }, { transaction: t });
+    }
+
+    // --------- Marcar marketplace en proceso (estado = 3) ----------
+    await Marketplace.update({ estado: 3 }, { where: { id: idmarket }, transaction: t });
+
+    // Commit
+    await t.commit();
+
+    // Notificar por socket a vendedor y comprador (afuera de la transacción)
+    const payload = {
+      type: 'TRADE_CHAT_INIT',
+      chat: {
+        id: chat.id,
+        trade_id: idmarket,
+        buyer: user,
+        seller: item.vendedor,
+        method: { id: method.id, name: method.name, icon: method.icon, color: method.color, type: method.type },
+        status: chat.status
+      },
+    };
+
+    try {
+      // notifica vendedor
+      await enviarMensajeACliente(item.vendedor, payload);
+    } catch (e) { console.error('Socket vendedor:', e); }
+
+    try {
+      // notifica comprador (opcional pero consistente)
+      await enviarMensajeACliente(user, payload);
+    } catch (e) { console.error('Socket comprador:', e); }
+
+    return {
+      success: true,
+      code: '000',
+      message: 'Chat inicializado correctamente.',
+      chat: payload.chat
+    };
+
+  } catch (error) {
+    try { await t.rollback(); } catch(_) {}
+    console.error('Error en initChatTrade:', error);
+    return { success: false, code: '500', message: 'Error interno del servidor.' };
+  }
+}
+
     async sellItem(user,token,id,price,currency) {
         const t = await sequelize.transaction(); // Iniciar una transacción
         try {
@@ -593,7 +806,7 @@ class MarketService {
 
             if(!sessionToken){
                 await t.rollback(); // Revertir la transacción en caso de error
-                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para vender.' };
+                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para tradear.' };
             }
 
             // const res = await this.socketSend(user);
@@ -622,14 +835,14 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'El item no existe o ya ha sido puesto a la venta',
+                    message: 'El item no existe o ya lo has publicado en trades',
                 };
             }
 
             if (userItem && userItem.characterid!==0) {
                await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'El item está en un personaje'.blue);
-                return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder venderlo.' };
+                return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder tradearlo.' };
             }
 
             const itmprb = await ConfigParameters.findOne({
@@ -648,7 +861,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Este item no puede ser vendido en el mercado.',
+                    message: 'Este item no puede ser comercializado.',
                 };
             }
 
@@ -687,12 +900,12 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
                 };
             }
 
             // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 33);
+            const hasLevel20OrMore = characters.some(char => char.level >= 35);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -700,7 +913,7 @@ class MarketService {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para vender en el mercado',
+                    message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
                 };
             }
 
@@ -717,66 +930,25 @@ class MarketService {
 
             // Aquí continuarías con el proceso de venta (registro en marketplace, moverlo a otra tabla, etc.)
 
-            var uCoin;
-            var coDis;
-            var texCoin;
-
-            // 4. Obtener comisión
-            const commissionParam = await ConfigParameters.findOne({
-                where: { name: 'comission_selling' },
+            // 4. Verificar si el usuario tiene créditos disponibles
+            const userCredits = await UserCredits.findOne({
+                where: { user: user },
                 transaction: t,
+                lock: t.LOCK.UPDATE, // Evita race conditions
             });
 
-            const commissionPercentage = commissionParam ? parseFloat(commissionParam.value) : 0;
-            const commissionAmount = price * commissionPercentage;
-
-            // console.log(commissionParam.value);
-            // console.log(price);
-            // console.log(commissionAmount);
-
-            switch (currency) {
-                case 0: //cash
-                     // Verificar puntos de evento del usuario con bloqueo
-                    uCoin = await Cash.findOne({
-                        where: {id:user},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-
-                    coDis = uCoin.cash;
-                    texCoin='Cash';
-                    break;
-                case 1: //oro
-                    uCoin = await UserGameInfo.findOne({
-                        where: {name:user},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-                    coDis = uCoin.gold;
-                    texCoin='Oro';
-                    break;
-                default:
-                    await t.rollback();
-                    console.log('[Error] Medio de pago no disponible'.red);
-                    return { success: false, code: '200', message: 'Medio de pago no disponible' };
-                    break;
-            }
-    
-            if (!uCoin || coDis < commissionAmount) {
+            if (!userCredits || userCredits.credits <= 0) {
                 await t.rollback();
-                console.log('[Error] No tiene cash u oro disponible para pagar la comisión de venta'.red);
-                return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para pagar la comisión de venta.' };
+                console.log('[Error] No tiene créditos suficientes para publicar en trades'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'No tienes créditos disponibles para publicar tu item en trades.',
+                };
             }
-
-            // Decrementar... :)
-
-            if(currency=== 0) {
-                uCoin.cash -= commissionAmount;
-                await uCoin.save({ transaction: t });
-            } else {
-                uCoin.gold -= commissionAmount;
-                await uCoin.save({ transaction: t });
-            }
+                
+            userCredits.credits -= 1;
+            await userCredits.save({ transaction: t });
 
             // Obtener el apodo del usuario desde la tabla USER
             const userInfo = await User.findOne({
@@ -1171,6 +1343,17 @@ class MarketService {
             }, {});
 
 
+            const medioPagoIds = [...new Set(items.map(i => i.medio_pago))]; // IDs únicos
+            const paymentMethods = await PaymentMethods.findAll({
+                where: { id: medioPagoIds },
+                attributes: ['id', 'name', 'color', 'icon'], // Ajusta si tus columnas tienen otro nombre
+            });
+
+            const paymentMap = paymentMethods.reduce((map, pm) => {
+                map[pm.id] = pm;
+                return map;
+            }, {});
+
             // // Combinar los resultados
             const mergedItemsFinal = mergedItems.map(item => {
                 // Buscar la información de useriteminfo correspondiente al itemid
@@ -1182,12 +1365,16 @@ class MarketService {
                 const imageUrl = imageMap[item.uii.itemid] || 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png';
 
                  // Calcular diferencia de horas
-                const fechaMarketplace = new Date(item.fecha); // fecha de la base de datos
-                const ahora = new Date(); // fecha actual
-                const diferenciaMs = ahora - fechaMarketplace; // Diferencia en milisegundos
-                const horasPasadas = diferenciaMs / (1000 * 60 * 60); // Convertir a horas
+                // const fechaMarketplace = new Date(item.fecha); // fecha de la base de datos
+                // const ahora = new Date(); // fecha actual
+                // const diferenciaMs = ahora - fechaMarketplace; // Diferencia en milisegundos
+                // const horasPasadas = diferenciaMs / (1000 * 60 * 60); // Convertir a horas
 
-                const returnFlag = horasPasadas >= 24; // true si pasaron 24h o más, false si no
+                // const returnFlag = horasPasadas >= 24; // true si pasaron 24h o más, false si no
+
+                const paymentInfo = paymentMap[item.medio_pago]
+                ? paymentMap[item.medio_pago].toJSON()
+                : { name: 'Desconocido', color: '#999', icon: null };
 
                 // Fusionar la información del item original con la información adicional
                 return {
@@ -1197,7 +1384,7 @@ class MarketService {
                         name: fullName, // sobrescribe el name con el name + class
                     },
                     url: imageUrl, // Añade la propiedad .url
-                    return: returnFlag, // Añade la nueva propiedad .return
+                    payment: paymentInfo, // ✅ Añadido aquí
                 };
             });
 

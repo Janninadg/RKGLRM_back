@@ -1,5 +1,5 @@
 import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js'; // Ajusta la ruta a tu archivo de configuración de la base de datos
+import sequelize from '../../config/database.js'; // Ajusta la ruta a tu archivo de configuración de la base de datos
 
 const TempUserItemInfo = sequelize.define('temp_useriteminfo', {
   id: {

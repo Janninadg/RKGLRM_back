@@ -124,27 +124,78 @@ const getAmountItem = async (itemid,transaction) => {
 // }
 
 
-const calculatePowerUse = async (powertime,days) => {
-  const minutesInDay = 1440;
-  const minutesToAdd = days * minutesInDay;
+const MS_PER_MIN = 60 * 1000;
+const MINUTES_PER_DAY = 1440;
 
-  // 1. Convert powertime (minutes) → Date
-  const baseDate = new Date(0); // Unix epoch (1970-01-01 for JS)
-  const expireDate = new Date(baseDate.getTime() + powertime * 60000);
+/**
+ * To_Days equivalent: días enteros entre 0001-01-01 y la fecha dada.
+ * Reproduce: DaysBetween(EncodeDate(1,1,1), ADateTime) + 365 + 1
+ * @param {Date} date
+ * @returns {number} número entero de días
+ */
+function toDays(date = new Date()) {
+  // Fecha base 0001-01-01 (UTC)
+  const base = Date.UTC(1, 0, 1); // año 1, mes 0 (enero), día 1
+  // Fecha actual truncada a medianoche local (reproduce DaysBetween behavior)
+  const cur = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((cur - base) / (24 * MS_PER_MIN * 60));
+  // replicamos exactamente la corrección del Pascal (+365 + 1)
+  return diffDays + 365 + 1;
+}
 
-  // 2. Current time
+/**
+ * Base code sin añadir días: (To_Days(now)*24 + HourOf(now)) * 60 + MinuteOf(now)
+ * @param {Date} date
+ * @returns {number}
+ */
+function baseMinutesCode(date = new Date()) {
+  const days = toDays(date);
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  return (days * 24 + hour) * 60 + minute;
+}
+
+/**
+ * Calcula el dayscode igual que en Pascal:
+ * (To_Days(now)*24 + HourOf(now)) * 60 + MinuteOf(now) + (dias * GetMinOfDay)
+ */
+function computeDaysCodeAddDays(daysToAdd, date = new Date()) {
+  return baseMinutesCode(date) + (daysToAdd * MINUTES_PER_DAY);
+}
+
+/**
+ * calculatePowerUse: recibe powertime (minutes-code), y days (número de días a añadir).
+ * - powertime por defecto = 0 (tal como pediste).
+ * - si powertime está caducado (<= código base actual) -> reinicia desde now + days
+ * - si no está caducado -> extiende sumando days en minutos
+ *
+ * Devuelve el nuevo powertime (número entero).
+ */
+const calculatePowerUse = async (powertime = 0, days = 0) => {
+  return powertime;
+  // valida parámetros
+  const dias = Number(days) || 0;
+  let pt = Number(powertime) || 0;
+
+  // código base actual (sin días añadidos)
   const now = new Date();
+  const baseNowCode = baseMinutesCode(now);
+  const minutesToAdd = dias * MINUTES_PER_DAY;
 
   let newPowertime;
-  if (expireDate <= now) {
-    // Expired → restart from now + N days
-    newPowertime = Math.floor(now.getTime() / 60000) + minutesToAdd;
+  if (pt === 0) {
+    // sin powertime previo: iniciar desde ahora + days
+    newPowertime = computeDaysCodeAddDays(dias, now);
+  } else if (pt <= baseNowCode) {
+    // expirado (o exactamente en el límite) -> reiniciar desde ahora + days
+    newPowertime = computeDaysCodeAddDays(dias, now);
   } else {
-    // Not expired → just extend by N days
-    newPowertime = powertime + minutesToAdd;
+    // no expirado -> extender sumando días en minutos (mantenemos misma "escala" de código)
+    newPowertime = pt + minutesToAdd;
   }
 
-  return newPowertime;
+  // devolver entero
+  return Math.trunc(newPowertime);
 };
 
 export { calculatePowerUse,getAmountItem,setClassName,setTypeName };

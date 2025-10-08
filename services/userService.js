@@ -714,7 +714,16 @@ class UserService {
       );
       //console.log(111111);
 
-      const powertimefinal = await calculatePowerUse(0,7);
+      // const powertimefinal = await calculatePowerUse(0,5);
+
+     await sequelize.query(`SET time_zone = '-05:00';`);
+
+      const [result] = await sequelize.query(`
+        SELECT 
+          (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) 
+          + (30 * 1440) AS dayscode;
+      `);
+      const powertimefinal = result[0].dayscode;
 
       await UserGameInfo.create(
         {
@@ -851,7 +860,7 @@ class UserService {
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 7 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 5 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] de recompensa por registrarte!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };

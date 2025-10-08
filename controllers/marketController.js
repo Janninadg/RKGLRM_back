@@ -30,6 +30,30 @@ class MarketController {
         }
     }
 
+    async initChatTrade(req, res, next) {
+      try {
+        const { user, token, idmarket, ip } = req.body;
+
+        console.log("---------------------------------------------------------------".cyan);
+        console.log("TRADE (INIT CHAT) - FROM IP: ".cyan, ip.green);
+        console.log('Usuario:'.cyan, user.magenta);
+        console.log('ID Market:'.cyan, String(idmarket).magenta);
+
+        const response = await MarketService.initChatTrade(user, token, idmarket);
+
+        console.log("---------------------------------------------------------------".cyan);
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+      } catch (error) {
+        console.error('Error en initChatTrade:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
+
     async returnItem(req, res, next) {
       try {
         const { user,token,idmarket,ip } = req.body;
