@@ -1,4 +1,5 @@
 import ItemInfo from "../models/itemInfoModel.js";
+import sequelize from '../config/database.js';
 
 const setClassName = (classitem) => {
     try {
