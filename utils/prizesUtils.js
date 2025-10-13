@@ -154,14 +154,11 @@ function toDays(date = new Date()) {
 async function calculatePowerUse(powerUser = 0, daysToAdd = 5) {
   await sequelize.query(`SET time_zone = '-05:00';`);
 
-  const [result] = await sequelize.query(`
+  const result = await sequelize.query(`
     SELECT 
       CASE
-        -- Si no tiene power user (0 o NULL) → calcular desde ahora + daysToAdd
         WHEN :powerUser <= 0 THEN 
           (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) + (:daysToAdd * 1440)
-
-        -- Si ya venció → reiniciar desde ahora + daysToAdd
         WHEN (
           FROM_DAYS(FLOOR(:powerUser / 1440) + TO_DAYS('0001-01-01') - 366)
           + INTERVAL (FLOOR(:powerUser / 60) % 24) HOUR
@@ -169,8 +166,6 @@ async function calculatePowerUse(powerUser = 0, daysToAdd = 5) {
         ) <= NOW()
         THEN 
           (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) + (:daysToAdd * 1440)
-
-        -- Si no venció → sumar daysToAdd días al actual
         ELSE :powerUser + (:daysToAdd * 1440)
       END AS new_powertime;
   `, {
@@ -178,6 +173,7 @@ async function calculatePowerUse(powerUser = 0, daysToAdd = 5) {
     type: sequelize.QueryTypes.SELECT
   });
 
+  // 'result' ya es un array de objetos [{ new_powertime: 12345 }]
   return result[0].new_powertime;
 }
 
