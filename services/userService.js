@@ -714,16 +714,7 @@ class UserService {
       );
       //console.log(111111);
 
-      // const powertimefinal = await calculatePowerUse(0,5);
-
-     await sequelize.query(`SET time_zone = '-05:00';`);
-
-      const [result] = await sequelize.query(`
-        SELECT 
-          (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) 
-          + (30 * 1440) AS dayscode;
-      `);
-      const powertimefinal = result[0].dayscode;
+      const powertimefinal = await calculatePowerUse(0,5);
 
       await UserGameInfo.create(
         {

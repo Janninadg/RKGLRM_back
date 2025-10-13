@@ -142,28 +142,7 @@ function toDays(date = new Date()) {
   // replicamos exactamente la corrección del Pascal (+365 + 1)
   return diffDays + 365 + 1;
 }
-
-/**
- * Base code sin añadir días: (To_Days(now)*24 + HourOf(now)) * 60 + MinuteOf(now)
- * @param {Date} date
- * @returns {number}
- */
-function baseMinutesCode(date = new Date()) {
-  const days = toDays(date);
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  return (days * 24 + hour) * 60 + minute;
-}
-
-/**
- * Calcula el dayscode igual que en Pascal:
- * (To_Days(now)*24 + HourOf(now)) * 60 + MinuteOf(now) + (dias * GetMinOfDay)
- */
-function computeDaysCodeAddDays(daysToAdd, date = new Date()) {
-  return baseMinutesCode(date) + (daysToAdd * MINUTES_PER_DAY);
-}
-
-/**
+/*
  * calculatePowerUse: recibe powertime (minutes-code), y days (número de días a añadir).
  * - powertime por defecto = 0 (tal como pediste).
  * - si powertime está caducado (<= código base actual) -> reinicia desde now + days
@@ -171,31 +150,34 @@ function computeDaysCodeAddDays(daysToAdd, date = new Date()) {
  *
  * Devuelve el nuevo powertime (número entero).
  */
-const calculatePowerUse = async (powertime = 0, days = 0) => {
-  return powertime;
-  // valida parámetros
-  const dias = Number(days) || 0;
-  let pt = Number(powertime) || 0;
+async function calculatePowerUse(powerUser = 0, daysToAdd = 5) {
+  await sequelize.query(`SET time_zone = '-05:00';`);
 
-  // código base actual (sin días añadidos)
-  const now = new Date();
-  const baseNowCode = baseMinutesCode(now);
-  const minutesToAdd = dias * MINUTES_PER_DAY;
+  const [result] = await sequelize.query(`
+    SELECT 
+      CASE
+        -- Si no tiene power user (0 o NULL) → calcular desde ahora + daysToAdd
+        WHEN :powerUser <= 0 THEN 
+          (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) + (:daysToAdd * 1440)
 
-  let newPowertime;
-  if (pt === 0) {
-    // sin powertime previo: iniciar desde ahora + days
-    newPowertime = computeDaysCodeAddDays(dias, now);
-  } else if (pt <= baseNowCode) {
-    // expirado (o exactamente en el límite) -> reiniciar desde ahora + days
-    newPowertime = computeDaysCodeAddDays(dias, now);
-  } else {
-    // no expirado -> extender sumando días en minutos (mantenemos misma "escala" de código)
-    newPowertime = pt + minutesToAdd;
-  }
+        -- Si ya venció → reiniciar desde ahora + daysToAdd
+        WHEN (
+          FROM_DAYS(FLOOR(:powerUser / 1440) + TO_DAYS('0001-01-01') - 366)
+          + INTERVAL (FLOOR(:powerUser / 60) % 24) HOUR
+          + INTERVAL (:powerUser % 60) MINUTE
+        ) <= NOW()
+        THEN 
+          (TO_DAYS(NOW()) * 24 + HOUR(NOW())) * 60 + MINUTE(NOW()) + (:daysToAdd * 1440)
 
-  // devolver entero
-  return Math.trunc(newPowertime);
-};
+        -- Si no venció → sumar daysToAdd días al actual
+        ELSE :powerUser + (:daysToAdd * 1440)
+      END AS new_powertime;
+  `, {
+    replacements: { powerUser, daysToAdd },
+    type: sequelize.QueryTypes.SELECT
+  });
+
+  return result[0].new_powertime;
+}
 
 export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
