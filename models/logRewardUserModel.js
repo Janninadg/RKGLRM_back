@@ -28,6 +28,14 @@ const LogRewardsUser = sequelize.define('LogRewardsUser', {
     type: DataTypes.INTEGER(11),
     allowNull: true // Permitir nulos ya que puede ser NULL según la descripción
   },
+  last_pr: {
+    type: DataTypes.BIGINT(20),
+    allowNull: true // Permitir nulos ya que puede ser NULL según la descripción
+  },
+   curr_pr: {
+    type: DataTypes.BIGINT(20),
+    allowNull: true // Permitir nulos ya que puede ser NULL según la descripción
+  },
   fecha: {
     type: DataTypes.DATE,
     allowNull: false

@@ -16,6 +16,10 @@ const PurchaseLogs = sequelize.define('pucharselogs', {
     type: DataTypes.INTEGER(11),
     allowNull: false
   },
+   itemid: {
+    type: DataTypes.INTEGER(11),
+    allowNull: false
+  },
   quantity: {
     type: DataTypes.INTEGER(11),
     allowNull: false

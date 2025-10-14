@@ -342,12 +342,18 @@ class GamesService {
      */
     async saveOro(userId,prize,t) {
         try {
-            await UserGameInfo.increment(
-                'gold',
-                { by: prize.prize, where: { name: userId }, transaction: t }
-            );
+
+            const uCoin = await UserGameInfo.findOne({
+                where: {name:userId},
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+             const lastuCoin = uCoin.gold;
+             uCoin.gold += prize.prize;
+             await uCoin.save({ transaction: t });
             
-            return { message:`Has obtenido ${prize.prize} de Oro`, success: true };
+            return { message:`Has obtenido ${prize.prize} de Oro`, success: true,last:lastuCoin,curr: uCoin.gold };
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar oro:', error);
@@ -367,12 +373,19 @@ class GamesService {
      */
      async saveCash(userId,prize,t) {
         try {
-             // Actualizar el cash en Cash
-             await Cash.increment(
-                'cash',
-                { by: prize.prize, where: { id: userId }, transaction: t }
-            );
-            return { message:`Has obtenido ${prize.prize} de Cash`, success: true };
+
+            const uCoin = await Cash.findOne({
+                where: {id:userId},
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            const lastuCoin = uCoin.cash;
+
+            uCoin.cash += prize.prize;
+            await uCoin.save({ transaction: t });
+
+            return { message:`Has obtenido ${prize.prize} de Cash`, success: true,last:lastuCoin,curr: uCoin.cash };
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar cash:', error);
@@ -554,7 +567,7 @@ class GamesService {
                 },
             );
 
-            return { message:`Has obtenido ${prize.prize} días de Power User`, success: true };
+            return { message:`Has obtenido ${prize.prize} días de Power User`, success: true,last:userGamePower.powertime,curr: powertimefinal};
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar poweruser:', error);
@@ -1064,6 +1077,8 @@ class GamesService {
                     recompensa:(typePrize === 8 || typePrize===9) ? response.bv: prize.prize,
                     tipo_recompensa: typePrize,
                     origen_2: game,
+                    last_pr: response.last ? response.last : 0,
+                    curr_pr: response.curr ? response.curr : 0,
                     fecha: new Date(), 
                 }, { transaction:t });
             }

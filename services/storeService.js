@@ -284,6 +284,7 @@ class StoreService {
             await PurchaseLogs.create({
                 user: user,
                 idstore: idstore,
+                itemid: item.itemid,
                 quantity: amount,
                 pointsspent: item.price * amount,
                 fecha: new Date(),
