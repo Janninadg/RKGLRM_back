@@ -489,7 +489,7 @@ class EventService {
                   let sumprob = 0;
       
                   do {
-      
+                    console.log(dataPr);
                     const newItem = {
                       id: dataPr[i].orderPrize,
                       name: dataPr[i].name,
@@ -501,7 +501,7 @@ class EventService {
       
                     newDataPrize.push(newItem);
                     i += 1;
-      
+                    
                   } while (sumprob < 1);
       
                   prizes.push(newDataPrize);
