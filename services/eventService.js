@@ -482,6 +482,7 @@ class EventService {
                 const prizes = [];
 
                 // Recorrer el arreglo dataPr y construir probs y data
+                console.log(dataPr);
                 let i = 0;
                 while(i < dataPr.length){
                   const newDataPrize = [];
