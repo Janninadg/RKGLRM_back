@@ -342,8 +342,8 @@ class EventService {
 
                 var nameAsset;
                 var picas;
-
-                if(modality = 1){
+                
+                if(modality == 1){
                   picas = await UserAsset.findOne({
                     where: {
                       user: user,
