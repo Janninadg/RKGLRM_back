@@ -280,7 +280,7 @@ class EventController {
       // Compara el resumen de los datos recibidos con el resumen incluido en los datos
       const isDataIntegrityValid = receivedDataHash === j1xYbZ;
 
-      const { MOLjPO,OPJKOU,OLPOKK,MKUID,OIDOL,MKLOIJ,MTODLA } = W4aRzY;
+      const { MOLjPO,OPJKOU,OLPOKK,MKUID,OIDOL,MKLOIJ,MTODLA,MDLOP } = W4aRzY;
 
       //console.log("DATA:",W4aRzY);
       //console.log(signature);
@@ -294,8 +294,9 @@ class EventController {
       const type = Number(decrypt(MKLOIJ,key));
       const authGame = decrypt(MTODLA,key)
       const index = Number(decrypt(OIDOL,key));
+      const modality = Number(decrypt(MDLOP,key));
 
-      const paramsString = `${MOLjPO}-${OPJKOU}-${OLPOKK}-${MKUID}-${MKLOIJ}-${OIDOL}-${MTODLA}`;
+      const paramsString = `${MOLjPO}-${OPJKOU}-${OLPOKK}-${MKUID}-${MKLOIJ}-${OIDOL}-${MTODLA}-${MDLOP}`;
 
       console.log("---------------------------------------------------------------".magenta);
       console.log("PARTIDA - FROM IP: ".blue,req.clientIp.green);
@@ -327,7 +328,7 @@ class EventController {
           break;
       }
 
-      const result = await EventService.setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString, req);
+      const result = await EventService.setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString,modality, req);
 
        console.log("---------------------------------------------------------------".magenta);
       if (result.success || result.code) {

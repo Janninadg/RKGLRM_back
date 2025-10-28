@@ -31,8 +31,14 @@ const Matches = sequelize.define('matches', {
     type: DataTypes.TEXT('medium'),
     collate: 'utf8mb4_general_ci',
   },
+  modalidad:{
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   game: {
     type: DataTypes.INTEGER,
+    allowNull: false,
     defaultValue: 3,
   },
   estado: {

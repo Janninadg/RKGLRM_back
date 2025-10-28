@@ -243,7 +243,7 @@ class EventService {
     }
   }
 
-  async setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString, req) {
+  async setPartida(authGame,token,type,index,user,estado,isDataIntegrityValid,paramsString,modality, req) {
     const t = await sequelize.transaction();
     try {
       // Verificar el paquete utilizando la clase PacketVerifier
@@ -340,32 +340,42 @@ class EventService {
 
               if(!matchFound){
 
-                const  picas = await UserAsset.findOne({
-                  // attributes: ['tickets'],
-                  where: {
-                    user: user,
-                    asset:4
-                  },
-                  transaction:t, // Asociar la transacción con esta consulta
-                  lock: t.LOCK.UPDATE,
-                });
+                var nameAsset;
+                var picas;
 
-                // await t.rollback(); // Revertir la transacción en caso de error
-                if(!picas || picas.amount < 1){
-                  await t.rollback(); // Revertir la transacción en caso de error
-                  return { success: false, code: '001', message:`No tiene picas suficientes para jugar al buscaminas` };
-                }
-
-               // Decrementar picas
-                await UserAsset.decrement('amount', {
-                    by: 1,
+                if(modality = 1){
+                  picas = await UserAsset.findOne({
+                    where: {
+                      user: user,
+                      asset:3
+                    },
+                    transaction:t, // Asociar la transacción con esta consulta
+                    lock: t.LOCK.UPDATE,
+                  });
+                  nameAsset = 'tickets de cash';
+                } else{
+                   picas = await UserAsset.findOne({
                     where: {
                       user: user,
                       asset:4
                     },
-                    transaction:t, // Asociar la transacción con esta operación
+                    transaction:t, // Asociar la transacción con esta consulta
+                    lock: t.LOCK.UPDATE,
                   });
+                   nameAsset = 'tickets de oro';
+                }
+                
 
+                if(!picas || picas.amount < 1){
+                  await t.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`No tienes ${nameAsset} suficientes para jugar al buscaminas` };
+                }
+
+                // console.log(handleGetAssets)
+
+               // Decrementar picas
+                picas.amount -= 1;
+                picas.save();
                 // Creo una nueva partida...
 
                 await Matches.create(
@@ -375,6 +385,7 @@ class EventService {
                     premios_obtenidos:JSON.stringify([]),
                     picked:String(0),
                     nombres:JSON.stringify([]),
+                    modalidad: modality,
                     game:type,
                   },
                   {
@@ -418,7 +429,7 @@ class EventService {
 
               
               const probs = await ConfigParameters.findOne({
-                  where: { name: 'game_4_probs' },
+                  where: { name: matchFound.modalidad == 1 ? 'game_4_probs' : 'game_4_probs_2'},
                   transaction:t,
               });
 
