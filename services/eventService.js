@@ -1634,6 +1634,7 @@ class EventService {
           }
 
           prizes = JSON.parse(match.premios_obtenidos);
+          // console.log(prizes);
           namesPrizes = JSON.parse(match.nombres);
 
            // Eliminar partida:
@@ -1695,6 +1696,7 @@ class EventService {
 
       for (const p of prizes) {
         // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
+   
         const prizePumpkin = await PrizesGame.findOne({
           attributes: ['type', 'prize', 'name', 'url'],
           where: {
@@ -1703,7 +1705,7 @@ class EventService {
           },
           transaction: t, // Asociar la transacción con esta consulta
         });
-    
+
         if (!prizePumpkin) {
           await t.rollback(); // Revertir la transacción en caso de error
           return { success: false, code: '302', message: 'No se encontró un premio para las calabazas' };
@@ -1714,13 +1716,10 @@ class EventService {
 
       //var message;
       var i = 0;
-
       for(const pr of prizesWin){
 
         var typePrize = pr.type;
-
         const res = await gamesService.setWinPrizes(type,typePrize,pr,user,t);
-
         i+=1;
       }
   

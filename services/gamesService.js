@@ -773,7 +773,7 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-     async saveBolsaOro(userId,prize,t) {
+     async saveBolsaOro(game,userId,prize,t) {
         try {
 
             // 1. Partir el rango "100-2000" en sus dos extremos
@@ -782,7 +782,18 @@ class GamesService {
             const max = parseInt(maxStr, 10);
 
             // 2. Generar un entero aleatorio entre min y max (inclusive)
-            const amount = Math.floor(Math.random() * (max - min + 1)) + min;
+            let amount;
+
+            if(game == 4){
+                const matchg = await Matches.findOne({
+                    where:{ user:userId, estado: 1, game }
+                })
+
+                const texto = JSON.parse(matchg.nombres)[0]
+                amount = parseInt(texto.match(/\d+/)[0], 10);
+            } else{
+                amount = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
 
             // 3. Incrementar el oro del usuario por el valor aleatorio calculado
             await UserGameInfo.increment(
@@ -794,6 +805,50 @@ class GamesService {
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar oro:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
+     * Guarda oro aleatorio al usuario, basado en un rango especificado en prize.name.
+     *
+     * @param {string} userId - Identificador del usuario.
+     * @param {Object} prize - Objeto premio, cuya propiedad `name` viene en formato "min-max".
+     * @param {Transaction} t - Transacción de Sequelize.
+     * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
+     */
+     async saveBolsaCash(game,userId,prize,t) {
+        try {
+
+            // 1. Partir el rango "100-2000" en sus dos extremos
+            const [minStr, maxStr] = prize.name.split('-');
+            const min = parseInt(minStr, 10);
+            const max = parseInt(maxStr, 10);
+
+            // 2. Generar un entero aleatorio entre min y max (inclusive)
+            let amount;
+
+            if(game == 4){
+                const matchg = await Matches.findOne({
+                    where:{ user:userId, estado: 1 , game}
+                })
+
+                const texto = JSON.parse(matchg.nombres)[0]
+                amount = parseInt(texto.match(/\d+/)[0], 10);
+            } else{
+                amount = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            // 3. Incrementar el cash del usuario por el valor aleatorio calculado
+            await Cash.increment(
+                'cash',
+                { by: amount, where: { id: userId }, transaction: t }
+            );
+            
+            return { message:`Has obtenido ${amount} de Cash de la Bolsa`, success: true, bv:amount };
+        } catch (error) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            console.error('Error al guardar cash:', error);
             throw new Error('Error interno del servidor');
         }
     }
@@ -1038,7 +1093,11 @@ class GamesService {
                     response = await this.saveThemeParkTicket(userId,prize,t);
                     break;
                 case 8:
-                    response = await this.saveBolsaOro(userId,prize,t);
+                    response = await this.saveBolsaOro(game,userId,prize,t);
+                    regBolsa=1;
+                    break;
+                case 9:
+                    response = await this.saveBolsaCash(game,userId,prize,t);
                     regBolsa=1;
                     break;
                 case 10:
