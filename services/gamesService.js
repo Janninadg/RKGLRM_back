@@ -776,6 +776,14 @@ class GamesService {
      async saveBolsaOro(game,userId,prize,t) {
         try {
 
+            const uCoin = await UserGameInfo.findOne({
+                where: {name:userId},
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+             const lastuCoin = uCoin.gold;
+            
             // 1. Partir el rango "100-2000" en sus dos extremos
             const [minStr, maxStr] = prize.name.split('-');
             const min = parseInt(minStr, 10);
@@ -796,12 +804,10 @@ class GamesService {
             }
 
             // 3. Incrementar el oro del usuario por el valor aleatorio calculado
-            await UserGameInfo.increment(
-                'gold',
-                { by: amount, where: { name: userId }, transaction: t }
-            );
-            
-            return { message:`Has obtenido ${amount} de Oro de la Bolsa`, success: true, bv:amount };
+            uCoin.gold += amount;
+             await uCoin.save({ transaction: t });
+
+            return { message:`Has obtenido ${amount} de Oro de la Bolsa`, success: true, bv:amount,last:lastuCoin,curr: uCoin.gold };
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar oro:', error);
@@ -819,6 +825,14 @@ class GamesService {
      */
      async saveBolsaCash(game,userId,prize,t) {
         try {
+
+             const uCoin = await Cash.findOne({
+                where: {id:userId},
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            const lastuCoin = uCoin.cash;
 
             // 1. Partir el rango "100-2000" en sus dos extremos
             const [minStr, maxStr] = prize.name.split('-');
@@ -840,12 +854,10 @@ class GamesService {
             }
 
             // 3. Incrementar el cash del usuario por el valor aleatorio calculado
-            await Cash.increment(
-                'cash',
-                { by: amount, where: { id: userId }, transaction: t }
-            );
-            
-            return { message:`Has obtenido ${amount} de Cash de la Bolsa`, success: true, bv:amount };
+            uCoin.cash += amount;
+            await uCoin.save({ transaction: t });
+
+            return { message:`Has obtenido ${amount} de Cash de la Bolsa`, success: true, bv:amount, last:lastuCoin,curr: uCoin.cash  };
         } catch (error) {
             await t.rollback(); // Revertir la transacción en caso de error
             console.error('Error al guardar cash:', error);
