@@ -482,14 +482,13 @@ class EventService {
                 const prizes = [];
 
                 // Recorrer el arreglo dataPr y construir probs y data
-                console.log(dataPr);
                 let i = 0;
                 while(i < dataPr.length){
                   const newDataPrize = [];
                   let sumprob = 0;
-      
+                  let order = dataPr[i].orderPrize;
+
                   do {
-                    console.log(dataPr);
                     const newItem = {
                       id: dataPr[i].orderPrize,
                       name: dataPr[i].name,
@@ -498,17 +497,17 @@ class EventService {
                     };
       
                     sumprob += dataPr[i].probability;
+                    sumprob = parseFloat(sumprob.toFixed(2)); 
       
                     newDataPrize.push(newItem);
                     i += 1;
-                    
-                  } while (sumprob < 1);
+                  } while (sumprob < 1 || (i <  dataPr.length && order == dataPr[i].orderPrize));
       
                   prizes.push(newDataPrize);
       
                   //i += 1;
                 }
-
+                // console.log(prizes);
                 nuevasCalabazas[index] = {
                   ...setcalabazas[index],
                   presionada: true,
