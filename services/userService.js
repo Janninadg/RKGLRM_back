@@ -647,7 +647,7 @@ class UserService {
 
        if (existingEmail) {
         await transaction.rollback();
-        return { success: false,message:'El usuario correo ingresado ya se encuentra registrado', code: '100' };
+        return { success: false,message:'El correo ingresado ya se encuentra registrado', code: '100' };
       }
 
 
