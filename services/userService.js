@@ -685,7 +685,7 @@ class UserService {
           return { success: false,message:"El nombre de usuario debe tener entre 3 y 11 caracteres", code: '100' };
       }
 
-      const passwordEncrypt = await EncryptFunction(password);
+      const passwordEncrypt = await EncryptFunction(password.toLowerCase());
 
       // console.log(password);
       // console.log(passwordEncrypt);
@@ -707,7 +707,7 @@ class UserService {
       await WebUser.create(
         {
           user: username,
-          password,
+          password: password.toLowerCase(),
           photo: `https://dummyimage.com/60x60/${color}/ffffff&text=${firstLetter}`,
         },
         { transaction }
