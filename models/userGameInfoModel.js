@@ -95,7 +95,7 @@ const UserGameInfo = sequelize.define('usergameinfo', {
     defaultValue: 0,
   },
   bag: {
-    type: DataTypes.BOOLEAN,
+    type: DataTypes.TINYINT(1),
     allowNull: false,
     defaultValue: true,
   },

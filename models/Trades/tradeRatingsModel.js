@@ -8,33 +8,46 @@ const TradeRatings = sequelize.define('trade_ratings', {
     allowNull: false,
     autoIncrement: true,
   },
-  chat_id: {
+
+  // Usuario que califica
+  rater: {
     type: DataTypes.BIGINT,
     allowNull: false,
   },
-  rater: {
-    type: DataTypes.STRING(11),
+  rater_name: {
+    type: DataTypes.STRING(100),
     allowNull: false,
-    collate: 'utf8mb4_general_ci',
   },
+
+  // Usuario que recibe la calificación
   target: {
-    type: DataTypes.STRING(11),
+    type: DataTypes.BIGINT,
     allowNull: false,
-    collate: 'utf8mb4_general_ci',
   },
+  target_name: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+  },
+
+  // BUYER o SELLER
   role: {
     type: DataTypes.ENUM('BUYER', 'SELLER'),
     allowNull: false,
   },
+
+  // Rating 1–5
   rating: {
     type: DataTypes.TINYINT,
     allowNull: false,
   },
+
+  // Comentario opcional (VARCHAR 500)
   comment: {
-    type: DataTypes.TEXT,
+    type: DataTypes.STRING(500),
     allowNull: true,
-    collate: 'utf8mb4_general_ci',
   },
+
+  // Fecha del review
   created_at: {
     type: DataTypes.DATE,
     allowNull: true,
