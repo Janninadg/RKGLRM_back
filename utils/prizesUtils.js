@@ -50,6 +50,9 @@ const setTypeName = (type) => {
           case 5:
             // Ninja
             return 'Secondary weapon';
+          case 8:
+            // Creatures
+            return 'Criaturas';
           case 9:
             // Ninja
             return 'Cards';

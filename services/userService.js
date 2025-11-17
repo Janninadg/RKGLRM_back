@@ -37,6 +37,7 @@ import LogRemoveCharacter from '../models/logRemoveCharacterModel.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
 import ForumUserRole from '../models/Forum/ForumRole.js';
 import Role from '../models/Forum/Role.js';
+import UserCredits from '../models/Trades/userCreditsModel.js';
 
 class UserService {
 
@@ -239,7 +240,7 @@ class UserService {
     const t = await sequelize.transaction();
     try {
       // Verificar si el usuario está en la tabla banlist
-      const bannedUser = await Banlist.findOne({ where: { UserID: id } });
+      const bannedUser = await Banlist.findOne({ where: { UserName: id } });
   
       if (bannedUser) {
         // Si el usuario está en la tabla banlist, retornar 1 (baneado)
@@ -558,6 +559,14 @@ class UserService {
         transaction: t,
       });
 
+      const creditsData = await UserCredits.findOne({ 
+        attributes: ['credits'],
+        where: {
+          user: user,
+      },
+      transaction: t,
+    });
+
       const userAsset = await UserAsset.findAll({
         attributes: ['asset', 'amount'],
         where: {
@@ -596,6 +605,7 @@ class UserService {
         o: userGameInfo ? userGameInfo.gold : 0,
         c: cashData ? cashData.cash : 0,
         ep: userPoints ? userPoints.clanpoint : 0,
+        cr: creditsData ? creditsData.credits : 0,
         asst: assetsWithDetails,
       };
 
@@ -629,7 +639,7 @@ class UserService {
 
       /*Verificar si su ip esta baneada*/
       // Verificar si el usuario está en la tabla banlist
-      const bannedUser = await Banlist.findOne({ where: { UserIP: ip } });
+      const bannedUser = await Banlist.findOne({ where: { UserName: ip } });
 
       if(bannedUser){
         await transaction.rollback();

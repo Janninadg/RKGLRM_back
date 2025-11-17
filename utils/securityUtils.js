@@ -71,7 +71,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
 
             // Insertar un nuevo registro en la tabla "banlist" en una transacción separada
             await Banlist.create({
-              UserID: userBan, // Ajustar el campo apropiado de la tabla "banlist"
+              UserName: userBan, // Ajustar el campo apropiado de la tabla "banlist"
               HWID: hwid,
               UserIP: clientIp,
               Reason: reason,

@@ -2,7 +2,7 @@ import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js'; // Ajusta la ruta a tu archivo de configuración de la base de datos
 
 const Banlist = sequelize.define('banlist', {
-  UserID: {
+  UserName: {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
@@ -14,14 +14,14 @@ const Banlist = sequelize.define('banlist', {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
-  Reason: {
+   PrivateHwid: {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
-  userAction: {
-    type: DataTypes.STRING(11),
+  Reason: {
+    type: DataTypes.STRING(255),
     allowNull: true,
-  },
+  }
 }, {
   tableName: 'banlist', // Nombre de la tabla en la base de datos
   timestamps: false, // Si no tienes columnas de timestamps (createdAt y updatedAt)

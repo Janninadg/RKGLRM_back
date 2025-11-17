@@ -795,9 +795,9 @@ class GMPanelService {
             const ip = ipUser ? ipUser.ip : null;
             // Insertar un nuevo registro en la tabla "banlist" en una transacción separada
             await Banlist.create({
-                UserID: u.name, // Ajustar el campo apropiado de la tabla "banlist"
+                UserName: u.name, // Ajustar el campo apropiado de la tabla "banlist"
                 Reason: reason,
-                userAction: user,
+                // userAction: user,
                 UserIP: ip,
               }, { transaction: t });
 
