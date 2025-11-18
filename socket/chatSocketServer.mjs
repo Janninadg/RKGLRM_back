@@ -65,7 +65,7 @@ io.on('connection', (socket) => {
   // 🔹 Enviar mensaje dentro de una sala
   socket.on('send_trade_message', async (payload) => {
     const { chat_id, sender, message, content_type, token, image } = payload;
-    if (!chat_id || !sender || !message) return;
+    if (!chat_id || !sender ) return;
     const room = `trade_${chat_id}`;
 
     console.log(`[Chat] Mensaje recibido en ${room} de ${sender}:`, message);
