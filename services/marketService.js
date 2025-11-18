@@ -13,31 +13,25 @@ import SellsRecord from '../models/Trades/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
-import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
+//import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
-import { setClassName } from '../utils/prizesUtils.js';
+import { setClassName, setTypeName } from '../utils/prizesUtils.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import UserInternalHolds from '../models/Trades/userHoldsModel.js';
 import TradeChats from '../models/Trades/tradeChatsModel.js';
 import TradeMessage from '../models/Trades/tradeMessagesModel.js';
+import { enviarMensajeAUsuario } from '../socket/chatSocketServer.mjs';
+import TradeActions from '../models/Trades/tradeActionsModel.js';
+import TradeRatings from '../models/Trades/tradeRatingsModel.js';
 
 class MarketService {
 
-    async buyItems(user,token,idmarket,retries = 1) {
+    async buyItems(apodo,token,idmarket,retries = 1, transaction) {
         const t = await sequelize.transaction(); // Iniciar una transacción
         try {
-            // Verificar token
-            const sessionToken = await TokenSession.findOne({
-                attributes: ['token'],
-                where: { token: token, id: user },
-                transaction: t,
-            });
-    
-            if (!sessionToken) {
-                await t.rollback();
-                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para comprar items.' };
-            }
+
+            const user = (await User.findOne({where:{ apodo: apodo}}))['id'];
 
             // const res = await this.socketSend(user);
 
@@ -55,41 +49,23 @@ class MarketService {
             // Bloquear market place
             const item = await Marketplace.findOne({
                 where: { id: idmarket },
-                transaction: t,
-                lock: t.LOCK.UPDATE,
+                transaction,
+                lock: transaction.LOCK.UPDATE,
             });
     
             if (!item) {
-                await t.rollback();
                 console.log('[Error] El market id del item no existe'.red);
                 return { success: false, code: '200', message: 'El item no existe' };
             }
 
-            // Obtener el apodo del usuario desde la tabla USER
-            const userInfo = await User.findOne({
-                where: { id: user },
-                attributes: ['apodo'],
-                transaction: t,
-            });
-
-            if (!userInfo) {
-                await t.rollback();
-                console.log('[Error] No se encontró el apodo del usuario'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'No se encontró el apodo del usuario',
-                };
-            }
-
-            if (item.vendedor === userInfo.apodo) {
-                await t.rollback();
+            if (item.vendedor === apodo) {
                 console.log('[Error] Está intentando autocomprar items'.red);
                 return { success: false, code: '200', message: 'No puedes comprar tus propios items' };
             }
 
+            // Item estado 3 not porque se valida con el chat... Solo validar cuando init chat
+
             if (item.estado === 0 || item.estado === 2){
-                await t.rollback();
                 console.log('[Error] El item ya no se encuentra disponible en la tienda'.red);
                 return { success: false, code: '200', message: 'El item ya no se encuentra disponible. Actualiza la tienda.' };
             }
@@ -97,18 +73,14 @@ class MarketService {
             const sellerInfo = await User.findOne({
                 where: { apodo: item.vendedor },
                 attributes: ['id'],
-                transaction: t,
+                transaction,
             });
 
 
-            var uCoin;
             var sCoin;
-            var coDis;
-            var texCoin;
-
             // Obtener el ID del usuario desde UserGameInfo usando su name
              const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                attributes: ['id','bag'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
@@ -116,140 +88,41 @@ class MarketService {
             });
     
             if (!userGame) {
-                await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[Error] Usuario no encontrado'.red);
                 return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
             }
 
-            const userGameId = userGame.id;
+            const medioPago = await PaymentMethods.findOne({
+                where: {id: item.medio_pago},
+                transaction
+            })
 
-            var flagC = 0;
+            if(medioPago.type == 'INTERNAL'){
+                 switch (item.medio_pago) {
+                    case 1: //cash 
+                        sCoin = await Cash.findOne({
+                            where: {id:sellerInfo.id},
+                            transaction,
+                            lock: transaction.LOCK.UPDATE,
+                        });
+                    case 2: // puntos
 
-            switch (item.medio_pago) {
-                case 0: //cash
-                     // Verificar puntos de evento del usuario con bloqueo
-                     // Sumar "price" en logbuycashitem
-                    const [sumCashItemResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
+                        sCoin = await UserGameInfo.findOne({
+                            where: {name:sellerInfo.id},
+                            transaction,
+                            lock: transaction.LOCK.UPDATE,
+                        });
 
-
-                    // Sumar "buycash" en logbuypoweruser
-                    const [sumPowerUserResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
-                    const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
-
-                    uCoin = await Cash.findOne({
-                        where: {id:user},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-
-                    sCoin = await Cash.findOne({
-                        where: {id:sellerInfo.id},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-
-                    if(totalCashSpent > 10000){
-                         coDis = uCoin.cash;
-                    } else {
-                         coDis = uCoin.cash - (10000 - totalCashSpent);
-                         flagC = 1;
-                    }
-
-                    texCoin='Cash';
-                    break;
-                case 1: //oro
-
-                
-                    // Sumar "gold" en loguseritem
-                    const [sumGoldResult] = await sequelize.query(
-                        `SELECT COALESCE(SUM(gold), 0) AS total FROM loguseritem WHERE userid = ${userGameId}`,
-                        { type: sequelize.QueryTypes.SELECT, transaction: t }
-                    );
-
-                    //const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
-                    const totalGoldSpent = sumGoldResult.total;
-
-                    uCoin = await UserGameInfo.findOne({
-                        where: {name:user},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-                    sCoin = await UserGameInfo.findOne({
-                        where: {name:sellerInfo.id},
-                        transaction: t,
-                        lock: t.LOCK.UPDATE,
-                    });
-
-                    if(totalGoldSpent > 12000){
-                        coDis = uCoin.gold;
-                    } else {
-                        coDis = uCoin.gold - (12000 - totalGoldSpent);
-                        flagC = 1;
-                    }
-                    // coDis = uCoin.gold;
-                    texCoin='Oro';
-                    break;
-                default:
-                    await t.rollback();
-                    console.log('[Error] Medio de pago no disponible'.red);
-                    return { success: false, code: '200', message: 'Medio de pago no disponible' };
-                    break;
-            }
-    
-            const totalCost = item.precio;
-            if (!uCoin || coDis < totalCost) {
-                await t.rollback();
-                //console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
-                if(flagC){
-                    console.log('[Error] No tiene cash u oro disponible para realizar la compra. Aún no gasta lo obtenido en registro...'.red);
-                    return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra (No puedes usar el '+texCoin+ ' obtenido en el registro).' };
+                        break;
+                    default:
+                        console.log('[ERROR] Payment method: Not exists this internal payment'.red);
+                        return { success: false, code: '200', message: 'Método de pago interno no existe' };
                 }
-                console.log('[Error] No tiene cash u oro disponible para realizar la compra'.red);
-                return { success: false, code: '200', message: 'No tienes suficiente '+texCoin+' para realizar esta compra' };
+
             }
-
-            
-
+      
             // Verificar si tiene slots disponibles... 3 boxes 30 items
 
-             // Paso 1: Obtener todos los personajes del usuario
-            const characters = await CharacterInfo.findAll({
-                where: {
-                    userid: userGame.id,
-                },
-                transaction: t,
-            });
-
-            // Paso 2: Validar si tiene personajes
-            if (!characters || characters.length === 0) {
-                await t.rollback();
-                console.log('[Error] No tiene personajes'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
-                };
-            }
-
-            // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 33);
-
-            if (!hasLevel20OrMore) {
-                await t.rollback();
-                console.log('[Error] Ningún personaje con nivel suficiente'.red);
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'Debes tener personajes con nivel superior a 33 para comprar en el mercado',
-                };
-            }
-            
             //Obtener el nro de slot mas cercano disponible
             // Obtener todos los slots distintos del usuario
             const distinctSlots = await UserItemInfo.findAll({
@@ -259,59 +132,78 @@ class MarketService {
                 characterid:0,
                 },
                 raw: true,
-                transaction: t,
+                transaction,
             });
 
             // Mapear los resultados a un array de números
-            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
+            const distinctSlotsArray = distinctSlots.map((item) => Number(item.slot))
             var slotFree = null;
 
-            //console.log(distinctSlotsArray);
+            // Determinar el rango según la cantidad de bags (1→30, 2→60, 3→90)
+            const bagCount = userGame.bag;                          // 1, 2 o 3
+            const maxSlotIndex = bagCount * 30 - 1;                  // 0–29, 0–59 ó 0–89
 
-            for (let i = 0; i <= 89; i++) {
+            console.log("BagCount:", bagCount, "maxSlotIndex:", maxSlotIndex, "total slots:", distinctSlotsArray.length);
+
+            for (let i = 0; i <= maxSlotIndex; i++) {
                 if (!distinctSlotsArray.includes(i)) {
+                    console.log(i)
                     slotFree = i;
                     break;
                 }
             }
-            //console.log(slotFree);
+
             //Si no hay, volver a enviar el mensaje de slot no disponible
             if(slotFree === null){
-                await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[Error] No tiene slots disponibles en su inventario'.red);
-                return { success: false, code: '200', message: 'No tiene slots disponbiles en tu inventario para comprar este item' };
+                return { success: false, code: '201', message: 'No tiene slots disponbiles en tu inventario para comprar este item' };
             }
 
-            // Decrementar... :)
+            if(medioPago.type == 'INTERNAL'){
+                const totalCost = item.precio;
+                var typeCr = 0;
+                var bfCr = 0;
+                var aftCr = 0;
+                if(item.medio_pago === 1) {
+                    typeCr = 2;
+                    bfCr = sCoin.cash;
+                    sCoin.cash += totalCost;
+                    aftCr = sCoin.cash;
+                    await sCoin.save({ transaction });
+                } else if(item.medio_pago === 2){
+                    typeCr = 13;
+                     bfCr = sCoin.clanpoint;
+                    sCoin.clanpoint += totalCost;
+                    aftCr = sCoin.clanpoint;
+                    await sCoin.save({ transaction });
+                }
 
-            if(item.medio_pago === 0) {
-                uCoin.cash -= totalCost;
-                await uCoin.save({ transaction: t });
+                  await UserInternalHolds.create({
+                    user,
+                    trade_id: idmarket,
+                    method_id: item.medio_pago,
+                    amount: item.precio,
+                    status: 'RELEASED',
+                    created_at: new Date()
+                }, { transaction: t });
 
-                sCoin.cash += totalCost;
-                await sCoin.save({ transaction: t });
-            } else {
-                uCoin.gold -= totalCost;
-                await uCoin.save({ transaction: t });
-
-                sCoin.gold += totalCost;
-                await sCoin.save({ transaction: t });
+                await LogRewardsUser.create({  
+                    user:user,
+                    origen:18,
+                    recompensa:item.precio,
+                    tipo_recompensa: typeCr,
+                    last_pr: bfCr,
+                    curr_pr: aftCr,
+                    fecha: new Date(), 
+                }, { transaction});
             }
 
             // Obtener info del item con item.itemid
             const itemUserSeller = await TempUserItemInfo.findOne({
                 where: { id: item.itemid },
-                transaction: t,
+                transaction,
             });
 
-            // Obtener nombre del item desde ItemInfo
-            const itemInfo = await ItemInfo.findOne({
-                where: { id: itemUserSeller.itemid },
-                transaction: t,
-            });
-    
-            let itemName = itemInfo ? itemInfo.name : item.itemid;
-    
             // Añadir el item a useriteminfo :)
             const newItem = await UserItemInfo.create({
                 userid: userGame.id,           // ID del usuario que te proporcionarán
@@ -324,7 +216,7 @@ class MarketService {
                 slot: slotFree,               // Slot que te proporcionarán
                 exp: itemUserSeller.exp,
             }, {
-                transaction: t, // Asociar la transacción con la inserción
+                transaction, // Asociar la transacción con la inserción
             });
 
             await LogRewardsUser.create({  
@@ -333,44 +225,33 @@ class MarketService {
                 recompensa:itemUserSeller.itemid,
                 tipo_recompensa: 0,
                 fecha: new Date(), 
-              }, { transaction:t });
+              }, { transaction});
     
             // Registrar la compra en sellsRecord
             await SellsRecord.create({
                 id_market: idmarket,
-                buyer: userInfo.apodo,
+                buyer: apodo,
                 date: new Date(),
-            }, { transaction: t });
-
-            // Eliminar item de temp useriteminfo:
-    
-            // await TempUserItemInfo.destroy({
-            //     where: {
-            //       marketid: idmarket
-            //     },
-            //     transaction: t // Asociar la transacción con esta operación
-            // });
+            }, { transaction});
 
             // Actualizar estado a 0 (vendido)
             item.estado = 0;
-            await item.save({ transaction: t });
+            await item.save({ transaction });
 
-            await t.commit();
-            const itms = await this.getItems();
-            console.log('[Success] Compra exitosa'.green);
-            return { success: true, code: '000', message: `Has comprado un(a) ${itemName} y será enviado a tu inventario`, _mp: itms._mp };
+            // await transaction.commit();
+            console.log('[Success] Liberación y registro de item a comprador exitoso'.green);
+            return { success: true, code: '000' };
     
         } catch (error) {
-            await t.rollback();
             console.error('Error al comprar items:', error);
     
             if (error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
                 // Reintentar la transacción
                 console.log('Reintentando transacción...');
-                return await this.buyItems(user, token, idstore, amount, retries - 1);
+                return await this.buyItems(apodo, token, idmarket, retries - 1, transaction);
             }
-    
-            throw new Error('Error interno del servidor');
+            return { success: false, code: '200', message: 'Error interno del servidor'};
+            // throw new Error('Error interno del servidor');
         }
     }
 
@@ -570,6 +451,503 @@ class MarketService {
         }
     }
 
+     /**
+   * submitRating
+   * @param {Object} opts { user, auth, chat_id, rating, review, user_reviewed, retries = 1 }
+   */
+    async submitRating(opts = {}) {
+        const { user, token, chat_id, rating, review = null, user_reviewed } = opts;
+        const t = await sequelize.transaction();
+        try {
+       
+            // 2) Buscar rater en UserGameInfo (recibiste 'user' como nombre del juego)
+            const raterGame = await UserGameInfo.findOne({
+                where: { name: user },
+                transaction: t,
+            });
+
+            if (!raterGame) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Usuario (game name) no encontrado' };
+            }
+            const raterGameId = raterGame.id;
+
+            // 3) Buscar la fila User del rater (si necesitas apodo, etc.)
+            // Intentamos localizar un User por varios campos (adapta si tu modelo usa otro)
+            const raterApodo = (await User.findOne({ where: { id: user}, transaction: t })).apodo;
+        
+            // No crítico: si no se encuentra, continuamos usando raterGameId pero intentamos validar token abajo
+
+            // 4) Verificar token de sesión (intenta con id si tenemos, sino con token sólo)
+
+             // Verificar token
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: { token: token, id: user },
+                transaction: t,
+            });
+    
+            if (!sessionToken) {
+                await t.rollback();
+                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para calificar a un usuario.' };
+            }
+
+            // 5) Buscar usuario que se va a calificar (user_reviewed viene como apodo del seller)
+            const reviewedUser = await User.findOne({
+                where: { apodo: user_reviewed },
+                transaction: t,
+            });
+            if (!reviewedUser) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Usuario a calificar no encontrado' };
+            }
+
+            // 6) Buscar UserGameInfo del usuario calificado (para obtener su usergame id)
+            // Intentamos por user id primero (si tu esquema tiene referencia).
+            // si UserGameInfo tiene columna userid que apunta a User.id:
+            const reviewedGame = await UserGameInfo.findOne({
+                where: { name: reviewedUser.id },
+                transaction: t,
+            });
+
+            if (!reviewedGame) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Información de juego del usuario calificado no encontrada' };
+            }
+
+            // 7) Buscar trade/chat para validar que el usuario calificado participa en él
+            const chat = await TradeChats.findOne({
+                where: { id: chat_id },
+                transaction: t,
+            });
+
+            if (!chat) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Chat/trade no encontrado' };
+            }
+
+            const isSellerRatingBuyer = 
+                raterApodo === chat.seller && reviewedUser.apodo === chat.buyer;
+
+            const isBuyerRatingSeller = 
+                raterApodo === chat.buyer && reviewedUser.apodo === chat.seller;
+
+            if (!isSellerRatingBuyer && !isBuyerRatingSeller) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'No tienes autorización de calificar al usuario por este trade.' };
+            }
+
+            // 8) Determinar rol que se está calificando (BUYER o SELLER)
+            let roleReviewed = null;
+            if (String(reviewedUser.apodo) === String(chat.seller)) {
+                roleReviewed = 'SELLER';
+            } else if (String(reviewedUser.apodo) === String(chat.buyer)) {
+                roleReviewed = 'BUYER';
+            } else {
+                await t.rollback();
+                return { success: false, code: '200', message: 'El usuario calificado no participa en este chat' };
+            }
+
+            // 9) Evitar calificaciones duplicadas por el mismo rater al mismo role
+            // Asumimos que TradeRatings tiene campos: rater (int usergame id), reviewed (int usergame id), role_reviewed
+            const existing = await TradeRatings.findOne({
+                where: {
+                    rater: raterGameId,
+                    target: reviewedGame.id,
+                    role: roleReviewed,
+                },
+                transaction: t,
+            });
+
+            if (existing) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Ya has calificado previamente a este usuario en este rol' };
+            }
+
+            // 10) Guardar la calificación
+            const newRating = await TradeRatings.create({
+                rater: raterGameId,
+                rater_name: raterApodo,
+                target: reviewedGame.id,
+                target_name: reviewedUser.apodo,
+                role: roleReviewed,
+                rating: Number(rating),
+                comment: review,
+                created_at: new Date(),
+            }, { transaction: t });
+
+            await t.commit();
+            return { success: true, code: '000', message: 'Se ha guardado tu calificación' };
+
+        } catch (err) {
+            await t.rollback();
+            console.error('Error en TradeService.submitRating:', err);
+            return { success: false, code: '999', message: 'Error interno al registrar calificación' };
+        }
+    }
+
+    async pushAction(payload) {
+        const { chat_id, user,action,token } = payload;
+        const t = await sequelize.transaction();
+
+        try {
+            // 1️⃣ Validar token
+            const username = await User.findOne({where:{ apodo: user}});
+
+            const session = await TokenSession.findOne({
+                where: { token, id: username['id'] },
+                transaction: t,
+            });
+            if (!session) {
+                await t.rollback();
+                return { success: false, code: "999", message: "Token inválido o expirado." };
+            }
+
+            // 2️⃣ Validar chat y permisos
+            const chat = await TradeChats.findOne({
+                where: { id: chat_id },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (!chat) {
+                await t.rollback();
+                return { success: false, code: "200", message: "Chat no encontrado" };
+            }
+
+            if (chat.buyer !== user && chat.seller !== user) {
+                await t.rollback();
+                return { success: false, code: "200", message: "No autorizado" };
+            }
+
+            const allActions = await TradeActions.findAll({
+                where: { chat_id },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            })
+
+            // Buscar si ya existe la acción solicitada
+            const alreadyPerformed = allActions.some(a => a.action === action);
+
+            if (alreadyPerformed) {
+                await t.rollback();
+                return { success: false, code: "200", message: `La acción "${action}" ya fue realizada previamente.` };
+            }
+
+            const paymentMeth = await PaymentMethods.findOne({
+                where: { id: chat.payment_method_id} ,
+                lock: t.LOCK.UPDATE,
+            });
+        
+            switch (action) {
+                case 'RELEASE_ITEM':
+                    if(chat.seller !== user) {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "No autorizado" };
+                    }
+
+                    // Si el método es EXTERNAL → debe existir CONFIRM_PAYMENT
+                    if (paymentMeth.type === 'EXTERNAL') {
+                        const confirmed = allActions.some(a => a.action === 'CONFIRM_PAYMENT');
+
+                        if (!confirmed) {
+                            await t.rollback();
+                            return {
+                                success: false,
+                                code: "200",
+                                message: "No puedes liberar el item hasta que el comprador confirme el pago."
+                            };
+                        }
+                    }
+                    /* Aqui debe haber una funcion para enviar el item (seria buy item api aqui) */
+
+                    const res = await this.buyItems(chat.buyer,null,chat.trade_id,3,t);
+
+                    if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
+                         await TradeActions.create({
+                            chat_id:chat.id,
+                            user: user,
+                            action: 'RELEASE_ITEM',
+                        },{ transaction: t });
+
+                         await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `El item  ha sido liberado con éxito y fue enviado al inventario del comprador. Cualquiera puede finalizar el chat en estos momentos.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BOTH',
+                            created_at: new Date()
+                        }, { transaction: t });
+                        
+                        await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `Finaliza el chat para calificar al vendedor.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BUYER',
+                            created_at: new Date()
+                        }, { transaction: t });
+
+                         await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `Finaliza el chat para que el comprador te califique`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'SELLER',
+                            created_at: new Date()
+                        }, { transaction: t });
+
+                    } else if(!res.success && res.code === '201'){
+                        await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `El item no ha podido ser liberado aún porque el comprador no tiene espacio en su inventario.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BOTH',
+                            created_at: new Date()
+                        }, { transaction: t });
+
+                         await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `Libere el item cuando el comprador confirme espacio en su inventario`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'SELLER',
+                            created_at: new Date()
+                        }, { transaction: t });
+
+                         await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `Por favor, desocupe un espacio en su inventario para que el vendedor pueda liberar el item.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BUYER',
+                            created_at: new Date()
+                        }, { transaction: t });
+                    } else if(!res.success && res.code === '200'){
+                        await t.rollback();
+                        return { success: false, code: "200", message: res.message };
+                    }
+                    break;
+                case 'CONFIRM_PAYMENT':
+                    if(chat.buyer !== user) {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "No autorizado" };
+                    }
+
+                    if (paymentMeth.type !== 'EXTERNAL') {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "Este método de pago no requiere confirmación." };
+                    }
+
+                     await TradeActions.create({
+                            chat_id:chat.id,
+                            user: user,
+                            action: 'CONFIRM_PAYMENT',
+                        },{ transaction: t });
+                        
+
+                     await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `El pago ha sido realizado por el comprador. Por favor, verifique el pago antes de liberar el item.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'SELLER',
+                            created_at: new Date()
+                        }, { transaction: t });
+
+                     await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `Espere a que el vendedor libere el item.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BUYER',
+                            created_at: new Date()
+                        }, { transaction: t });
+                    break;
+                case 'END_CHAT':
+                    if(chat.buyer !== user && chat.seller !== user) {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "No autorizado" };
+                    }
+
+                    console.log(1)
+
+                    const released = allActions.some(a => a.action === 'RELEASE_ITEM');
+
+                    if (!released) {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "No puedes finalizar el chat hasta que el item sea liberado." };
+                    }
+
+                    await TradeActions.create({
+                        chat_id:chat.id,
+                        user: user,
+                        action: 'END_CHAT',
+                    },{ transaction: t });
+
+                    await TradeMessage.create({
+                            chat_id: chat.id,
+                            sender: null,
+                            message: `El chat ha sido finalizado por ${user}. Ya no se podrá enviar más mensajes.`,
+                            message_type: 'SYSTEM',
+                            content_type: 'TEXT',
+                            visible_to: 'BOTH',
+                            created_at: new Date()
+                        }, { transaction: t });
+                    chat.status = 'COMPLETED';
+                    await chat.save({ transaction: t  });
+
+                    break;
+
+                default:
+                    await t.rollback();
+                    return { success: false, code: "200", message: "Acción no disponible o no existe" };
+            }
+
+
+            await t.commit();
+            return {
+                success: true,
+                code: "000",
+            };
+
+        } catch (error) {
+            try {
+            await t.rollback();
+            } catch (_) {}
+            console.error("❌ Error en sendMessage service:", error);
+            return { success: false, code: "500", message: "Error interno al enviar mensaje" };
+        }
+    }
+
+   async sendMessage(payload) {
+    const { chat_id, sender, message, content_type, token, image } = payload;
+    const t = await sequelize.transaction();
+
+    try {
+        // 1️⃣ Validar token
+        const username = await User.findOne({where:{ apodo: sender}});
+
+        const session = await TokenSession.findOne({
+        where: { token, id: username['id'] },
+        transaction: t,
+        });
+        if (!session) {
+        await t.rollback();
+        return { success: false, code: "999", message: "Token inválido o expirado." };
+        }
+
+        // 2️⃣ Validar chat y permisos
+        const chat = await TradeChats.findOne({
+        where: { id: chat_id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+        });
+        if (!chat) {
+        await t.rollback();
+        return { success: false, code: "404", message: "Chat no encontrado" };
+        }
+
+        if (chat.buyer !== sender && chat.seller !== sender) {
+        await t.rollback();
+        return { success: false, code: "403", message: "No autorizado" };
+        }
+
+        // 3️⃣ Preparar datos del mensaje
+        const isImage = content_type === "IMAGE";
+        const created = new Date();
+
+        const dbMsg = {
+            chat_id,
+            sender,
+            message: message,
+            message_type: "USER",
+            content_type: isImage ? "IMAGE" : "TEXT",
+            file_url: isImage ? image || null : null, // la URL viene ya del front
+            created_at: created,
+        };
+
+        const saved = await TradeMessage.create(dbMsg, { transaction: t });
+        await t.commit();
+
+        // 4️⃣ Emitir por socket
+        const payloadSocket = {
+        type: "TRADE_NEW_MESSAGE",
+        chat_id,
+        message: {
+            id: saved.id,
+            sender,
+            message: saved.message,
+            content_type: saved.content_type,
+            file_url: saved.file_url ? saved.file_url : null,
+            message_type: saved.message_type,
+            created_at: saved.created_at,
+            visible_to: saved.visible_to,
+        },
+        };
+
+        return {
+        success: true,
+        code: "000",
+        message: "Mensaje enviado correctamente",
+        msg: payloadSocket.message,
+        };
+    } catch (error) {
+        try {
+        await t.rollback();
+        } catch (_) {}
+        console.error("❌ Error en sendMessage service:", error);
+        return { success: false, code: "500", message: "Error interno al enviar mensaje" };
+    }
+    }
+
+  async getHistory({ chat_id, user }) {
+    try {
+      // Validar chat y participante
+      const chat = await TradeChats.findOne({ where: { id: chat_id } });
+      if (!chat) return { success: false, code: '404', message: 'Chat no encontrado' };
+      if (chat.buyer !== user && chat.seller !== user) return { success: false, code: '403', message: 'No autorizado' };
+
+      // Obtener mensajes ordenados (ASC)
+      const messages = await TradeMessages.findAll({
+        where: { chat_id },
+        order: [['created_at', 'ASC'], ['id', 'ASC']],
+      });
+
+      // Filtrar visible_to: mostrar BOTH o el rol correspondiente
+      const role = (user === chat.buyer) ? 'BUYER' : 'SELLER';
+      const visible = messages.filter(m => {
+        if (!m.visible_to || m.visible_to === 'BOTH') return true;
+        if (m.visible_to === role) return true;
+        return false;
+      });
+
+      return { success: true, code: '000', messages: visible };
+    } catch (error) {
+      console.error('Error getHistory service:', error);
+      return { success: false, code: '500', message: 'Error interno al obtener historial' };
+    }
+  }
+
+   async getPayments() {
+    try {
+      const payments = await PaymentMethods.findAll();
+
+      return payments ? payments : [];
+    } catch (error) {
+      console.error('Error getHistory service:', error);
+      return { success: false, code: '500', message: 'Error interno al obtener historial' };
+    }
+  }
 
    async initChatTrade(user, token, idmarket) {
   const t = await sequelize.transaction();
@@ -582,7 +960,7 @@ class MarketService {
     });
     if (!session) {
       await t.rollback();
-      return { success: false, code: '403', message: 'Token inválido o expirado.' };
+      return { success: false, code: '999', message: 'Token inválido o expirado.' };
     }
 
     // 2) obtener item marketplace (lock)
@@ -593,19 +971,80 @@ class MarketService {
     });
     if (!item) {
       await t.rollback();
-      return { success: false, code: '404', message: 'El ítem no existe.' };
+      return { success: false, code: '200', message: 'El ítem no existe.' };
+    }
+
+    // Paso 1: Obtener todos los personajes del usuario
+   
+    const userGame = await UserGameInfo.findOne({
+        attributes: ['id'],
+        where: {
+            name: user,
+        },
+        transaction: t,
+    });
+
+    if (!userGame) {
+        await t.rollback();
+        console.log('[Error] Usuario no encontrado'.red);
+        return {
+            success: false,
+            code: '200',
+            message: 'ID de Usuario no encontrado',
+        };
+    }
+
+    const characters = await CharacterInfo.findAll({
+        where: {
+            userid: userGame.id,
+        },
+        transaction: t,
+    });
+
+    // Paso 2: Validar si tiene personajes
+    if (!characters || characters.length === 0) {
+        await t.rollback();
+        console.log('[Error] No tiene personajes'.red);
+        return {
+            success: false,
+            code: '200',
+            message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+        };
+    }
+
+    // Paso 3: Verificar si alguno tiene nivel >= 20
+    const hasLevel20OrMore = characters.some(char => char.level >= 35);
+
+    if (!hasLevel20OrMore) {
+        await t.rollback();
+        console.log('[Error] Ningún personaje con nivel suficiente'.red);
+        return {
+            success: false,
+            code: '200',
+            message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+        };
     }
 
     // 3) comprobar estado disponible (1)
     if (Number(item.estado) !== 1) {
       await t.rollback();
-      return { success: false, code: '409', message: 'El ítem no está disponible para trade.' };
+      return { success: false, code: '200', message: 'El ítem no está disponible para trade.' };
     }
 
+     // 🔹 Buscar users
+    const users = await User.findAll({
+        attributes: ['id', 'apodo'], // o el campo donde guardas el nickname
+        transaction: t
+    });
+
+    // 🔹 Mapear para obtener apodos fácilmente
+    const buyerUser = users.find(u => u.id === user)['apodo'];
+    const sellerUserName = users.find(u => u.apodo === item.vendedor)['id']; // name no apodo
+
     // 4) evitar iniciar sobre tu propio item
-    if (String(item.vendedor) === String(user)) {
+    if (String(item.vendedor) === String(buyerUser)) {
       await t.rollback();
-      return { success: false, code: '409', message: 'No puedes iniciar chat sobre tu propio item.' };
+      return { success: false, code: '200', message: 'No puedes iniciar chat sobre tu propio item.' };
     }
 
     // 5) obtener metodo de pago (lock)
@@ -616,59 +1055,111 @@ class MarketService {
     });
     if (!method) {
       await t.rollback();
-      return { success: false, code: '403', message: 'Método de pago no válido o inactivo.' };
+      return { success: false, code: '200', message: 'Método de pago no válido o inactivo.' };
     }
 
     // 6) comprobar si hay un chat ACTIVO para este item
     const activeChat = await TradeChats.findOne({
-      where: { trade_id: idmarket, status: 'ACTIVE' },
+      where: { trade_id: idmarket,  status: ['ACTIVE', 'COMPLETED'], },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
     if (activeChat) {
       await t.rollback();
-      return { success: false, code: '409', message: 'Ya existe un chat activo para este ítem.' };
+      return { success: false, code: '200', message: 'Ya existe un chat activo para este ítem.' };
     }
 
     // DEFINICIONES: ids para internos
-    const PM_ID_ORO = 1;
+    const PM_ID_CASH = 1;
     const PM_ID_PUNTOS = 2;
     const price = Number(item.precio || 0);
 
     // --------- Si es INTERNAL: verificar saldo, descontar y crear retención ANTES de crear chat ----------
     if (method.type === 'INTERNAL') {
+
+    var typeRew = 2;
+    var befCurr = 0;
+    var aftCurr = 0;
+
+      if (method.id === PM_ID_CASH) {
+         // Sumar "price" en logbuycashitem
+        // const [sumCashItemResult] = await sequelize.query(
+        //     `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
+        //     { type: sequelize.QueryTypes.SELECT, transaction: t }
+        // );
+
+        // // Sumar "buycash" en logbuypoweruser
+        // const [sumPowerUserResult] = await sequelize.query(
+        //     `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGameId}`,
+        //     { type: sequelize.QueryTypes.SELECT, transaction: t }
+        // );
+        // const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+
+        // var coDis;
+        // var flagC = 0;
+
+        const userCash = await Cash.findOne({
+          where: { id: user },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        befCurr = userCash.cash;
+
+        typeRew = 2;
+
+        // if(totalCashSpent > 12000){
+        //     coDis = userGame.gold;
+        // } else {
+        //     coDis = userGame.gold - (12000 - totalCashSpent);
+        //     flagC = 1;
+        // }
+
+        // if(flagC == 1 && coDis < price){
+        //     await t.rollback();
+        //     return { success: false, code: '200', message: 'No puedes usar los 12000 de oro otorgado en el registro para este trade.' };
+        // } else if(flagC == 0 && coDis < price){
+        //     await t.rollback();
+        //     return { success: false, code: '200', message: 'No tienes suficiente Oro para iniciar este trade.' };
+        // }
+
+        if(!userCash || userCash.cash < price){
+            await t.rollback();
+            return { success: false, code: '200', message: 'No tienes suficiente Cash para iniciar este trade.' };
+        }
+
+        // Descontar cash
+        userCash.cash -= price;
+        aftCurr = userCash.cash;
+        await userGame.save({ transaction: t });
+
+      } else if (method.id === PM_ID_PUNTOS) {
+
         const userGame = await UserGameInfo.findOne({
           where: { name: user },
           transaction: t,
           lock: t.LOCK.UPDATE,
         });
 
-      if (method.id === PM_ID_ORO) {
-        // ORO: revisar UserGameInfo.gold por name = user
-        if (!userGame || Number(userGame.gold) < price) {
-          await t.rollback();
-          return { success: false, code: '402', message: 'No tienes suficiente Oro.' };
-        }
-        // Descontar oro
-        userGame.gold = Number(userGame.gold) - price;
-        await userGame.save({ transaction: t });
+        befCurr = userGame.clanpoint;
+        typeRew = 13;
 
-      } else if (method.id === PM_ID_PUNTOS) {
         // PUNTOS: revisar Cash.cash por id = user (según tu esquema)
         if (!userGame || Number(userGame.clanpoint) < price) {
           await t.rollback();
-          return { success: false, code: '402', message: 'No tienes suficientes Puntos de evento.' };
+          return { success: false, code: '200', message: 'No tienes suficientes Puntos de evento.' };
         }
         // Descontar puntos
         userGame.clanpoint = Number(userGame.clanpoint) - price;
+        aftCurr = userGame.clanpoint;
         await userGame.save({ transaction: t });
 
       } else {
         await t.rollback();
-        return { success: false, code: '403', message: 'Método interno no soportado.' };
+        return { success: false, code: '200', message: 'Método de pago no soportado.' };
       }
 
-      // Registrar retención (antes de crear el chat, como pediste)
+      // Registrar retención (antes de crear el chat)
       await UserInternalHolds.create({
         user,
         trade_id: idmarket,
@@ -677,30 +1168,57 @@ class MarketService {
         status: 'HELD',
         created_at: new Date()
       }, { transaction: t });
+
+       await LogRewardsUser.create({  
+            user:user,
+            origen:17,
+            recompensa:-1*(price),
+            tipo_recompensa: typeRew,
+            last_pr: befCurr,
+            curr_pr: aftCurr,
+            fecha: new Date(), 
+        }, { transaction});
     }
 
     // --------- Crear chat (si no hay chat activo) ----------
+
     const chat = await TradeChats.create({
       trade_id: idmarket,
-      buyer: user,
+      buyer: buyerUser,
       seller: item.vendedor,
       payment_method_id: method.id,
       status: 'ACTIVE',
       created_at: new Date()
     }, { transaction: t });
 
+    await TradeActions.create({
+        chat_id:chat.id,
+        user: buyerUser,
+        action: 'CREATE_TRADE',
+    },{ transaction: t });
+
     // --------- Mensajes SYSTEM iniciales (con visible_to: BOTH / SELLER / BUYER) ----------
     // Para INTERNAL: mostramos retención al BOTH y damos instrucciones al VENDEDOR (SELLER)
     if (method.type === 'INTERNAL') {
-      const label = method.id === PM_ID_ORO ? 'Oro' : 'Puntos de evento';
+      const label = method.id === PM_ID_CASH ? 'Cash' : 'Puntos de evento';
 
       await TradeMessage.create({
         chat_id: chat.id,
         sender: null,
-        message: `Se han retenido ${price} ${label} del comprador.`,
+        message: `Se han retenido ${price} de ${label} al comprador.`,
         message_type: 'SYSTEM',
         content_type: 'TEXT',
-        visible_to: 'BOTH',
+        visible_to: 'SELLER',
+        created_at: new Date()
+      }, { transaction: t });
+
+       await TradeMessage.create({
+        chat_id: chat.id,
+        sender: null,
+        message: `Se han retenido ${price} de ${label} de tu cuenta.`,
+        message_type: 'SYSTEM',
+        content_type: 'TEXT',
+        visible_to: 'BUYER',
         created_at: new Date()
       }, { transaction: t });
 
@@ -718,7 +1236,7 @@ class MarketService {
       await TradeMessage.create({
         chat_id: chat.id,
         sender: null,
-        message: `El monto ha sido retenido. Espera a que el vendedor libere el ítem.`,
+        message: `Espera a que el vendedor libere el ítem.`,
         message_type: 'SYSTEM',
         content_type: 'TEXT',
         visible_to: 'BUYER',
@@ -733,14 +1251,14 @@ class MarketService {
         message: `Confirma el pago cuando lo realices.`,
         message_type: 'SYSTEM',
         content_type: 'TEXT',
-        visible_to: 'BOTH',
+        visible_to: 'BUYER',
         created_at: new Date()
       }, { transaction: t });
 
       await TradeMessage.create({
         chat_id: chat.id,
         sender: null,
-        message: `Espera la confirmación del comprador. Cuando el comprador marque "Pago realizado", podrás liberar el ítem.`,
+        message: `Espera la confirmación de pago del comprador. Cuando el comprador presione "Confirmar pago", podrás liberar el ítem.`,
         message_type: 'SYSTEM',
         content_type: 'TEXT',
         visible_to: 'SELLER',
@@ -751,38 +1269,30 @@ class MarketService {
     // --------- Marcar marketplace en proceso (estado = 3) ----------
     await Marketplace.update({ estado: 3 }, { where: { id: idmarket }, transaction: t });
 
-    // Commit
-    await t.commit();
+    // justo después de crear los mensajes SYSTEM
+        const history = await TradeMessage.findAll({
+            where: { chat_id: chat.id },
+            order: [['created_at', 'ASC']],
+            transaction: t
+        });
 
-    // Notificar por socket a vendedor y comprador (afuera de la transacción)
-    const payload = {
-      type: 'TRADE_CHAT_INIT',
-      chat: {
-        id: chat.id,
-        trade_id: idmarket,
-        buyer: user,
-        seller: item.vendedor,
-        method: { id: method.id, name: method.name, icon: method.icon, color: method.color, type: method.type },
-        status: chat.status
-      },
-    };
+      const actions = await TradeActions.findAll({
+            where: { chat_id: chat.id },
+            order: [['created_at', 'ASC']],
+            transaction: t
+        });
+ 
+      await t.commit();
 
-    try {
-      // notifica vendedor
-      await enviarMensajeACliente(item.vendedor, payload);
-    } catch (e) { console.error('Socket vendedor:', e); }
-
-    try {
-      // notifica comprador (opcional pero consistente)
-      await enviarMensajeACliente(user, payload);
-    } catch (e) { console.error('Socket comprador:', e); }
-
-    return {
-      success: true,
-      code: '000',
-      message: 'Chat inicializado correctamente.',
-      chat: payload.chat
-    };
+      // 5️⃣ Armar payload
+      return {
+        success: true,
+        code: '000',
+        message: 'Chat inicializado correctamente.',
+        chat: {
+          id: chat.id,
+        }
+      };
 
   } catch (error) {
     try { await t.rollback(); } catch(_) {}
@@ -790,6 +1300,375 @@ class MarketService {
     return { success: false, code: '500', message: 'Error interno del servidor.' };
   }
 }
+
+async getUserChats(user, token) {
+    const t = await sequelize.transaction();
+    try {
+
+        // 1️⃣ VALIDAR TOKEN
+        const session = await TokenSession.findOne({
+            where: { token, id: user },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+        });
+
+        if (!session) {
+            await t.rollback();
+            return { success: false, code: "999", message: "Token inválido." };
+        }
+
+        // 2️⃣ Obtener apodo del usuario
+        const userInfo = await User.findOne({
+            where: { id: user },
+            transaction: t
+        });
+
+        if (!userInfo) {
+            await t.rollback();
+            return { success: false, code: "999", message: "Usuario no encontrado." };
+        }
+
+        const apodo = userInfo.apodo;
+
+        // 3️⃣ Buscar todos los chats donde participa
+        const chats = await TradeChats.findAll({
+            where: {
+                [Op.or]: [
+                    { buyer: apodo },
+                    { seller: apodo }
+                ]
+            },
+            transaction: t
+        });
+
+        if (!chats.length) {
+            await t.commit();
+            return {
+                success: true,
+                code: "000",
+                chats: []
+            };
+        }
+
+        const chatIds = chats.map(c => c.id);
+        const tradeIds = chats.map(c => c.trade_id);
+        const paymentMethodIds = chats.map(c => c.payment_method_id);
+
+        // 4️⃣ Historial general (para obtener último mensaje)
+        const allMessages = await TradeMessage.findAll({
+            where: { chat_id: chatIds },
+            order: [['created_at', 'DESC']],
+            transaction: t
+        });
+
+        // 5️⃣ Info de trades
+        const tradeItems = await Marketplace.findAll({
+            where: { id: tradeIds },
+            transaction: t
+        });
+
+        // Obtener itemid del marketplace
+        const itemIds = tradeItems.map(i => i.itemid);
+
+        // 6️⃣ UserItemInfo (exp, level...)
+        const itemGeneralInfo = await TempUserItemInfo.findAll({
+            where: { id: itemIds },
+            attributes: ['id','exp','item_sn','level','limittime','sn_type','itemid'],
+            transaction: t
+        });
+
+        const itemIdsG = itemGeneralInfo.map(i => i.itemid);
+
+        const uiiMap = itemGeneralInfo.reduce((m, x) => { m[x.id] = x; return m }, {});
+
+        // 7️⃣ ItemInfo (name y class)
+        const itemInfos = await ItemInfo.findAll({
+            where: { id: itemIdsG },
+            transaction: t
+        });
+
+
+        const itemInfoMap = itemInfos.reduce((m, x) => { m[x.id] = x; return m }, {});
+
+        // 8️⃣ Imágenes del ítem
+        const itemImages = await ItemImage.findAll({
+            where: { item: itemIdsG },
+            transaction: t
+        });
+
+        const imageMap = itemImages.reduce((m, x) => {
+            m[x.item] = x.image;
+            return m;
+        }, {});
+
+        // 9️⃣ Métodos de pago
+        const paymentMethods = await PaymentMethods.findAll({
+            where: { id: paymentMethodIds },
+            transaction: t
+        });
+
+        const paymentMap = paymentMethods.reduce((m, pm) => {
+            m[pm.id] = pm;
+            return m;
+        }, {});
+
+        await t.commit();
+
+        // 🔟 Construir lista final
+        const formatted = chats.map(chat => {
+
+            // mensajes del chat filtrados
+
+            const sortedMessages = [...allMessages].sort((a, b) =>
+                new Date(a.created_at) - new Date(b.created_at)
+            );
+
+            // mensajes del chat filtrados (ya ordenados)
+            const messages = sortedMessages.filter(m => m.chat_id === chat.id);
+            // Ignorar mensajes SYSTEM
+            const userMessages = messages.filter(m => m.message_type !== "SYSTEM");
+
+            let lastMessage = "(sin mensajes aún)";
+            let lastDate = null;
+
+            if (userMessages.length > 0) {
+                const last = userMessages[userMessages.length - 1];
+                lastDate = last.created_at;
+
+                if (last.content_type === "IMAGE") {
+                    // Si es imagen
+                    if (last.message && last.message.trim() !== "") {
+                        lastMessage = last.message;        // imagen con texto
+                    } else {
+                        lastMessage = "[IMAGEN]";         // imagen sin texto
+                    }
+                } else {
+                    // Mensaje normal
+                    lastMessage = last.message || "(sin mensajes aún)";
+                }
+            }
+
+            // const lastDate = userMessages.length
+            //     ? userMessages[userMessages.length - 1].created_at
+            //     : null;
+
+            const item = tradeItems.find(i => i.id === chat.trade_id) || {};
+
+            const uii = uiiMap[item.itemid] || {};
+            const info = itemInfoMap[uii.itemid] || {};
+            const img = imageMap[uii.itemid] ||
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png";
+
+            // nombre del ítem (con class)
+            const className = info.Class ? setClassName(info.Class) : '';
+            const fullName = info.name ? `${info.name}${className}` : "Desconocido";
+
+            // método de pago
+            const pm = paymentMap[chat.payment_method_id] || null;
+
+            return {
+                chat_id: chat.id,
+                trade_id: chat.trade_id,
+                with: chat.buyer === apodo ? chat.seller : chat.buyer,
+                status: chat.status,
+
+                // 📌 último mensaje relevante
+                last_message: lastMessage,
+                last_date: lastDate,
+
+                // 📌 cantidad TOTAL (incluye system)
+                total_messages: messages.length,
+
+                create:chat.created_at,
+
+                // 📌 item
+                item: {
+                    id: item.id,
+                    itemid: item.itemid,
+                    name: fullName,
+                    exp: uii.exp || 0,
+                    level: uii.level || 0,
+                    image: img
+                },
+
+                // 📌 método de pago
+                method: pm ? {
+                    id: pm.id,
+                    name: pm.name,
+                    icon: pm.icon,
+                    color: pm.color,
+                    type: pm.type
+                } : null
+            };
+        });
+
+        formatted.sort((a, b) => {
+            const dateA = a.last_date ? new Date(a.last_date) : new Date(a.create);
+            const dateB = b.last_date ? new Date(b.last_date) : new Date(b.create);
+
+            return dateB - dateA;
+        });
+
+        return {
+            success: true,
+            code: "000",
+            chats: formatted
+        };
+
+    } catch (error) {
+        console.error("❌ Error en getUserChats:", error);
+        await t.rollback();
+        return { success: false, code: "999", message: "Error interno del servidor." };
+    }
+}
+
+async getChat(user, token, chatId) {
+    const t = await sequelize.transaction();
+    try {
+      // 1️⃣ Validar token-session
+      const session = await TokenSession.findOne({
+        where: { token, id: user },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!session) {
+        await t.rollback();
+        return { success: false, code: '999', message: 'Token inválido o expirado.' };
+      }
+
+      // 2️⃣ Buscar chat existente
+      const chat = await TradeChats.findOne({
+        where: { id: chatId },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!chat) {
+        await t.rollback();
+        return { success: false, code: '999', message: 'Chat no encontrado.' };
+      }
+
+      const userinfo = await User.findOne({where:{id:user}, transaction: t,});
+
+      if(chat.seller !== userinfo.apodo && chat.buyer !== userinfo.apodo){
+        await t.rollback();
+        return { success: false, code: '999', message: 'No estas autorizado para ver este chat.' };
+      }
+
+      // 3️⃣ Obtener datos del método de pago y trade
+      const item = await Marketplace.findOne({
+        where: { id: chat.trade_id },
+        transaction: t,
+      });
+
+       // ⭐ Obtener UserItemInfo del ítem
+      const uii = await TempUserItemInfo.findOne({
+        where: { id: item.itemid },
+        attributes: ['id','exp','item_sn','level','limittime','sn_type','itemid'],
+        transaction: t
+      });
+
+      // ⭐ Obtener info general del ítem (nombre, clase)
+      const info = await ItemInfo.findOne({
+        where: { id: uii.itemid },
+        transaction: t
+      });
+
+      // ⭐ Obtener imagen del ítem
+      const itemImage = await ItemImage.findOne({
+        where: { item: uii.itemid },
+        transaction: t
+      });
+
+      // ⭐ Construir nombre + class
+      const className = info?.Class ? setClassName(info.Class) : "";
+      const fullName = info?.name ? `${info.name}${className}` : "Desconocido";
+
+      const finalItem = {
+        id: item.id,
+        itemid: item.itemid,
+        name: fullName,
+        exp: uii?.exp || 0,
+        level: uii?.level || 0,
+        image: itemImage?.image ||
+          "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png"
+      };
+
+      // 8) Determinar rol que se está calificando (BUYER o SELLER)
+        let roleReviewed = null;
+        if (String(userinfo.apodo) === String(chat.buyer)) {
+            roleReviewed = 'SELLER';
+        } else if (String(userinfo.apodo) === String(chat.seller)) {
+            roleReviewed = 'BUYER';
+        } else {
+            await t.rollback();
+            return { success: false, code: '200', message: 'El usuario no participa en este chat' };
+        }
+
+      const IsQualified = await TradeRatings.findOne({
+        where:{rater_name:userinfo.apodo, target_name: chat.seller,role:roleReviewed},
+        transaction: t,
+      })
+
+      const method = await PaymentMethods.findOne({
+        where: { id: chat.payment_method_id },
+        transaction: t,
+      });
+
+      // 4️⃣ Obtener historial de mensajes
+      const history = await TradeMessage.findAll({
+        where: { chat_id: chat.id },
+        order: [['created_at', 'ASC']],
+        transaction: t,
+      });
+
+        const actions = await TradeActions.findAll({
+            where: { chat_id: chat.id },
+            order: [['created_at', 'ASC']],
+            transaction: t
+        });
+ 
+
+      await t.commit();
+
+      // 5️⃣ Armar payload
+      return {
+        success: true,
+        code: '000',
+        message: 'Chat obtenido correctamente.',
+        chat: {
+          id: chat.id,
+          trade_id: chat.trade_id,
+          buyer: chat.buyer,
+          seller: chat.seller,
+          qlfy: IsQualified ? 1 : 0,
+          method: method ? {
+            id: method.id,
+            name: method.name,
+            icon: method.icon,
+            color: method.color,
+            type: method.type
+          } : null,
+          status: chat.status,
+          history: history.map(m => ({
+            id: m.id,
+            sender: m.sender,
+            message: m.message,
+            message_type: m.message_type,
+            content_type: m.content_type,
+            created_at: m.created_at,
+            file_url: m.file_url,
+            visible_to: m.visible_to,
+          })),
+          actions,
+          item: finalItem,
+        },
+      };
+    } catch (error) {
+      console.error("❌ Error en getChat:", error);
+      await t.rollback();
+      return { success: false, code: '999', message: 'Error interno del servidor.' };
+    }
+  }
 
     async sellItem(user,token,id,price,currency) {
         const t = await sequelize.transaction(); // Iniciar una transacción
@@ -865,6 +1744,24 @@ class MarketService {
                 };
             }
 
+             const typeNotRef = [9,10,11,13,14];
+
+            const itemType = await ItemInfo.findOne({
+                where: {
+                    // id: idi,
+                    id: userItem.itemid, // Cambia esto para usar el nombre de usuario correcto
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+                lock: t.LOCK.UPDATE,
+            });
+
+             if (userItem && typeNotRef.includes(itemType.type)){
+                await t.rollback(); // Revertir la transacción en caso de error
+                console.log('[INFO]'.blue,'Este tipo de item no se puede tradear'.blue);
+                const typeName = setTypeName(itemType.type);
+                return { success: false, code: '100', message: 'No se puede tradear este tipo de item (Tipo : '+ typeName +').' };
+            }
+
 
             // Obtener el ID del usuario desde UserGameInfo
             const userGame = await UserGameInfo.findOne({
@@ -928,6 +1825,19 @@ class MarketService {
                 };
             }
 
+            // Verificar medio de pago
+            const valCurr = await PaymentMethods.findOne({where:{id:currency}});
+
+            if(!valCurr){
+                 await t.rollback();
+                console.log('[Error] Medio de pago no disponible'.red);
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Este medio de pago no existe.',
+                };
+            }
+
             // Aquí continuarías con el proceso de venta (registro en marketplace, moverlo a otra tabla, etc.)
 
             // 4. Verificar si el usuario tiene créditos disponibles
@@ -937,7 +1847,7 @@ class MarketService {
                 lock: t.LOCK.UPDATE, // Evita race conditions
             });
 
-            if (!userCredits || userCredits.credits <= 0) {
+            if (!userCredits || (userItem.level >= 27 && userCredits.credits <= 1)|| (userItem.level < 27 && userCredits.credits <= 0)) {
                 await t.rollback();
                 console.log('[Error] No tiene créditos suficientes para publicar en trades'.red);
                 return {
@@ -946,8 +1856,13 @@ class MarketService {
                     message: 'No tienes créditos disponibles para publicar tu item en trades.',
                 };
             }
+
+            var credits = 1;
+            if(userItem.level >= 27){
+                credits = 2;
+            }
                 
-            userCredits.credits -= 1;
+            userCredits.credits -= credits;
             await userCredits.save({ transaction: t });
 
             // Obtener el apodo del usuario desde la tabla USER
@@ -976,7 +1891,7 @@ class MarketService {
                 characterid: userItem.userid, // Modifica si es necesario
                 itemid: userItem.itemid,
                 item_sn: userItem.item_sn || 8000,
-                sn_type: 3, // O el valor que corresponda
+                sn_type: userItem.sn_type, // O el valor que corresponda
                 level: userItem.level || 0,
                 limittime: userItem.limittime || 0,
                 slot: userItem.slot || 0,
@@ -1291,6 +2206,32 @@ class MarketService {
                 },
             });
 
+            // Obtener ratings promedio de cada vendedor
+            const sellerIds = [...new Set(items.map(i => i.vendedor))]; 
+
+            const sellerRatingsRaw = await TradeRatings.findAll({
+                attributes: [
+                    'target_name',
+                    [sequelize.fn('AVG', sequelize.col('rating')), 'avg_rating'],
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'total_reviews']
+                ],
+                where: {
+                    target_name: sellerIds,
+                    role: 'SELLER'
+                },
+                group: ['target']
+            });
+
+            // Crear mapa: sellerId → { avg_rating, total_reviews }
+            const sellerRatingMap = sellerRatingsRaw.reduce((map, r) => {
+                const data = r.toJSON();
+                map[data.target_name] = {
+                    avg_rating: Number(data.avg_rating).toFixed(2),
+                    total_reviews: Number(data.total_reviews)
+                };
+                return map;
+            }, {});
+
             // console.log(itemGeneralInfo);
 
             // Paso 3: Convertir el resultado de userItemsInfo a un diccionario para fácil acceso
@@ -1376,6 +2317,12 @@ class MarketService {
                 ? paymentMap[item.medio_pago].toJSON()
                 : { name: 'Desconocido', color: '#999', icon: null };
 
+                  // ⭐ Rating del vendedor
+                    const sellerRating = sellerRatingMap[item.vendedor] || {
+                        avg_rating: "0.00",
+                        total_reviews: 0
+                    };
+
                 // Fusionar la información del item original con la información adicional
                 return {
                     ...item,
@@ -1385,6 +2332,7 @@ class MarketService {
                     },
                     url: imageUrl, // Añade la propiedad .url
                     payment: paymentInfo, // ✅ Añadido aquí
+                    seller_rating: sellerRating,
                 };
             });
 

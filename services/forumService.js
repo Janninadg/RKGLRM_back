@@ -124,6 +124,297 @@ class ForumService {
     }
   }
 
+  async editPost({ user, token, post_id, title, content, category_id, is_pinned }) {
+    const t = await sequelize.transaction();
+
+    try {
+      // 1. Validar token
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: { token: token, id: user },
+        transaction: t,
+      });
+
+      if (!sessionToken) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '999',
+          message: 'Token inválido o sesión iniciada en otro navegador...',
+        };
+      }
+
+      // 2. Verificar usuario existe
+      const dbUser = await User.findByPk(user, { transaction: t });
+      if (!dbUser) {
+        await t.rollback();
+        return { success: false, code: '200', message: 'Usuario no encontrado' };
+      }
+
+      // 3. Obtener el post con LOCK
+      const post = await ForumPost.findOne({
+        where: { id: post_id },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!post) {
+        await t.rollback();
+        return { success: false, code: '200', message: 'Post no encontrado' };
+      }
+
+      // 4. Validar que el post pertenece al usuario que intenta editarlo
+      if (post.user_id !== dbUser.apodo) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'No tienes permiso para editar este post',
+        };
+      }
+
+      // 5. Actualizar campos permitidos
+      post.title = title;
+      post.content = content;
+      post.category_id = category_id;
+      post.is_pinned = Number(is_pinned);
+
+      await post.save({ transaction: t });
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Post actualizado correctamente',
+        post: {
+          id: post.id,
+          title: post.title,
+          category_id: post.category_id,
+          is_pinned: post.is_pinned,
+        },
+      };
+
+    } catch (error) {
+      await t.rollback();
+      console.error('Error en ForumService.editPost:', error);
+      return {
+        success: false,
+        code: '999',
+        message: 'Error interno al actualizar el post',
+      };
+    }
+  }
+
+  async toggleStatus({ user, token, post_id }) {
+    const t = await sequelize.transaction();
+
+    try {
+      // 1. Verificar token
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: { token: token, id: user },
+        transaction: t,
+      });
+
+      if (!sessionToken) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '999',
+          message: 'Token inválido o sesión iniciada en otro navegador...',
+        };
+      }
+
+      // 2. Verificar existencia del usuario
+      const dbUser = await User.findByPk(user, { transaction: t });
+      if (!dbUser) {
+        await t.rollback();
+        return { success: false, code: '200', message: 'Usuario no encontrado' };
+      }
+
+      // 3. Obtener el post CON LOCK
+      const post = await ForumPost.findOne({
+        where: { id: post_id },
+        transaction: t,
+        lock: t.LOCK.UPDATE, // 🔒 bloquea la fila durante la transacción
+      });
+
+       if (!post) {
+        await t.rollback();
+        return { success: false, code: '200', message: 'Post no encontrado' };
+      }
+
+      // 4. Validar que el post pertenece al usuario que intenta editarlo
+      if (post.user_id !== dbUser.apodo) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '200',
+          message: 'No tienes permiso para editar este post',
+        };
+      }
+
+      // 4. Cambiar estado automáticamente
+      const newStatus = post.enable === 1 ? 0 : 1;
+      post.enable = newStatus;
+
+      await post.save({ transaction: t });
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: `Post ${newStatus === 1 ? 'habilitado' : 'deshabilitado'} correctamente`,
+        status: newStatus
+      };
+
+    } catch (error) {
+      await t.rollback();
+      console.error('Error en ForumService.toggleStatus:', error);
+      return {
+        success: false,
+        code: '999',
+        message: 'Error interno al actualizar el estado del post',
+      };
+    }
+  }
+
+
+    async getPostsByUser({ user, token }) {
+    try {
+      // 1. Validar token
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: { token: token, id: user },
+      });
+
+      if (!sessionToken) {
+        return {
+          success: false,
+          code: '999',
+          message: 'Token inválido o sesión iniciada en otro navegador...',
+        };
+      }
+
+      // 2. Obtener usuario
+      const dbUser = await User.findByPk(user);
+      if (!dbUser) {
+        return { success: false, code: '101', message: 'Usuario no encontrado' };
+      }
+
+      // 3. Buscar posts del usuario (user.apodo se guarda en user_id)
+      const posts = await ForumPost.findAll({
+        where: { user_id: dbUser.apodo },
+        order: [
+          ['is_pinned', 'DESC'],
+          ['created_at', 'DESC'],
+        ],
+      });
+
+      const result = [];
+
+      for (const post of posts) {
+        const category = await ForumCategory.findByPk(post.category_id);
+
+        // Autor
+        const webuser = await WebUser.findOne({ where: { user: user } });
+
+        const author = {
+          name: dbUser.apodo,
+          url: '#',
+          avatar: webuser?.photo || 'https://i.pravatar.cc/100?img=10',
+          color: await this.getUserColorByApodo(dbUser.apodo),
+        };
+
+        // Contar replies
+        const repliesCount = await ForumReply.count({
+          where: { post_id: post.id },
+        });
+
+        // Último reply
+        const lastReply = await ForumReply.findOne({
+          where: { post_id: post.id },
+          order: [['created_at', 'DESC']],
+        });
+
+        let lastPoster = null;
+        if (lastReply) {
+          const replyUser = await User.findOne({
+            where: { apodo: lastReply.user_id },
+          });
+          const replyWebUser = replyUser
+            ? await WebUser.findOne({ where: { user: replyUser.id } })
+            : null;
+
+          lastPoster = {
+            name: replyUser?.apodo || 'Desconocido',
+            url: '#',
+            avatar:
+              replyWebUser?.photo ||
+              'https://i.pravatar.cc/100?img=11',
+            color: await this.getUserColorByApodo(replyUser?.apodo),
+          };
+        }
+
+        const badges = [];
+        if (post.is_pinned) {
+          badges.push({
+            name: 'pin',
+            title: 'Anclado',
+            icon: '<i class="fa fa-thumb-tack"></i>',
+          });
+        }
+
+        // Fechas
+        const createdAt = new Date(post.created_at);
+        const updatedAt = new Date(post.updated_at);
+
+        result.push({
+          id: post.id,
+          post: post,
+          url: `/foro/post/${post.id}`,
+          badges,
+          author,
+          forum: {
+            name: category?.name || 'General',
+            url: category?.url || '#',
+            color: category?.color || '#333',
+          },
+          date: createdAt.toISOString(),
+          dateFormatted: createdAt.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'long',
+          }),
+          replies: repliesCount,
+          views: post.views || 0,
+          lastPoster,
+          lastDate: updatedAt.toISOString(),
+          lastDateFormatted: updatedAt.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'long',
+          }),
+          enable: post.enable,
+        });
+      }
+
+      return {
+        success: true,
+        code: '000',
+        posts: result,
+      };
+
+    } catch (error) {
+      console.error('Error en ForumService.getPostsByUser:', error);
+      return {
+        success: false,
+        code: '999',
+        message: 'Error al obtener los posts del usuario',
+      };
+    }
+  }
+
    // Crear nuevo post
   async createPost(userId, token, title, content, destacado, category_id) {
     const t = await sequelize.transaction();

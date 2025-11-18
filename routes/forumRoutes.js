@@ -37,4 +37,12 @@ router.get('/latestPostsByCategory', ForumController.getLatestPostsByCategory);
 
 router.post('/view/:postId', ForumController.increaseView);
 
+// 🔥 Nuevo: habilitar / deshabilitar post
+router.post('/toggleStatus', ForumController.toggleStatus);
+
+// 🔥 Nuevo: obtener todos los posts de un usuario
+router.post('/getPostsByUser', ForumController.getPostsByUser);
+
+router.post('/editPost', ForumController.editPost);
+
 export default router;

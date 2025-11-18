@@ -375,7 +375,7 @@ class EventService {
 
                // Decrementar picas
                 picas.amount -= 1;
-                picas.save();
+                await picas.save({transaction:t});
                 // Creo una nueva partida...
 
                 await Matches.create(

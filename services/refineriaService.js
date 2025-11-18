@@ -35,13 +35,13 @@ class RefineriaService {
             }
 
             const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                attributes: ['id','bag'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
                 // transaction: t, // Asociar la transacción con esta consulta
             });
-
+            console.log(userGame.bag)
            // Obtener todos los items del usuario, ordenados por 'slot' y luego por 'id'
             const allUserItems = await UserItemInfo.findAll({
                 attributes:['id','itemid','level','slot','exp'],
@@ -110,7 +110,7 @@ class RefineriaService {
             // console.log("FINAL :",uniqueUserItemsWithImagesAndNames);
 
             await t.commit(); // Confirmar la transacción
-            return { success: true, code: '000', _ui: uniqueUserItemsWithImagesAndNames };
+            return { success: true, code: '000', _ui: uniqueUserItemsWithImagesAndNames, bag: userGame.bag };
 
         } catch (error) {
             await t.rollback();
@@ -124,7 +124,7 @@ class RefineriaService {
         
         try {
 
-            // return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
+            return { success: false, code: '200', message: 'Refinería no disponible temporalmente' };
 
             // Verificar token:
             const sessionToken = await TokenSession.findOne({

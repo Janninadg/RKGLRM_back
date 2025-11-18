@@ -92,6 +92,85 @@ class ForumController {
     }
   }
 
+  async editPost(req, res) {
+    try {
+      const { user, token, post_id, title, content, category_id, is_pinned } = req.body;
+
+      const result = await ForumService.editPost({
+        user,
+        token,
+        post_id,
+        title,
+        content,
+        category_id,
+        is_pinned,
+      });
+
+      if (result.success) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+
+    } catch (error) {
+      console.error("Error en ForumController.editPost:", error);
+      return res.status(500).json({
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      });
+    }
+  }
+
+  async toggleStatus(req, res) {
+    try {
+      const { user, token, post_id } = req.body;
+
+      const result = await ForumService.toggleStatus({
+        user,
+        token,
+        post_id,
+      });
+
+      if (result.success) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error en ForumController.toggleStatus:', error);
+      return res.status(500).json({
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      });
+    }
+  }
+
+  async getPostsByUser(req, res) {
+    try {
+      const { user, token } = req.body;
+
+      const result = await ForumService.getPostsByUser({
+        user,
+        token
+      });
+
+      if (result.success) {
+        return res.status(200).json(result);
+      } else {
+        return res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Error en ForumController.getPostsByUser:', error);
+      return res.status(500).json({
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      });
+    }
+  }
+
     async toggleLike(req, res) {
     try {
       const { user, token, post_id, flag } = req.body;

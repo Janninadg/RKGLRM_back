@@ -14,4 +14,10 @@ const upload = multer({ dest: "C:/xampp/htdocs/files/.tmp-foro" });
 // POST /api/uploads
 router.post("/", upload.array("images"),RoleValidator.checkRolesMiddleware(allowedRolesForPost), UploadController.uploadImages);
 
+// Chat: multiple images endpoint (final backend)
+router.post("/chats/multi", upload.array("images"), UploadController.uploadChatImage);
+
+// Chat: single image endpoint (final backend)
+router.post("/chats", upload.single("image"), UploadController.uploadChatImage);
+
 export default router;

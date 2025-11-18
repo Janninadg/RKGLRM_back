@@ -37,7 +37,7 @@ router.use('/web', webRoutes);
 router.use('/store', storeRoutes);
 
 // Montar rutas de tienda bajo api/market
-// router.use('/market', marketRoutes);
+router.use('/market', marketRoutes);
 
 // Montar rutas de tienda bajo api/market
 router.use('/refineria', refineriaRoutes);
