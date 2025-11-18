@@ -739,6 +739,14 @@ class UserService {
         { transaction }
       );
 
+      await UserCredits.create(
+        {
+          user: username,
+          credits: 0,
+        },
+        { transaction }
+      );
+
       //console.log(22222);
   
       await Cash.create({ id: username, cash: 0 }, { transaction });
