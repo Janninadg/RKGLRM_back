@@ -57,7 +57,7 @@ class RefineriaService {
             // Revertir la transacción en caso de error o si no hay registros
             if (!allUserItems || allUserItems.length === 0) {
                 // await t.rollback();
-                return { success: true, code: '000', ep: 0, _ui: [] };
+                return { success: true, code: '000', bag:userGame.bag, _ui: [] };
             }
             
             // Filtrar para obtener solo el primer item de cada slot
