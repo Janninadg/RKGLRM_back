@@ -4,34 +4,34 @@ const setPresentsReward = (character) => {
     try {
         switch (character) {
           case 0:
-            // Swordman
+            // Swordman (class 1)
             return {
-              i: [1013, 1113, 1213, 1313, 1437, 1537],
-              m: 'un Set Bone de Swordman'
+              i: [1009, 1109, 1209, 1309, 1409, 1509],
+              m: 'un Set DarkKnight de Swordman'
             };
           case 1:
-            // Archer
+            // Archer (class 2)
             return {
-              i: [2013, 2113, 2213, 2343, 2437, 2537],
-              m: 'un Set Bone de Archer'
+              i: [2009, 2109, 2209, 2309, 2409, 2509],
+              m: 'un Set DarkKnight de Archer'
             };
           case 2:
-            // Black
+            // Black (class 4)
             return {
-              i: [3013, 3113, 3213, 3313, 3437, 3537],
-              m: 'un Set Bone de Black'
+              i: [3009, 3109, 3209, 3309, 3409, 3509],
+              m: 'un Set DarkKnight de Black'
             };
           case 3:
-            // Mage
+            // Mage (class 8)
             return {
-              i: [4013, 4113, 4213, 4313, 4437, 4537],
-              m: 'un Set Bone de Mage'
+              i: [4009, 4109, 4209, 4309, 4409, 4509],
+              m: 'un Set DarkKnight de Mage'
             };
           case 4:
-            // Ninja
+            // Ninja (class 16)
             return {
-              i: [5013, 5113, 5213, 5313, 5437, 5537],
-              m: 'un Set Bone de Ninja'
+              i: [5009, 5109, 5209, 5309, 5409, 5509],
+              m: 'un Set DarkKnight de Ninja'
             };
           default:
             return null;

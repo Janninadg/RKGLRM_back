@@ -703,7 +703,7 @@ class UserService {
       await User.create(
         {
           id: username,
-          password:passwordEncrypt,
+          password:passwordEncrypt,f
           apodo,
           e_mail: email,
           phone:phoneNumber,
@@ -729,7 +729,7 @@ class UserService {
       await UserGameInfo.create(
         {
           name: username,
-          gold:15000,
+          gold:18000,
           tutorial: 1,
           createtime: new Date(),
           lastconnect: new Date(),
@@ -749,7 +749,7 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 0 }, { transaction });
+      await Cash.create({ id: username, cash: 10000 }, { transaction });
       await EventPoint.create({ User: username, Points: 0 }, { transaction });
   
       // Token
@@ -811,16 +811,13 @@ class UserService {
       const pr = setPresentsReward(character); // Lista de present_ids que deseas insertar
       const presentIds = pr.i;
 
-      presentIds.push(12222);
-      presentIds.push(12222);
-      presentIds.push(12292);
-      presentIds.push(12292);
+      presentIds.push(12215);
+      presentIds.push(12215);
+      presentIds.push(12214);
 
-      presentIds.push(8002); // Crossbow
-      presentIds.push(7010); // Anillo
-      presentIds.push(7010); // Anillo
-      presentIds.push(7010); // Anillo
-      presentIds.push(6006); // Joyeria
+      presentIds.push(12272); 
+      presentIds.push(12272);
+      presentIds.push(12271); 
 
       const presentRecords = presentIds.map(present_id => ({
         present_id,
@@ -851,7 +848,7 @@ class UserService {
       await LogRewardsUser.create({  
         user:username,
         origen:0,
-        recompensa:15000,
+        recompensa:18000,
         tipo_recompensa: 1,
         fecha: new Date(), 
       }, { transaction });
@@ -864,18 +861,18 @@ class UserService {
         fecha: new Date(), 
       }, { transaction });
 
-      // await LogRewardsUser.create({  
-      //   user:username,
-      //   origen:0,
-      //   recompensa:8000,
-      //   tipo_recompensa: 0,
-      //   fecha: new Date(), 
-      // }, { transaction });
-      //await LogRewardsUser.bulkCreate(originRecords, { transaction });
+      await LogRewardsUser.create({  
+        user:username,
+        origen:0,
+        recompensa:10000,
+        tipo_recompensa: 2,
+        fecha: new Date(), 
+      }, { transaction });
+      await LogRewardsUser.bulkCreate(originRecords, { transaction });
 
       await transaction.commit();
 
-      const message = 'Te has registrado correctamente ¡Has recibido 5 días de Power user + 15K Oro + '+ pr.m +' + PACK DE POCIONES [HP + AP] + Pack de Joyerpia de recompensa por registrarte!';
+      const message = 'Te has registrado correctamente ¡Has recibido 5 días de Power user + 18K de Oro + 10K de Cash + '+ pr.m +' + PACK DE POCIONES [HP + AP] 40% + Pase libre para el reto de nivel!';
       // const message = '¡Se registro tu usuario correctamente!';
   
       return { success: true,message, code: '000' };
