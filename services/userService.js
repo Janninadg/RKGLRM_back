@@ -699,10 +699,12 @@ class UserService {
 
       // console.log(password);
       // console.log(passwordEncrypt);
+
+      const lowerUser = username.toLowerCase();
   
       await User.create(
         {
-          id: username,
+          id: lowerUser,
           password:passwordEncrypt,
           apodo,
           e_mail: email,
@@ -716,7 +718,7 @@ class UserService {
 
       await WebUser.create(
         {
-          user: username,
+          user: lowerUser,
           password: password.toLowerCase(),
           photo: `https://dummyimage.com/60x60/${color}/ffffff&text=${firstLetter}`,
         },
@@ -728,7 +730,7 @@ class UserService {
 
       await UserGameInfo.create(
         {
-          name: username,
+          name: lowerUser,
           gold:18000,
           tutorial: 1,
           createtime: new Date(),
@@ -741,7 +743,7 @@ class UserService {
 
       await UserCredits.create(
         {
-          user: username,
+          user: lowerUser,
           credits: 0,
         },
         { transaction }
@@ -749,21 +751,21 @@ class UserService {
 
       //console.log(22222);
   
-      await Cash.create({ id: username, cash: 10000 }, { transaction });
-      await EventPoint.create({ User: username, Points: 0 }, { transaction });
+      await Cash.create({ id: lowerUser, cash: 10000 }, { transaction });
+      await EventPoint.create({ User: lowerUser, Points: 0 }, { transaction });
   
       // Token
-      await TokenSession.create({ id: username, token: 0 }, { transaction });
+      await TokenSession.create({ id: lowerUser, token: 0 }, { transaction });
 
       // Assets: piedras refineria, .... tickets etc
-      await UserAsset.create({ user: username, amount: 0, asset:1 }, { transaction }); //refineria piedra cash
-      await UserAsset.create({ user: username, amount: 0, asset:2 }, { transaction }); //refineria piedra oro
-      await UserAsset.create({ user: username, amount: 0, asset:3 }, { transaction }); //giro ruleta
+      await UserAsset.create({ user: lowerUser, amount: 0, asset:1 }, { transaction }); //refineria piedra cash
+      await UserAsset.create({ user: lowerUser, amount: 0, asset:2 }, { transaction }); //refineria piedra oro
+      await UserAsset.create({ user: lowerUser, amount: 0, asset:3 }, { transaction }); //giro ruleta
 
       // await TicketOro.create({ id: username, tickets: 0 }, { transaction });
 
       //Insertar IP:
-      await InitialIpUser.create({ user: username, ip: ip }, { transaction });
+      await InitialIpUser.create({ user: lowerUser, ip: ip }, { transaction });
 
       // Asignar roles iniciales
       const initialRoles = [
@@ -826,7 +828,7 @@ class UserService {
       }));
 
       const originRecords = presentIds.map(recompensa => ({
-        user:username,
+        user:lowerUser,
         origen:0,
         recompensa,
         tipo_recompensa: 0,
@@ -846,7 +848,7 @@ class UserService {
       // }, { transaction });
 
       await LogRewardsUser.create({  
-        user:username,
+        user:lowerUser,
         origen:0,
         recompensa:18000,
         tipo_recompensa: 1,
@@ -854,7 +856,7 @@ class UserService {
       }, { transaction });
 
       await LogRewardsUser.create({  
-        user:username,
+        user:lowerUser,
         origen:0,
         recompensa:7,
         tipo_recompensa: 6,
@@ -862,13 +864,13 @@ class UserService {
       }, { transaction });
 
       await LogRewardsUser.create({  
-        user:username,
+        user:lowerUser,
         origen:0,
         recompensa:10000,
         tipo_recompensa: 2,
         fecha: new Date(), 
       }, { transaction });
-      await LogRewardsUser.bulkCreate(originRecords, { transaction });
+      // await LogRewardsUser.bulkCreate(originRecords, { transaction });
 
       await transaction.commit();
 
