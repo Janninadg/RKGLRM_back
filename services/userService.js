@@ -703,7 +703,7 @@ class UserService {
       await User.create(
         {
           id: username,
-          password:passwordEncrypt,f
+          password:passwordEncrypt,
           apodo,
           e_mail: email,
           phone:phoneNumber,
