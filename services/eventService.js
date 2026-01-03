@@ -636,7 +636,7 @@ class EventService {
                   // attributes: ['tickets'],
                   where: {
                     user: user,
-                    asset:4
+                    asset:3
                   },
                   transaction:t, // Asociar la transacción con esta consulta
                   lock: t.LOCK.UPDATE,
@@ -653,7 +653,7 @@ class EventService {
                     by: 1,
                     where: {
                       user: user,
-                      asset:4
+                      asset:3
                     },
                     transaction:t, // Asociar la transacción con esta operación
                   });
