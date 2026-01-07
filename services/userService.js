@@ -1420,7 +1420,7 @@ async getRanking() {
         case 5:
           origen = 16;
           tiporec = 19;
-          console.log('Asset:'.blue,'Ticket de Hot Slot'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          console.log('Asset:'.blue,'Ticket de Puntos'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
         default:
           origen = 0;
