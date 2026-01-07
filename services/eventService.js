@@ -600,9 +600,13 @@ class EventService {
               let hotProb = 0;
 
               
+              const paramName = matchFound
+                ? (matchFound.modalidad === 1 ? 'hot_slot_prob' : 'hot_slot_prob_2')
+                : (modality === 1 ? 'hot_slot_prob' : 'hot_slot_prob_2');
+
               const probsHot = await ConfigParameters.findOne({
-                  where: { name: 'hot_slot_prob' },
-                  transaction:t,
+                where: { name: paramName },
+                transaction: t,
               });
 
               hotProb = parseFloat(probsHot.value);
@@ -630,33 +634,43 @@ class EventService {
                 }
 
               if(!matchFound){
-
-                //Decrementar tickets:
-                const  tickets = await UserAsset.findOne({
-                  // attributes: ['tickets'],
-                  where: {
-                    user: user,
-                    asset:3
-                  },
-                  transaction:t, // Asociar la transacción con esta consulta
-                  lock: t.LOCK.UPDATE,
-                });
-
-                // await t.rollback(); // Revertir la transacción en caso de error
-                if(!tickets || tickets.amount < 1){
-                  await t.rollback(); // Revertir la transacción en caso de error
-                  return { success: false, code: '001', message:`No tiene tickets suficientes para jugar al HotSlot` };
-                }
-      
-                // Decrementar el ticket del usuario
-                await UserAsset.decrement('amount', {
-                    by: 1,
+                
+                var nameAsset;
+                var hot;
+                
+                if(modality == 1){
+                  hot = await UserAsset.findOne({
                     where: {
                       user: user,
                       asset:3
                     },
-                    transaction:t, // Asociar la transacción con esta operación
+                    transaction:t, // Asociar la transacción con esta consulta
+                    lock: t.LOCK.UPDATE,
                   });
+                  nameAsset = 'tickets de cash';
+                } else{
+                   hot = await UserAsset.findOne({
+                    where: {
+                      user: user,
+                      asset:5
+                    },
+                    transaction:t, // Asociar la transacción con esta consulta
+                    lock: t.LOCK.UPDATE,
+                  });
+                   nameAsset = 'tickets de puntos';
+                }
+                
+
+                if(!hot || hot.amount < 1){
+                  await t.rollback(); // Revertir la transacción en caso de error
+                  return { success: false, code: '001', message:`No tienes ${nameAsset} suficientes para jugar al buscaminas` };
+                }
+
+                // console.log(handleGetAssets)
+
+               // Decrementar hot tickets
+                hot.amount -= 1;
+                await hot.save({transaction:t});
 
                 if(Math.random() < hotProb){
                   //Pierdes :)
@@ -709,6 +723,7 @@ class EventService {
                       premios_obtenidos:JSON.stringify(newPr),
                       picked:String(0),
                       nombres:JSON.stringify(newNo),
+                      modalidad: modality,
                       game:type,
                     },
                     {
