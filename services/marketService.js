@@ -1187,7 +1187,7 @@ class MarketService {
             last_pr: befCurr,
             curr_pr: aftCurr,
             fecha: new Date(), 
-        }, { transaction});
+        }, { transaction: t});
     }
 
     // --------- Crear chat (si no hay chat activo) ----------
