@@ -1001,6 +1001,19 @@ class MarketService {
         transaction: t,
     });
 
+     const valMrk= await ConfigParameters.findOne({
+                    where: {
+                    name: 'max_lvl_market'
+                    },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE
+                });
+    
+    const maxLevelMarket = parseInt(valMrk.value);
+
+    // Paso 3: Verificar si alguno tiene nivel >= 20
+    const hasLevel20OrMore = characters.some(char => char.level >= maxLevelMarket);
+
     // Paso 2: Validar si tiene personajes
     if (!characters || characters.length === 0) {
         await t.rollback();
@@ -1008,12 +1021,9 @@ class MarketService {
         return {
             success: false,
             code: '200',
-            message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+            message: 'Debes tener personajes con nivel superior a '+maxLevelMarket+' para comprar un item en trades',
         };
     }
-
-    // Paso 3: Verificar si alguno tiene nivel >= 20
-    const hasLevel20OrMore = characters.some(char => char.level >= 35);
 
     if (!hasLevel20OrMore) {
         await t.rollback();
@@ -1021,7 +1031,7 @@ class MarketService {
         return {
             success: false,
             code: '200',
-            message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+            message: 'Debes tener personajes con nivel superior a '+maxLevelMarket+' para comprar un item en trades',
         };
     }
 
@@ -1790,6 +1800,19 @@ async getChat(user, token, chatId) {
                 transaction: t,
             });
 
+            const valMrk= await ConfigParameters.findOne({
+                    where: {
+                    name: 'max_lvl_market'
+                    },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE
+                });
+    
+            const maxLevelMarket = parseInt(valMrk.value);
+
+            // Paso 3: Verificar si alguno tiene nivel >= 20
+            const hasLevel20OrMore = characters.some(char => char.level >= maxLevelMarket);
+
             // Paso 2: Validar si tiene personajes
             if (!characters || characters.length === 0) {
                 await t.rollback();
@@ -1797,12 +1820,9 @@ async getChat(user, token, chatId) {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelMarket+' para publicar tu item en trades',
                 };
             }
-
-            // Paso 3: Verificar si alguno tiene nivel >= 20
-            const hasLevel20OrMore = characters.some(char => char.level >= 35);
 
             if (!hasLevel20OrMore) {
                 await t.rollback();
@@ -1810,7 +1830,7 @@ async getChat(user, token, chatId) {
                 return {
                     success: false,
                     code: '200',
-                    message: 'Debes tener personajes con nivel superior a 35 para publicar tu item en trades',
+                    message: 'Debes tener personajes con nivel superior a '+maxLevelMarket+' para publicar tu item en trades',
                 };
             }
 
