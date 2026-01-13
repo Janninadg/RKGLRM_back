@@ -1,9 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 
-import path from 'path';
-import fs from 'fs';
-
 const logDir = 'C:\\xampp\\htdocs\\files\\logs';
 const logPath = path.join(logDir, 'chat-ping.log');
 
