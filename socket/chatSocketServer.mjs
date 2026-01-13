@@ -2,10 +2,16 @@
 import { Server } from 'socket.io';
 import http from 'http';
 import MarketService from '../services/marketService.js';
+import { logPing } from '../utils/logger.js';
 
-const userSockets = new Map();        // username → socket.id
-const tradeRooms = new Map();         // tradeId → Set(usernames)
-const socketUsers = new Map();        // socket.id → username
+// tradeId → Map(socketId → username)
+const tradeRooms = new Map();
+
+// socketId → { user, trades: Set<tradeId> }
+const sockets = new Map();
+
+// tradeId → Map(socketId → { user, lastPing })
+const tradePings = new Map();
 
 // Crea un servidor HTTP exclusivo para el chat
 const chatServer = http.createServer();
@@ -16,50 +22,84 @@ const io = new Server(chatServer, {
     origin: '*', // restringe a tu dominio en prod
     methods: ['GET', 'POST'],
   },
-  path: '/cht/socket.io'
+  path: '/cht/socket.io',
+  transports: ['polling'], 
 });
+
+function formatDate(date = new Date()) {
+  const pad = (n) => n.toString().padStart(2, '0');
+
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ` +
+         `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 
 // Manejador de conexiones
 io.on('connection', (socket) => {
   console.log(`[Chat] Cliente conectado: ${socket.id}`);
 
+   // ⏱️ Si en 10s no se registra → fuera
+  const registerTimeout = setTimeout(() => {
+    if (!sockets.has(socket.id)) {
+      console.warn(`[Chat] Socket huérfano eliminado: ${socket.id}`);
+      socket.disconnect(true);
+    }
+  }, 10_000);
+
   // 🔹 Registro de usuario
   socket.on('register_user', (user) => {
     if (!user) return;
 
-    // Si ya estaba conectado, lo reemplazamos
-    if (userSockets.has(user)) {
-      const oldSocketId = userSockets.get(user);
-      if (oldSocketId !== socket.id) {
-        const oldSocket = io.sockets.sockets.get(oldSocketId);
-        if (oldSocket) oldSocket.disconnect(true);
-      }
-    }
+    clearTimeout(registerTimeout);
 
-    userSockets.set(user, socket.id);
-    socketUsers.set(socket.id, user);
+    sockets.set(socket.id, {
+      user,
+      trades: new Set()
+    });
+
     socket.user = user;
-
     console.log(`[Chat] Usuario ${user} registrado con socket ${socket.id}`);
     socket.emit('USER_REGISTERED', { user });
   });
 
   // 🔹 Unirse a una sala de trade
-  socket.on('join_trade', ({ tradeId, user }) => {
-    if (!tradeId || !user) return;
-    const room = `trade_${tradeId}`;
+  socket.on('join_trade', ({ tradeId }) => {
+    if (!tradeId || !socket.user) return;
 
-    // Añade usuario a la sala
+    const room = `trade_${tradeId}`;
     socket.join(room);
 
-    // Guarda relación tradeId → usuarios
-    if (!tradeRooms.has(tradeId)) tradeRooms.set(tradeId, new Set());
-    tradeRooms.get(tradeId).add(user);
+    // 🧩 trade → sockets
+    if (!tradeRooms.has(tradeId)) {
+      tradeRooms.set(tradeId, new Map());
+    }
+    tradeRooms.get(tradeId).set(socket.id, socket.user);
 
-    console.log(`[Chat] ${user} se unió a ${room}`);
+    // 🧩 socket → trades
+    if (!sockets.has(socket.id)) {
+      sockets.set(socket.id, {
+        user: socket.user,
+        trades: new Set(),
+      });
+    }
+    sockets.get(socket.id).trades.add(tradeId);
 
-    // Notificar a los demás de la sala
-    io.to(room).emit('TRADE_USER_JOINED', { user, tradeId });
+    // 🧩 pings por trade
+    if (!tradePings.has(tradeId)) {
+      tradePings.set(tradeId, new Map());
+    }
+    tradePings.get(tradeId).set(socket.id, {
+      user: socket.user,
+      lastPing: Date.now(),
+    });
+
+    console.log(
+      `[JOIN][trade=${tradeId}] user=${socket.user} socket=${socket.id}`
+    );
+
+    io.to(room).emit('TRADE_USER_JOINED', {
+      user: socket.user,
+      tradeId,
+    });
   });
 
   // 🔹 Enviar mensaje dentro de una sala
@@ -94,6 +134,41 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('client_ping', ({ tradeId }) => {
+    if (!tradeId) return;
+
+    const INTERVAL = 60_000;
+    const TOLERANCE = 5_000;
+    const now = Date.now();
+
+    const tradeMap = tradePings.get(tradeId);
+    if (!tradeMap) return;
+
+    const entry = tradeMap.get(socket.id);
+    if (!entry) return;
+
+    const diff = now - entry.lastPing;
+
+     const timestamp = formatDate();
+
+     if (diff < INTERVAL - TOLERANCE) {
+      const msg =
+        `[${timestamp}] [PING][trade=${tradeId}] FAST | user=${entry.user} socket=${socket.id} (${Math.floor(diff / 1000)}s)`;
+
+      // console.warn(msg);
+      logPing(msg);
+      return;
+    }
+
+     entry.lastPing = now;
+
+      const msg =
+        `[${timestamp}] [PING][trade=${tradeId}] OK | user=${entry.user} socket=${socket.id}`;
+
+      // console.log(msg);
+      logPing(msg);
+      });
+
   // 🔹 Enviar mensaje dentro de una sala
   socket.on('trade_action', async (payload) => {
     const { chat_id, user, action, auth } = payload;
@@ -125,25 +200,67 @@ io.on('connection', (socket) => {
 
   // 🔹 Manejar desconexión
   socket.on('disconnect', () => {
-    const user = socketUsers.get(socket.id);
-    if (!user) return;
+    const data = sockets.get(socket.id);
+    if (!data) return;
 
-    userSockets.delete(user);
-    socketUsers.delete(socket.id);
+    for (const tradeId of data.trades) {
+      tradeRooms.get(tradeId)?.delete(socket.id);
+      tradePings.get(tradeId)?.delete(socket.id);
 
-    // Elimina de todas las salas de trade
-    for (const [tradeId, usersSet] of tradeRooms.entries()) {
-      usersSet.delete(user);
-      if (usersSet.size === 0) {
-        tradeRooms.delete(tradeId); // sala vacía → limpia
-        console.log(`[Chat] Sala trade_${tradeId} eliminada (vacía)`);
-      } else {
-        io.to(`trade_${tradeId}`).emit('TRADE_USER_LEFT', { user, tradeId });
+      io.to(`trade_${tradeId}`).emit('TRADE_USER_LEFT', {
+        user: data.user,
+        tradeId
+      });
+
+      if (tradeRooms.get(tradeId)?.size === 0) {
+        tradeRooms.delete(tradeId);
+        tradePings.delete(tradeId);
       }
     }
 
-    console.log(`[Chat] Usuario ${user} desconectado y limpiado`);
+    sockets.delete(socket.id);
+
+    console.log(
+      `[Chat] [DISCONNECT] user=${data.user} socket=${socket.id} limpiado`
+    );
   });
+
+
+  socket.on('leave_trade', ({ tradeId }) => {
+    if (!tradeId || !socket.user) return;
+
+    const socketData = sockets.get(socket.id);
+    if (!socketData) return;
+
+    const room = `trade_${tradeId}`;
+    socket.leave(room);
+
+    tradeRooms.get(tradeId)?.delete(socket.id);
+    tradePings.get(tradeId)?.delete(socket.id);
+    sockets.get(socket.id)?.trades.delete(tradeId);
+
+    io.to(room).emit('TRADE_USER_LEFT', {
+      user: socket.user,
+      tradeId
+    });
+
+    
+    console.log(
+      `[LEAVE][trade=${tradeId}] user=${socket.user} socket=${socket.id}`
+    );
+
+    // 🧹 Limpieza si el trade queda vacío
+    if (tradeRooms.get(tradeId)?.size === 0) {
+      tradeRooms.delete(tradeId);
+      tradePings.delete(tradeId);
+
+      console.log(
+        `[CLEAN][trade=${tradeId}] sala eliminada (vacía)`
+      );
+    }
+  });
+
+
 });
 
 // 🚀 Inicia el servidor de chat en su propio puerto
