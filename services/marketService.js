@@ -1083,6 +1083,7 @@ class MarketService {
     const PM_ID_CASH = 1;
     const PM_ID_PUNTOS = 2;
     const price = Number(item.precio || 0);
+    console.log(price);
 
     // --------- Si es INTERNAL: verificar saldo, descontar y crear retención ANTES de crear chat ----------
     if (method.type === 'INTERNAL') {
@@ -1092,6 +1093,7 @@ class MarketService {
     var aftCurr = 0;
 
       if (method.id === PM_ID_CASH) {
+        console.log('cash')
          // Sumar "price" en logbuycashitem
         // const [sumCashItemResult] = await sequelize.query(
         //     `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,
@@ -1141,7 +1143,7 @@ class MarketService {
         // Descontar cash
         userCash.cash -= price;
         aftCurr = userCash.cash;
-        await userGame.save({ transaction: t });
+        await userCash.save({ transaction: t });
 
       } else if (method.id === PM_ID_PUNTOS) {
 
