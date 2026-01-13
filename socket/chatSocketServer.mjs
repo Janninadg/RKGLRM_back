@@ -49,6 +49,14 @@ io.on('connection', (socket) => {
   socket.on('register_user', (user) => {
     if (!user) return;
 
+    // 🚫 ya registrado este socket
+    if (socket.user && sockets.has(socket.id)) {
+      console.warn(
+        `[Chat][REGISTER][IGNORED] socket=${socket.id} ya registrado como ${socket.user}`
+      );
+      return;
+    }
+
     clearTimeout(registerTimeout);
 
     sockets.set(socket.id, {
@@ -57,7 +65,11 @@ io.on('connection', (socket) => {
     });
 
     socket.user = user;
-    console.log(`[Chat] Usuario ${user} registrado con socket ${socket.id}`);
+
+    console.log(
+      `[Chat][REGISTER] user=${user} socket=${socket.id}`
+    );
+
     socket.emit('USER_REGISTERED', { user });
   });
 
