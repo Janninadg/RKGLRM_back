@@ -77,42 +77,58 @@ io.on('connection', (socket) => {
   socket.on('join_trade', ({ tradeId }) => {
     if (!tradeId || !socket.user) return;
 
-    const room = `trade_${tradeId}`;
-    socket.join(room);
+    const socketData = sockets.get(socket.id);
+    if (!socketData) return;
 
-    // 🧩 trade → sockets
-    if (!tradeRooms.has(tradeId)) {
-      tradeRooms.set(tradeId, new Map());
+    const inSocket = socketData.trades.has(tradeId);
+    const inRoom   = tradeRooms.get(tradeId)?.has(socket.id) ?? false;
+    const inPing   = tradePings.get(tradeId)?.has(socket.id) ?? false;
+
+    // 📌 1️⃣ Si NO está en el socket → agregar
+    if (!inSocket) {
+      socketData.trades.add(tradeId);
     }
-    tradeRooms.get(tradeId).set(socket.id, socket.user);
 
-    // 🧩 socket → trades
-    if (!sockets.has(socket.id)) {
-      sockets.set(socket.id, {
+    // 📌 2️⃣ Si NO está en la sala → unir
+    if (!inRoom) {
+      const room = `trade_${tradeId}`;
+      socket.join(room);
+
+      if (!tradeRooms.has(tradeId)) {
+        tradeRooms.set(tradeId, new Map());
+      }
+      tradeRooms.get(tradeId).set(socket.id, socket.user);
+    }
+
+    // 📌 3️⃣ Si NO tiene ping → crear
+    if (!inPing) {
+      if (!tradePings.has(tradeId)) {
+        tradePings.set(tradeId, new Map());
+      }
+      tradePings.get(tradeId).set(socket.id, {
         user: socket.user,
-        trades: new Set(),
+        lastPing: Date.now(),
       });
     }
-    sockets.get(socket.id).trades.add(tradeId);
 
-    // 🧩 pings por trade
-    if (!tradePings.has(tradeId)) {
-      tradePings.set(tradeId, new Map());
+    // 🟡 Si ya estaba completo, no spamees eventos
+    if (inSocket && inRoom && inPing) {
+      console.warn(
+        `[JOIN][SYNC][trade=${tradeId}] user=${socket.user} socket=${socket.id} (ya estaba)`
+      );
+      return;
     }
-    tradePings.get(tradeId).set(socket.id, {
-      user: socket.user,
-      lastPing: Date.now(),
-    });
 
     console.log(
       `[JOIN][trade=${tradeId}] user=${socket.user} socket=${socket.id}`
     );
 
-    io.to(room).emit('TRADE_USER_JOINED', {
+    io.to(`trade_${tradeId}`).emit('TRADE_USER_JOINED', {
       user: socket.user,
       tradeId,
     });
   });
+
 
   // 🔹 Enviar mensaje dentro de una sala
   socket.on('send_trade_message', async (payload) => {
