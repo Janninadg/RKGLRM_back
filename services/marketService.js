@@ -1093,7 +1093,6 @@ class MarketService {
     var aftCurr = 0;
 
       if (method.id === PM_ID_CASH) {
-        console.log('cash')
          // Sumar "price" en logbuycashitem
         // const [sumCashItemResult] = await sequelize.query(
         //     `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGameId}`,

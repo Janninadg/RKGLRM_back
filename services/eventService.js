@@ -611,7 +611,59 @@ class EventService {
 
               hotProb = parseFloat(probsHot.value);
 
-              console.log(hotProb);
+               const hotProbsNews = await ConfigParameters.findOne({
+                where: { name: 'hot_probs_news' },
+                transaction: t,
+              });
+
+              const parsedProbs = JSON.parse(hotProbsNews.value);
+
+              /** New user probs */
+
+              var isNew = false;
+
+              const userGame = await UserGameInfo.findOne({
+                      attributes: ['id'],
+                      where: {
+                          name: user,
+                      },
+                      transaction: t,
+                  });
+
+              // Sumar:
+              const [sumCashItemResult] = await sequelize.query(
+              `SELECT COALESCE(SUM(price), 0) AS total FROM logbuycashitem WHERE userid = ${userGame.id}`,
+                  { type: sequelize.QueryTypes.SELECT, transaction: t }
+              );
+
+              // Sumar "buycash" en logbuypoweruser
+              const [sumPowerUserResult] = await sequelize.query(
+                  `SELECT COALESCE(SUM(buycash), 0) AS total FROM logbuypoweruser WHERE userid = ${userGame.id}`,
+                  { type: sequelize.QueryTypes.SELECT, transaction: t }
+              );
+              const totalCashSpent = sumCashItemResult.total + sumPowerUserResult.total;
+
+              const ticketsPlayed = await Matches.count({
+                where: {
+                  user: user,
+                  estado: 0,
+                  game: type,
+                  modalidad: 1,
+                },
+                transaction: t,
+              });
+
+              const TICKET_COST = 900;
+              const MAX_SPENT = 10000;
+              const estimatedSpentByMatches = ticketsPlayed * TICKET_COST;
+
+              if(totalCashSpent <= MAX_SPENT &&  estimatedSpentByMatches <= MAX_SPENT && modality == 1){
+                  hotProb = 0.80;
+                  isNew = true;
+              } 
+              /** New user probs END */
+
+              console.log("Prob: "+ hotProb);
                 
                 let gp = await ConfigParameters.findOne({
                     where: { name: 'gold_prizes_hot' },
@@ -685,9 +737,15 @@ class EventService {
                   let cumulativeProb = 0;
   
                   //console.log(prizes);
+
+                  const probsToUse = isNew
+                  ? parsedProbs
+                  : dataPr2.map(p => p.probability);
+
+                  console.log(probsToUse);
   
                   for (let i = 0; i < dataPr2.length; i++) {
-                    cumulativeProb += dataPr2[i].probability;
+                    cumulativeProb += probsToUse[i];
                     if (randomProb <= cumulativeProb) {
                       premioIndex = i;
                       break;
@@ -782,8 +840,12 @@ class EventService {
 
                 //console.log(prizes);
 
+                 const probsToUse = isNew
+                  ? parsedProbs
+                  : dataPr.map(p => p.probability);
+
                 for (let i = 0; i < dataPr.length; i++) {
-                  cumulativeProb += dataPr[i].probability;
+                  cumulativeProb += probsToUse[i];
                   if (randomProb <= cumulativeProb) {
                     premioIndex = i;
                     break;
