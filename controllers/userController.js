@@ -300,7 +300,7 @@ class UserController {
       // Compara el resumen de los datos recibidos con el resumen incluido en los datos
       const isDataIntegrityValid = receivedDataHash === j1xYbZ;
 
-      const { MOLjPO,OPJKOU,UIODMM,MFLDOO } = W4aRzY;
+      const { MOLjPO,OPJKOU,UIODMM,MFLDOO,CHRDLD } = W4aRzY;
 
       //console.log("DATA:",W4aRzY);
       //console.log(signature);
@@ -311,11 +311,12 @@ class UserController {
       const user = decrypt(OPJKOU,key);
       const token = decrypt(MFLDOO,key);
       const idStage = Number(decrypt(UIODMM,key));
+      const ch = Number(decrypt(CHRDLD,key));
       //const type = Number(decrypt(UIODMM,key));
 
-      const paramsString = `${MOLjPO}-${OPJKOU}-${UIODMM}-${MFLDOO}`;
+      const paramsString = `${MOLjPO}-${OPJKOU}-${UIODMM}-${MFLDOO}-${CHRDLD}`;
 
-      const result = await UserService.resetStage(token,idStage,user,isDataIntegrityValid,paramsString, req);
+      const result = await UserService.resetStage(token,idStage,user,ch,isDataIntegrityValid,paramsString, req);
 
       if (result.success || result.code) {
         return res.status(200).json(result);

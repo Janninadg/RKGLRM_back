@@ -8,9 +8,19 @@ const StagesReset = sequelize.define('stagesreset', {
     allowNull: false,
     autoIncrement: true,
   },
-  idStage: {
+  ticket: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    defaultValue: 1,
+  },
+  idStage: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+  type: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
   },
   name: {
     type: DataTypes.TEXT,

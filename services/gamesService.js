@@ -34,6 +34,7 @@ import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import TicketsMode from '../models/ticketsModeModel.js';
+import TempPrize from '../models/tempPrizes.js';
 
 class GamesService {
 
@@ -203,6 +204,80 @@ class GamesService {
                     console.log(allPrizes[selectedItem])
 
                     return {all: allPrizes[selectedItem], win:true,params};
+                case 6:
+
+                   const prizeChests = await PrizesGame.findAll({
+                        attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
+                        where: {
+                        // clase: clase,
+                        type_game: game,
+                        },
+                        order: [['orderPrize', 'ASC']],
+                        transaction, // Asociar la transacción con esta consulta
+                    });
+
+                    const alreadyWon8004 = await TempPrize.findOne({
+                        where: {
+                            user: user,
+                            game: game,
+                            prize: 8004
+                        },
+                        transaction
+                    });
+
+                    // 2️⃣ Si ya lo ganó, reajustar probabilidades
+
+                    if (alreadyWon8004) {
+
+                        // Encontrar el premio 8004
+                        const blockedIndex = prizeChests.findIndex(p => p.prize === 8004);
+
+                        if (blockedIndex !== -1) {
+
+                            const blockedProb = Number(prizeChests[blockedIndex].probability);
+
+                            // Poner probabilidad en 0
+                            prizeChests[blockedIndex].probability = 0;
+
+                            // Calcular suma del resto
+                            const totalRemaining = prizeChests.reduce((sum, p, i) => {
+                                if (i !== blockedIndex) {
+                                    return sum + Number(p.probability);
+                                }
+                                return sum;
+                            }, 0);
+
+                            // Redistribuir proporcionalmente
+                            prizeChests.forEach((p, i) => {
+                                if (i !== blockedIndex) {
+                                    const original = Number(p.probability);
+                                    const proportion = original / totalRemaining;
+                                    p.probability = original + (blockedProb * proportion);
+                                }
+                            });
+                        }
+                    }
+
+                    // Realizar el calculo de probabilidad:
+                    const randProb = Math.random();
+                    let cumProb = 0;
+                    let SelIt = 0;
+
+                    // console.log(prizeChests)
+
+                    for (let i = 0; i < prizeChests.length; i++) {
+                        cumProb += Number(prizeChests[i].probability);
+                        if (randProb <= cumProb) {
+                            SelIt = i;
+                            break;
+                        }
+                    }
+
+                    Object.assign(params, {
+                        _pw:SelIt,
+                    });
+
+                    return {all: prizeChests[SelIt], win:true,params};
                 default:
                     // const allP = await PrizesGame.findAll({
                     //     attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],

@@ -1581,6 +1581,60 @@ class EventService {
       
 
           return { success: false, code: '001', message: 'No existe este tipo de juego' };
+        case 6:
+          const userGame = await Matches.findOne({
+            // attributes: ['premios_obtenidos','picked'],
+                where: {
+                    user: userId,
+                    game: type,
+                },
+                transaction: t,
+                lock: t.LOCK,
+            });
+
+          // Revertir la transacción en caso de error
+          if(!userGame){
+            await t.rollback();
+            return { success: false, code: '001', message:`No tiene el rompecabezas completo para obtener un cofre nuevo...` };
+          }
+
+          console.log(userGame.picked);
+          if(JSON.parse(userGame.picked)[0] === 0){
+            await t.rollback();
+            return { success: false, code: '001', message:`No tiene Cofres de tipo Básico disponibles para abrir...` };
+          }
+
+          // Resta cofre:
+
+          const cofres = JSON.parse(userGame.picked);
+          cofres[0] -= 1;
+          //const decrementedArr = newArr.map((element) => element - 1);
+
+          await Matches.update(
+            { 
+              //premios:JSON.stringify(decrementedArr),
+              picked: JSON.stringify(cofres),
+            }, //cambiar a codigo_base
+            { where: { user: userId,game:type, },
+              transaction: t
+            },
+          );
+
+           const allPrizesFinal = await PrizesGame.findAll({
+            attributes: ['name', 'url'],
+            where: {
+              //idRoulette: idRoulette,
+              type_game: type,
+            },
+            order: [['orderPrize', 'ASC']],
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+
+           Object.assign(params, {
+              allpz:allPrizesFinal,_cf:cofres
+          });
+
+          break;
         default:
           await t.rollback(); 
           return { success: false, code: '200', message: 'No existe este tipo de juego' };
@@ -2247,17 +2301,17 @@ class EventService {
   async getPieceAndChest(userId,token) {
     try {
       const userGame = await Matches.findOne({
-      attributes: ['premios','picked'],
+      attributes: ['premios_obtenidos','picked'],
           where: {
               user: userId,
-              game: 5,
+              game: 6,
           },
       });
 
      if(!userGame){
         return {success:true,_lp:[],_cf:0}
      } else{
-        return {success:true,_lp:JSON.parse(userGame.premios),_cf:JSON.parse(userGame.picked)}
+        return {success:true,_lp:JSON.parse(userGame.premios_obtenidos),_cf:JSON.parse(userGame.picked)}
      }
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
@@ -2267,7 +2321,7 @@ class EventService {
     }
   }
 
-  async obtenerNuevaPieza(user,token) {
+  async obtenerNuevaPieza(user,token,authg,modalidad,game) {
     const t = await sequelize.transaction();
     try {
      
@@ -2286,56 +2340,102 @@ class EventService {
         return { success: false, code: '002', message: 'Token inválido o sesión antigua para este evento...' };
       }
 
-      //Verificar tickets:
-      const userTickets = await Ticket.findOne({
-        attributes: ['tickets'],
+      // Verifico token...
+      const tokenCount = await GameAuth.findOne({
+        attributes: ['token'],
         where: {
-          id: user,
+          token: authg,
+          user: user,
+          type_game:game,
         },
         transaction: t, // Asociar la transacción con esta consulta
       });
 
-      // Revertir la transacción en caso de error
-      if(!userTickets || userTickets.tickets < 1){
-        await t.rollback();
-        return { success: false, code: '001', message:`No tiene tickets suficientes para jugar en este evento. Refresca la página...` };
+      if(!tokenCount){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '301', message: 'Has abierto este juego en otra pestaña...' };
       }
 
-      // Decrementar el ticket del usuario
-      await Ticket.decrement('tickets', {
-        by: 1,
-        where: {
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta operación
-      });
+      var nameAsset;
+      var tickets = "tickets";
+
+      //Verificar tickets:
+       if(modalidad == 1){
+        tickets = await UserAsset.findOne({
+          where: {
+            user: user,
+            asset:3
+          },
+          transaction:t, // Asociar la transacción con esta consulta
+          lock: t.LOCK.UPDATE,
+        });
+        nameAsset = 'tickets de cash';
+      } else if(modalidad == 3){
+          tickets = await UserAsset.findOne({
+          where: {
+            user: user,
+            asset:5
+          },
+          transaction:t, // Asociar la transacción con esta consulta
+          lock: t.LOCK.UPDATE,
+        });
+          nameAsset = 'tickets de puntos';
+      }
+      
+
+      if(!tickets || tickets.amount < 1){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '001', message:`No tienes ${nameAsset} suficientes para obtener nuevas piezas.` };
+      }
+
+      // Decrementar picas
+      tickets.amount -= 1;
+      await tickets.save({transaction:t});
 
       const userGame = await Matches.findOne({
-        attributes: ['premios','picked'],
+        attributes: ['premios_obtenidos','picked'],
             where: {
                 user: user,
-                game: 5,
+                game,
             },
         });
 
-        //Difficl pieza 4 y 13
-      const probs = [0.06, 0.07,0.07,0.06,0.07,0.07,0.07,0.05,0.04,0.07,0.06,0.07,0.06,0.07,0.06,0.05];
+      // 1️⃣ Probabilidades base equitativas
+      const baseProbs = Array(16).fill(1 / 16);
 
-       // Realizar el calculo de probabilidad:
-       const randomProb = Math.random();
-       let cumulativeProb = 0;
-       let selectedPiece = 0;
- 
-       //console.log(allPrizes.length);
- 
-       for (let i = 0; i < probs.length; i++) {
-         //console.log(allPrizes[i]);
-         cumulativeProb += probs[i];
-         if (randomProb <= cumulativeProb) {
-          selectedPiece = i;
-           break;
-         }
-       }
+      // 2️⃣ Obtener conteos del usuario
+      let counts = Array(16).fill(0);
+
+      if (userGame) {
+          counts = JSON.parse(userGame.premios_obtenidos);
+      }
+
+      // 3️⃣ Factor de dificultad (ajústalo)
+      const factor = 0.5;
+
+      // 4️⃣ Calcular pesos dinámicos
+      let dynamicWeights = baseProbs.map((prob, i) => {
+          return prob * (1 + factor * counts[i]);
+      });
+
+      // 5️⃣ Normalizar para que sumen 1
+      const totalWeight = dynamicWeights.reduce((a, b) => a + b, 0);
+      dynamicWeights = dynamicWeights.map(w => w / totalWeight);
+
+      // 6️⃣ Selección
+      const randomProb = Math.random();
+      let cumulativeProb = 0;
+      let selectedPiece = 0;
+
+      // console.log(dynamicWeights)
+
+      for (let i = 0; i < dynamicWeights.length; i++) {
+          cumulativeProb += dynamicWeights[i];
+          if (randomProb <= cumulativeProb) {
+              selectedPiece = i;
+              break;
+          }
+      }
        
        var newArr;
 
@@ -2346,11 +2446,11 @@ class EventService {
         await Matches.create(
           {
             user: user,
-            calabazas: JSON.stringify([]),
-            premios:JSON.stringify(newArr),
+            partida: JSON.stringify([]),
+            premios_obtenidos:JSON.stringify(newArr),
             picked:JSON.stringify([0,0]),
             nombres:JSON.stringify([]),
-            game:5,
+            game,
           },
           {
             transaction: t, // Asociar la transacción con esta operación
@@ -2358,29 +2458,21 @@ class EventService {
         );
 
       } else{
-        newArr = JSON.parse(userGame.premios);
+        newArr = JSON.parse(userGame.premios_obtenidos);
         newArr[selectedPiece] += 1;
 
         await Matches.update(
           { 
-            premios:JSON.stringify(newArr),
+            premios_obtenidos:JSON.stringify(newArr),
           }, //cambiar a codigo_base
-          { where: { user: user,game:5, },
+          { where: { user: user,game, },
             transaction: t
           },
         );
       }
 
-      const againTickets = await Ticket.findOne({
-        attributes: ['tickets'],
-        where: {
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
       await t.commit();
-      return {success:true,code:'000',_lp:newArr,ntc:againTickets.tickets,message:'Obtuviste la pieza n°'+String(selectedPiece+1)}
+      return {success:true,code:'000',_lp:newArr,message:'Obtuviste la pieza n°'+String(selectedPiece+1)}
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {
@@ -2389,7 +2481,7 @@ class EventService {
     }
   }
 
-  async obtenerCofre(user,token) {
+  async obtenerCofre(user,token,game,gametoken ) {
     const t = await sequelize.transaction();
     try {
      
@@ -2408,14 +2500,32 @@ class EventService {
         return { success: false, code: '002', message: 'Token inválido o sesión antigua para este evento...' };
       }
 
+      // Verifico token...
+      const tokenCount = await GameAuth.findOne({
+        attributes: ['token'],
+        where: {
+          token: gametoken,
+          user: user,
+          type_game:game,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!tokenCount){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '301', message: 'Has abierto este juego en otra pestaña...' };
+      }
+
       //Verificar piezas:
 
       const userGame = await Matches.findOne({
-        attributes: ['premios','picked'],
+        // attributes: ['premios_obtenidos','picked'],
             where: {
                 user: user,
-                game: 5,
+                game,
             },
+            transaction:t,
+            lock: t.LOCK.UPDATE,
         });
        
        var newArr;
@@ -2426,7 +2536,7 @@ class EventService {
         return { success: false, code: '001', message:`No tiene el rompecabezas completo para obtener un cofre nuevo...` };
       }
 
-      newArr = JSON.parse(userGame.premios);
+      newArr = JSON.parse(userGame.premios_obtenidos);
 
       if(!newArr.every(count => count > 0)){
         await t.rollback();
@@ -2434,8 +2544,8 @@ class EventService {
       }
 
         //0: cofre básico, 1: cofre osceanus
-        const probs = [0.8,0.2];
-        const names = ['Básico','Oceanus'];
+        const probs = [1,0];
+        const names = ['Golden','X'];
 
         // Realizar el calculo de probabilidad:
         const randomProb = Math.random();
@@ -2461,10 +2571,10 @@ class EventService {
 
       await Matches.update(
         { 
-          premios:JSON.stringify(decrementedArr),
+          premios_obtenidos:JSON.stringify(decrementedArr),
           picked: JSON.stringify(cofres),
         }, //cambiar a codigo_base
-        { where: { user: user,game:5, },
+        { where: { user: user,game, },
           transaction: t
         },
       );

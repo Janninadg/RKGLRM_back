@@ -38,6 +38,7 @@ import EventLevelCharacter from '../models/eventLevelChModel.js';
 import ForumUserRole from '../models/Forum/ForumRole.js';
 import Role from '../models/Forum/Role.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
+import StagesReset from '../models/stagesResetModel.js';
 
 class UserService {
 
@@ -1211,7 +1212,7 @@ async getRanking() {
     }
   }
 
-  async resetStage(token,idStage,user,isDataIntegrityValid,paramsString, req) {
+  async resetStage(token,idStage,user,ch,isDataIntegrityValid,paramsString, req) {
     const t = await sequelize.transaction();
     try {
       // Verificar el paquete utilizando la clase PacketVerifier
@@ -1270,6 +1271,42 @@ async getRanking() {
         return { success: false, code: '200', message: 'No tienes tickets suficientes para resetear este stage' };
       }
 
+      // Buscar el stage por ticket
+      const stageInfo = await StagesReset.findOne({
+        where: {
+          ticket: idStage, // idStage ES el ticket
+          visible: 1,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!stageInfo) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'Stage no encontrado para este ticket',
+        };
+      }
+
+      // Obtener type
+      const stageType = stageInfo.type; // 0 normal | 1 special
+
+      // Parsear idStage (viene como JSON string)
+      let stageIds = [];
+
+      try {
+        stageIds = JSON.parse(stageInfo.idStage);
+      } catch (err) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '500',
+          message: 'Error al procesar los stages del reset',
+        };
+      }
+
       //Obtener id de usuario:
       const usergetId = await UserGameInfo.findOne({
         attributes:['id'],
@@ -1313,7 +1350,9 @@ async getRanking() {
           attributes: ['id'],
           where: {
             characterid: p,
-            stage: idStage,
+            stage: {
+              [Op.in]: stageIds,
+            },
           },
           transaction: t, // Asociar la transacción con esta consulta
         });
@@ -1338,6 +1377,48 @@ async getRanking() {
         },
         transaction: t,
       });
+
+      if (stageType === 1) {
+        // 🔥 SPECIAL → eliminar para TODOS los personajes encontrados
+        await UserStageInfo.destroy({
+          where: {
+            id: {
+              [Op.in]: arrId,
+            },
+          },
+          transaction: t,
+        });
+
+      } else {
+        // 🟢 NORMAL → eliminar SOLO para el personaje seleccionado (ch)
+
+        const stageToDelete = await UserStageInfo.findOne({
+          attributes: ['id'],
+          where: {
+            characterid: ch,      // personaje seleccionado
+           stage: {
+            [Op.in]: stageIds, // 👈 array de stages
+          },
+          },
+          transaction: t,
+        });
+
+        if (!stageToDelete) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '100',
+            message: 'Este personaje no ha usado este stage',
+          };
+        }
+
+        await UserStageInfo.destroy({
+          where: {
+            id: stageToDelete.id,
+          },
+          transaction: t,
+        });
+      }
 
       // Decrementar:
       tcksStage.tickets -= 1;

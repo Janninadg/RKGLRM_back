@@ -147,6 +147,9 @@ class EventController {
         case 3: 
           console.log('Evento:'.blue,'Reto de nivel'.red);
           break;
+        case 6: 
+          console.log('Evento:'.blue,'Rompecabezas'.red);
+          break;
         default:
           break;
       }
@@ -527,9 +530,9 @@ class EventController {
 
   async obtenerNuevaPieza(req, res, next) {
     try {
-      const { user,token } = req.body;
+      const { user,authg,token,modalidad,game } = req.body;
 
-      const dataGame = await EventService.obtenerNuevaPieza(user,token);
+      const dataGame = await EventService.obtenerNuevaPieza(user,token,authg,modalidad,game);
       //console.log(ranking);
 
       if (dataGame.success || dataGame.code) {
@@ -545,9 +548,9 @@ class EventController {
 
   async obtenerCofre(req, res, next) {
     try {
-      const { user,token } = req.body;
+      const { user,token,game,gametoken } = req.body;
 
-      const dataGame = await EventService.obtenerCofre(user,token);
+      const dataGame = await EventService.obtenerCofre(user,token,game,gametoken );
       //console.log(ranking);
 
       if (dataGame.success || dataGame.code) {
