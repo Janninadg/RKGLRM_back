@@ -36,6 +36,7 @@ import colors from "colors";
 import EventsReview from '../models/eventsReviewModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
+import ValentinCards from '../models/Events/valentinCardsModel.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -2291,6 +2292,62 @@ class EventService {
 
       await t.commit();
       return { success: true, code: '000',_athg:tokenGen, _msv:match };
+    } catch (error) {
+      await t.rollback();
+      console.error('Error al obtener la crear auth de juego y obtener partida:', error);
+      throw new Error('Error en el servidor');
+    }
+  }
+
+  async saveCarta(user,token,message,prize) {
+    const t = await sequelize.transaction();
+    try {
+     
+       // Verificar token:
+       const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+        transaction: t, // Asociar la transacción con esta consulta
+      });
+
+      if(!sessionToken){
+        await t.rollback(); // Revertir la transacción en caso de error
+        return { success: false, code: '999', message: 'Token inválido o sesión antigua para este evento...' };
+      }
+     
+   
+      // 2️⃣ Verificar si ya existe carta (CON LOCK)
+      const existingCard = await ValentinCards.findOne({
+        where: { user: user },
+        transaction: t,
+        lock: t.LOCK.UPDATE   // 🔒 FOR UPDATE
+      });
+
+      if (existingCard) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '998',
+          message: 'Ya has enviado una carta. Solo se permite una por usuario.'
+        };
+      }
+
+      // 3️⃣ Crear carta
+      await ValentinCards.create({
+        user,
+        message,
+        prize
+      }, {
+        transaction: t
+      });
+
+      // 4️⃣ Commit
+      await t.commit();
+
+      return { success: true, code: '000', message:'Se ha enviado tu carta satisfactoriamente'};
     } catch (error) {
       await t.rollback();
       console.error('Error al obtener la crear auth de juego y obtener partida:', error);

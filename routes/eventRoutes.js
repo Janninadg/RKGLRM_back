@@ -40,4 +40,7 @@ router.post('/gtPzzl', EventController.getPieceAndChest);
 router.post('/gtnwP', EventController.obtenerNuevaPieza);
 router.post('/gtCf', EventController.obtenerCofre);
 
+//Evento San valentin:
+router.post('/saveCarta', EventController.saveCarta);
+
 export default router;
