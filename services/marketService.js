@@ -940,7 +940,7 @@ class MarketService {
 
    async getPayments() {
     try {
-      const payments = await PaymentMethods.findAll();
+      const payments = await PaymentMethods.findAll({where:{active:1}});
 
       return payments ? payments : [];
     } catch (error) {
@@ -1059,7 +1059,7 @@ class MarketService {
 
     // 5) obtener metodo de pago (lock)
     const method = await PaymentMethods.findOne({
-      where: { id: item.medio_pago, active: true },
+      where: { id: item.medio_pago, active: 1 },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -1847,7 +1847,7 @@ async getChat(user, token, chatId) {
             }
 
             // Verificar medio de pago
-            const valCurr = await PaymentMethods.findOne({where:{id:currency}});
+            const valCurr = await PaymentMethods.findOne({where:{id:currency,active:1}});
 
             if(!valCurr){
                  await t.rollback();
