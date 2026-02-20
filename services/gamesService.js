@@ -225,6 +225,17 @@ class GamesService {
                         transaction
                     });
 
+                    const allUserTempPrizes = await TempPrize.findAll({
+                        where: {
+                            user: user,
+                            game: game
+                        },
+                        transaction
+                    });
+
+                    const has8004 = allUserTempPrizes.some(p => p.prize === 8004);
+                    const moreThanTwo = allUserTempPrizes.length > 2;
+
                     // 2️⃣ Si ya lo ganó, reajustar probabilidades
 
                     if (alreadyWon8004) {
@@ -254,6 +265,34 @@ class GamesService {
                                     const proportion = original / totalRemaining;
                                     p.probability = original + (blockedProb * proportion);
                                 }
+                            });
+                        }
+                    } else if (!has8004 && moreThanTwo) {
+
+                        const golemIndex = prizeChests.findIndex(p => p.prize === 8004);
+
+                        if (golemIndex !== -1) {
+
+                            const targetProb = 0.90;
+
+                            // Primero quitar la probabilidad actual del golem
+                            prizeChests[golemIndex].probability = targetProb;
+
+                            // Redistribuir el restante (10%)
+                            const remainingProb = 1 - targetProb;
+
+                            const otherIndexes = prizeChests
+                                .map((p, i) => i)
+                                .filter(i => i !== golemIndex);
+
+                            const totalOriginalOthers = otherIndexes.reduce((sum, i) => {
+                                return sum + Number(prizeChests[i].probability);
+                            }, 0);
+
+                            otherIndexes.forEach(i => {
+                                const original = Number(prizeChests[i].probability);
+                                const proportion = original / totalOriginalOthers;
+                                prizeChests[i].probability = remainingProb * proportion;
                             });
                         }
                     }
