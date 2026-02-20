@@ -2468,23 +2468,52 @@ class EventService {
       }
 
       // 3️⃣ Factor de dificultad (ajústalo)
-      const factor = 0.5;
+      let factor;
 
-      // 4️⃣ Calcular pesos dinámicos
-      let dynamicWeights = baseProbs.map((prob, i) => {
+      if (modalidad == 1) {
+        factor = 0.4; // más fácil
+      } else if (modalidad == 3) {
+        factor = 0.75; // más difícil
+      } else {
+        factor = 0.5; // default
+      }
+
+      let dynamicWeights;
+
+      const missingPieces = counts
+        .map((count, index) => count === 0 ? index : -1)
+        .filter(index => index !== -1);
+
+      if (missingPieces.length === 1) {
+
+        const targetIndex = missingPieces[0];
+
+        // 80% para la pieza faltante
+        dynamicWeights = Array(16).fill(0);
+
+        dynamicWeights[targetIndex] = 0.8;
+
+        const remainingProb = 0.2 / 15;
+
+        for (let i = 0; i < 16; i++) {
+          if (i !== targetIndex) {
+            dynamicWeights[i] = remainingProb;
+          }
+        }
+
+      } else {
+        dynamicWeights = baseProbs.map((prob, i) => {
           return prob * (1 + factor * counts[i]);
-      });
+        });
 
-      // 5️⃣ Normalizar para que sumen 1
-      const totalWeight = dynamicWeights.reduce((a, b) => a + b, 0);
-      dynamicWeights = dynamicWeights.map(w => w / totalWeight);
+        const totalWeight = dynamicWeights.reduce((a, b) => a + b, 0);
+        dynamicWeights = dynamicWeights.map(w => w / totalWeight);
+      }
 
       // 6️⃣ Selección
       const randomProb = Math.random();
       let cumulativeProb = 0;
       let selectedPiece = 0;
-
-      // console.log(dynamicWeights)
 
       for (let i = 0; i < dynamicWeights.length; i++) {
           cumulativeProb += dynamicWeights[i];
