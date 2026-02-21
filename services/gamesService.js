@@ -334,7 +334,7 @@ class GamesService {
                         }
                     }
 
-                    console.log(prizeChests);
+                    // console.log(prizeChests);
 
                     // Realizar el calculo de probabilidad:
                     const randProb = Math.random();
