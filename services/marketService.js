@@ -1867,8 +1867,8 @@ async getChat(user, token, chatId) {
                 transaction: t,
                 lock: t.LOCK.UPDATE, // Evita race conditions
             });
-
-            if (!userCredits || (userItem.level >= 27 && userCredits.credits <= 1)|| (userItem.level < 27 && userCredits.credits <= 0)) {
+            // !userCredits || (userItem.level >= 27 && userCredits.credits <= 1)||
+            if ( userCredits.credits <= 0) {
                 await t.rollback();
                 console.log('[Error] No tiene créditos suficientes para publicar en trades'.red);
                 return {
@@ -1879,9 +1879,9 @@ async getChat(user, token, chatId) {
             }
 
             var credits = 1;
-            if(userItem.level >= 27){
-                credits = 2;
-            }
+            // if(userItem.level >= 27){
+            //     credits = 2;
+            // }
                 
             userCredits.credits -= credits;
             await userCredits.save({ transaction: t });
