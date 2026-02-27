@@ -143,7 +143,7 @@ class GamesService {
                             // attributes: ['tickets'],
                             where: {
                               user: user,
-                              asset: modalidad === 1 ? 3 : 4
+                              asset: modalidad === 1 ? 3 : 5
                             },
                             transaction, // Asociar la transacción con esta consulta
                             lock: transaction.LOCK.UPDATE,
@@ -160,7 +160,7 @@ class GamesService {
                             by: 1,
                             where: {
                               user: user,
-                              asset: modalidad === 1 ? 3 : 4
+                              asset: modalidad === 1 ? 3 : 5
                             },
                             transaction, // Asociar la transacción con esta operación
                           });
@@ -169,11 +169,54 @@ class GamesService {
                             return item.clase > max ? item.clase : max;
                           }, 0); // Iniciar con 0 o cualquier otro valor mínimo válido
 
+                          /** dar el 30% de lo que costo... */
+                        const priceRecord = await AssetPrice.findOne({
+                            where: {
+                                user: user,
+                                asset: modalidad === 1 ? 3 : 5
+                            },
+                            transaction,
+                            lock: transaction.LOCK.UPDATE,
+                            });
+
+                            if (!priceRecord) {
+                            throw new Error("No se encontró registro de precio");
+                            }
+
+                            // Calcular 30%
+                            const refundAmount = Math.floor(Number(priceRecord.price) * 0.30);
+
+                            if (modalidad === 1) {
+
+                            // 🔹 Devolver en CASH
+                            await Cash.increment(
+                                { cash: refundAmount },
+                                {
+                                where: { id: user },
+                                transaction,
+                                lock: transaction.LOCK.UPDATE
+                                }
+                            );
+
+                            } else {
+
+                            // 🔹 Devolver en PUNTOS DE EVENTO (clanpoint)
+                            await UserGameInfo.increment(
+                                { clanpoint: refundAmount },
+                                {
+                                where: { name: user },
+                                transaction,
+                                lock: transaction.LOCK.UPDATE
+                                }
+                            );
+
+                            }
+
                         Object.assign(params, {
                             _pwb:lastClass +1,
                         });
 
-                        return {all: null, win:false,params,ms: '¡Perdiste! Suerte para la próxima :)'};
+                        return {all: null, win:false,params,ms: '¡Perdiste! Pero se te devolvió el 30% del costo del ticket gastado. Suerte para la próxima :)'};
                     }
 
                     // 1️⃣ Obtener id real del usuario desde usergameinfo
@@ -238,30 +281,30 @@ class GamesService {
                             });
 
                         }
-
-                        // 🎯 CASO 2: Nadie ha ganado 8004 en este juego y usuario no lo tiene
-                        else if (total8004Game <= 3 && !userAlreadyHas8004) {
-
-                            const targetProb = 0.4;
-                            const remainingProb = 1 - targetProb;
-
-                            allPrizes[targetIndex].probability = targetProb;
-
-                            const otherIndexes = allPrizes
-                                .map((p, i) => i)
-                                .filter(i => i !== targetIndex);
-
-                            const totalOriginalOthers = otherIndexes.reduce((sum, i) => {
-                                return sum + Number(allPrizes[i].probability);
-                            }, 0);
-
-                            otherIndexes.forEach(i => {
-                                const original = Number(allPrizes[i].probability);
-                                const proportion = original / totalOriginalOthers;
-                                allPrizes[i].probability = remainingProb * proportion;
-                            });
-                        }
                     }
+                    //     // 🎯 CASO 2: Nadie ha ganado 8004 en este juego y usuario no lo tiene
+                    //     else if (total8004Game <= 3 && !userAlreadyHas8004) {
+
+                    //         const targetProb = 0.4;
+                    //         const remainingProb = 1 - targetProb;
+
+                    //         allPrizes[targetIndex].probability = targetProb;
+
+                    //         const otherIndexes = allPrizes
+                    //             .map((p, i) => i)
+                    //             .filter(i => i !== targetIndex);
+
+                    //         const totalOriginalOthers = otherIndexes.reduce((sum, i) => {
+                    //             return sum + Number(allPrizes[i].probability);
+                    //         }, 0);
+
+                    //         otherIndexes.forEach(i => {
+                    //             const original = Number(allPrizes[i].probability);
+                    //             const proportion = original / totalOriginalOthers;
+                    //             allPrizes[i].probability = remainingProb * proportion;
+                    //         });
+                    //     }
+                    // }
 
 
                     // Realizar el calculo de probabilidad:
