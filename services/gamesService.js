@@ -326,7 +326,7 @@ class GamesService {
 
                     Object.assign(params, {
                         _pw:selectedItem,
-                        _pwb:allPrizes[selectedItem].clase,
+                        _pwb:allPrizes[selectedItem].clase + 1,
                         pr: allPrizes
                     });
 
