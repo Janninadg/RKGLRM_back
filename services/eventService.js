@@ -1474,9 +1474,10 @@ class EventService {
           var typename;
           //Acciones según modalidad:
           switch (modalidad) {
-            //Cash, oro
+            //Cash, oro, puntos
             case 1:
             case 2:
+            case 3:
 
               typename = 'giros';
 
@@ -1484,7 +1485,7 @@ class EventService {
                 // attributes: ['tickets'],
                 where: {
                   user: userId,
-                  asset: modalidad === 1 ? 3 : 4
+                  asset: modalidad === 1 ? 3 : 5
                 },
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
@@ -1496,7 +1497,7 @@ class EventService {
                   by: 1,
                   where: {
                     user: userId,
-                    asset: modalidad === 1 ? 3 : 4
+                    asset: modalidad === 1 ? 3 : 5
                   },
                   transaction: t, // Asociar la transacción con esta operación
                 });
