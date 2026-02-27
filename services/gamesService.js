@@ -257,6 +257,7 @@ class GamesService {
                     const userAlreadyHas8004 = hasPending8004 || hasItem8004;
 
                     // 🔥 AJUSTE DE PROBABILIDADES
+                    const prizeafter = allPrizes;
 
                     const targetIndex = allPrizes.findIndex(p => p.prize === 8004);
 
@@ -327,7 +328,7 @@ class GamesService {
                     Object.assign(params, {
                         _pw:selectedItem,
                         _pwb:allPrizes[selectedItem].clase,
-                        pr: allPrizes
+                        pr: prizeafter
                     });
 
                     console.log(allPrizes[selectedItem])
