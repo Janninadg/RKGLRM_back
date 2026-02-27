@@ -172,7 +172,6 @@ class GamesService {
                           /** dar el 30% de lo que costo... */
                         const priceRecord = await AssetPrice.findOne({
                             where: {
-                                user: user,
                                 asset: modalidad === 1 ? 3 : 5
                             },
                             transaction,
