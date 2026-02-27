@@ -176,6 +176,92 @@ class GamesService {
                         return {all: null, win:false,params,ms: '¡Perdiste! Suerte para la próxima :)'};
                     }
 
+                    // 1️⃣ Obtener id real del usuario desde usergameinfo
+                    const userInfo = await UserGameInfo.findOne({
+                        where: { name: user },
+                        transaction
+                    });
+
+                    const userId = userInfo?.id;
+
+                    // 2️⃣ Verificar si ya tiene 8004 en pendingpresents
+                    const hasPending8004 = await PendingPresents.findOne({
+                        where: {
+                            user_id: userId,
+                            present_id: 8004
+                        },
+                        transaction
+                    });
+
+                    // 3️⃣ Verificar si ya tiene 8004 en inventario
+                    const hasItem8004 = await UserItemInfo.findOne({
+                        where: {
+                            userid: userId,
+                            itemid: 8004
+                        },
+                        transaction
+                    });
+
+                    // 4️⃣ Verificar si alguien ya ganó 8004 en este juego
+                    const total8004Game = await TempPrize.count({
+                        where: {
+                            game: game,
+                            prize: 8004
+                        },
+                        transaction
+                    });
+
+                    const userAlreadyHas8004 = hasPending8004 || hasItem8004;
+
+                    // 🔥 AJUSTE DE PROBABILIDADES
+
+                    const targetIndex = allPrizes.findIndex(p => p.prize === 8004);
+
+                    if (targetIndex !== -1) {
+
+                        // 🎯 CASO 1: Usuario ya tiene 8004 → bloquear
+                        if (userAlreadyHas8004) {
+
+                            const blockedProb = Number(allPrizes[targetIndex].probability);
+                            allPrizes[targetIndex].probability = 0;
+
+                            const totalRemaining = allPrizes.reduce((sum, p, i) => {
+                                if (i !== targetIndex) return sum + Number(p.probability);
+                                return sum;
+                            }, 0);
+
+                            allPrizes.forEach((p, i) => {
+                                if (i !== targetIndex) {
+                                    const proportion = Number(p.probability) / totalRemaining;
+                                    p.probability += blockedProb * proportion;
+                                }
+                            });
+
+                        }
+
+                        // 🎯 CASO 2: Nadie ha ganado 8004 en este juego y usuario no lo tiene
+                        else if (total8004Game <= 3 && !userAlreadyHas8004) {
+
+                            const targetProb = 0.4;
+                            const remainingProb = 1 - targetProb;
+
+                            allPrizes[targetIndex].probability = targetProb;
+
+                            const otherIndexes = allPrizes
+                                .map((p, i) => i)
+                                .filter(i => i !== targetIndex);
+
+                            const totalOriginalOthers = otherIndexes.reduce((sum, i) => {
+                                return sum + Number(allPrizes[i].probability);
+                            }, 0);
+
+                            otherIndexes.forEach(i => {
+                                const original = Number(allPrizes[i].probability);
+                                const proportion = original / totalOriginalOthers;
+                                allPrizes[i].probability = remainingProb * proportion;
+                            });
+                        }
+                    }
 
 
                     // Realizar el calculo de probabilidad:
