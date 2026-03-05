@@ -201,19 +201,18 @@ class StoreService {
                     itemName = itemReal ? itemReal.name : item.itemid;
 
                     console.log(userPoints.id);
-                    console.log('aqui ...');
+                    // console.log('aqui ...');
+                    const presentsToInsert = [];
 
-                    // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-                    await PendingPresents.create(
-                    {
-                        present_id: item.itemid,
-                        user_id: userPoints.id, // Usar el ID de usuario obtenido
-                        added_time: new Date(),
-                    },
-                    {
-                        transaction: t, // Asociar la transacción con esta operación
+                    for (let i = 0; i < item.amount; i++) {
+                        presentsToInsert.push({
+                            present_id: item.itemid,
+                            user_id: userPoints.id,
+                            added_time: new Date(),
+                        });
                     }
-                    );
+
+                    await PendingPresents.bulkCreate(presentsToInsert, { transaction: t });
 
                     break;
                 default:
