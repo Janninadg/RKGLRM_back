@@ -204,13 +204,14 @@ class StoreService {
                     // console.log('aqui ...');
                     const presentsToInsert = [];
 
-                    for (let i = 0; i < item.amount; i++) {
+                    for (let i = 0; i < amount; i++) {
                         presentsToInsert.push({
                             present_id: item.itemid,
                             user_id: userPoints.id,
                             added_time: new Date(),
                         });
                     }
+                    console.log(presentsToInsert);
 
                     await PendingPresents.bulkCreate(presentsToInsert, { transaction: t });
 
