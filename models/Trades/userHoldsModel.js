@@ -17,6 +17,10 @@ const UserInternalHolds = sequelize.define('user_internal_holds', {
     type: DataTypes.BIGINT,
     allowNull: false,
   },
+  chat_id: {
+    type: DataTypes.BIGINT,
+    allowNull: false,
+  },
   method_id: {
     type: DataTypes.INTEGER,
     allowNull: false,

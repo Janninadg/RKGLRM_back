@@ -125,16 +125,16 @@ class GMPanelService {
           }
 
           // Mapear los usuarios a un nuevo array con índice
-            const usersWithIndex = usersWithCharacters.map((user, index) => ({
-                id: index + 1, // Ajustar el índice según tus necesidades
-                name: user.name,
-                personajes: user.personajes,
-                gold:user.gold,
-                cash:user.cash,
-                ep:user.ep,
-            }));
+            // const usersWithIndex = usersWithCharacters.map((user, index) => ({
+            //     id: index + 1, // Ajustar el índice según tus necesidades
+            //     name: user.name,
+            //     personajes: user.personajes,
+            //     gold:user.gold,
+            //     cash:user.cash,
+            //     ep:user.ep,
+            // }));
         
-            return {success:true,code:'000',message:'ok',_lu:usersWithIndex};
+            return {success:true,code:'000',message:'ok',_lu:usersWithCharacters};
     
           //return users;
         } catch (error) {

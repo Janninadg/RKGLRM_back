@@ -24,7 +24,9 @@ const TradeActions = sequelize.define('trade_actions', {
       'RELEASE_ITEM',
       'CANCEL_TRADE',
       'SYSTEM_HOLD',
-      'SYSTEM_RELEASE'
+      'SYSTEM_RELEASE',
+      'CANCEL_CHAT_RETURN',
+      'CANCEL_CHAT_REPOST'
     ),
     allowNull: false,
     collate: 'utf8mb4_general_ci',
