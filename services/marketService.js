@@ -24,6 +24,7 @@ import TradeMessage from '../models/Trades/tradeMessagesModel.js';
 import { enviarMensajeAUsuario } from '../socket/chatSocketServer.mjs';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
 import TradeRatings from '../models/Trades/tradeRatingsModel.js';
+import PendingPresents from '../models/pendingPresentsModel.js';
 
 class MarketService {
 
@@ -165,8 +166,9 @@ class MarketService {
                 transaction,
                 lock: transaction.LOCK.UPDATE, // Evita race conditions
             });
+
             // !userCredits || (userItem.level >= 27 && userCredits.credits <= 1)||
-            if ( userCredits.credits <= 0) {
+            if ( !userCredits || userCredits.credits <= 0) {
                 // await transaction.rollback();
                 console.log('[Error] No tiene créditos suficientes para publicar en trades'.red);
                 return {
@@ -176,13 +178,10 @@ class MarketService {
                 };
             }
 
-            var credits = 1;
-            // if(userItem.level >= 27){
-            //     credits = 2;
-            // }
-                
-            userCredits.credits -= credits;
-            await userCredits.save({ transaction: t });
+            await UserCredits.decrement(
+                { credits: 1 },
+                { where: { id: sellerInfo.id }, transaction }
+            );
 
             if(medioPago.type == 'INTERNAL'){
                 const totalCost = item.precio;
@@ -698,7 +697,7 @@ class MarketService {
                     const res = await this.buyItems(chat.buyer,null,chat.trade_id,chat.id,3,t);
 
                     if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
-                         await TradeActions.create({
+                        await TradeActions.create({
                             chat_id:chat.id,
                             user: user,
                             action: 'RELEASE_ITEM',
@@ -1195,6 +1194,55 @@ class MarketService {
     if (!item) {
       await t.rollback();
       return { success: false, code: '200', message: 'El ítem no existe.' };
+    }
+
+    const tempitem = await TempUserItemInfo.findOne({
+      where: { id: item.itemid },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // Solo validar si el item es 8004
+    if (tempitem.itemid === 8004) {
+
+        // 1️⃣ Obtener id real del usuario desde usergameinfo
+        const userInfo = await UserGameInfo.findOne({
+            where: { name: user },
+            transaction: t
+        });
+
+        const userId = userInfo?.id;
+
+        if (!userId) {
+            return { success: false, code: '200', message: 'Usuario no encontrado' };
+        }
+
+        // 2️⃣ Verificar si ya tiene 8004 en pendingpresents
+        const hasPending8004 = await PendingPresents.findOne({
+            where: {
+            user_id: userId,
+            present_id: 8004
+            },
+            transaction: t
+        });
+
+        // 3️⃣ Verificar si ya tiene 8004 en inventario
+        const hasItem8004 = await UserItemInfo.findOne({
+            where: {
+            userid: userId,
+            itemid: 8004
+            },
+            transaction: t
+        });
+
+        if (hasPending8004 || hasItem8004) {
+             await t.rollback();
+            return {
+            success: false,
+            code: '200',
+            message: 'Ya tienes un Golem en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
+            };
+        }
     }
 
     // Paso 1: Obtener todos los personajes del usuario
@@ -2554,6 +2602,13 @@ async getChat(user, token, chatId) {
                     payment: paymentInfo, // ✅ Añadido aquí
                     seller_rating: sellerRating,
                 };
+            });
+
+            mergedItemsFinal.sort((a, b) => {
+                const ratingA = parseFloat(a.seller_rating) || 0;
+                const ratingB = parseFloat(b.seller_rating) || 0;
+
+                return ratingB - ratingA;
             });
 
             return { success: true, code: '000', _mp: mergedItemsFinal };
