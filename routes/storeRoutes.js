@@ -13,4 +13,6 @@ router.get('/getItems', StoreController.getItems);
 
 router.post('/getVirtualInv', StoreController.getVirtualInventory);
 
+router.post('/buyDays', StoreController.buyDaysToItems);
+
 export default router;

@@ -2625,7 +2625,7 @@ async getChat(user, token, chatId) {
             const parameters = await ConfigParameters.findAll({
                 where: {
                     name: {
-                        [Op.in]: ['comission_selling', 'min_price_sell'] // aquí pones los name que quieras traer
+                        [Op.in]: ['comission_selling', 'min_price_sell','price_days','temporal_items'] // aquí pones los name que quieras traer
                     }
                 }
             });

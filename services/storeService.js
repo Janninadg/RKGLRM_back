@@ -24,7 +24,9 @@ import LogRewardsUser from '../models/logRewardUserModel.js';
 import ItemVirtual from '../models/ItemVirtualModel.js';
 import UserPoisons from '../models/userPoisonsModel.js';
 import ItemImage from '../models/itemImagesModel.js';
-import { setClassName } from '../utils/prizesUtils.js';
+import { calculatePowerUse, getRemainingPowerTime, setClassName } from '../utils/prizesUtils.js';
+import UserItemInfo from '../models/userItemInfoModel.js';
+import ConfigParameters from '../models/configParametersModel.js';
 
 class StoreService {
 
@@ -200,7 +202,7 @@ class StoreService {
             
                     itemName = itemReal ? itemReal.name : item.itemid;
 
-                    console.log(userPoints.id);
+                    // console.log(userPoints.id);
                     // console.log('aqui ...');
                     const presentsToInsert = [];
 
@@ -215,6 +217,87 @@ class StoreService {
 
                     await PendingPresents.bulkCreate(presentsToInsert, { transaction: t });
 
+                    break;
+                case 2:
+                     // Obtener usuario desde usergameinfo
+                    const userGame = await UserGameInfo.findOne({
+                        attributes: ['id','bag'],
+                        where: { name: user },
+                        transaction: t
+                    });
+
+                    if (!userGame) {
+                        throw new Error('Usuario no encontrado');
+                    }
+
+                    // Obtener slots ocupados
+                    const distinctSlots = await UserItemInfo.findAll({
+                        attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
+                        where: {
+                            userid: userGame.id,
+                            characterid: 0,
+                        },
+                        raw: true,
+                        transaction: t,
+                    });
+
+                    const distinctSlotsArray = distinctSlots.map(s => Number(s.slot));
+
+                    const bagCount = userGame.bag;
+                    const maxSlotIndex = bagCount * 30 - 1;
+
+                    // Buscar slots libres
+                    const freeSlots = [];
+
+                    for (let i = 0; i <= maxSlotIndex; i++) {
+                        if (!distinctSlotsArray.includes(i)) {
+                            freeSlots.push(i);
+
+                            if (freeSlots.length === amount) {
+                                break;
+                            }
+                        }
+                    }
+
+                    // Validar que haya suficientes slots
+                    if (freeSlots.length < amount) {
+                        return {
+                            success: false,
+                            code: '200',
+                            message: 'No tienes suficientes slots disponibles en tu inventario para realizar esta compra'
+                        };
+                    }
+
+                    // Obtener info del item
+                    const itemReal2 = await ItemInfo.findOne({
+                        where: { id: item.itemid },
+                        transaction: t,
+                    });
+
+                    itemName = itemReal2 ? itemReal2.name : item.itemid;
+                    typeReward = 0;
+
+                    const limitTime = await calculatePowerUse(0,5);
+
+                    const itemsToInsert = [];
+
+                    for (let i = 0; i < amount; i++) {
+
+                        itemsToInsert.push({
+                            userid: userGame.id,
+                            characterid: 0,
+                            itemid: item.itemid,
+                            item_sn: '8000',
+                            sn_type: 3,
+                            level: 1,
+                            limittime: limitTime,
+                            slot: freeSlots[i],
+                            exp: 0
+                        });
+
+                    }
+
+                    await UserItemInfo.bulkCreate(itemsToInsert, { transaction: t });
                     break;
                 default:
                     // Obtener nombre del item desde ItemInfo
@@ -293,6 +376,149 @@ class StoreService {
             await t.commit();
             const itms = await this.getItems();
             return { success: true, code: '000', message: `Has comprado ${amount} ${itemName} exitosamente`, _is: itms._is };
+    
+        } catch (error) {
+            await t.rollback();
+            console.error('Error al comprar items:', error);
+    
+            if (error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
+                // Reintentar la transacción
+                console.log('Reintentando transacción...');
+                return await this.buyItems(user, token, idstore, amount, retries - 1);
+            }
+    
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+     async buyDaysToItems(user,token,id,amount,retries = 1) {
+        const t = await sequelize.transaction(); // Iniciar una transacción
+        try {
+            // Verificar token
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: { token: token, id: user },
+                transaction: t,
+            });
+    
+            if (!sessionToken) {
+                await t.rollback();
+                return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
+            }
+
+            // 5️⃣ Obtener usuario con LOCK
+            const userGame = await UserGameInfo.findOne({
+                where:{ name:user },
+                lock: t.LOCK.UPDATE,
+                transaction: t
+            });
+
+            if (!userGame) {
+                await t.rollback();
+                return { success:false, code:'200', message:'Usuario no encontrado' };
+            }
+
+             // 2️⃣ Obtener item desde useriteminfo
+            const userItem = await UserItemInfo.findOne({
+                where: { id: id, userid: userGame.id },
+                lock: t.LOCK.UPDATE,
+                transaction: t
+            });
+
+            if (!userItem) {
+                await t.rollback();
+                return { success:false, code:'200', message:'Item no encontrado' };
+            }
+
+            const itemId = userItem.itemid;
+
+            // 3️⃣ Obtener parámetros
+            const parameters = await ConfigParameters.findAll({
+                where: {
+                    name: {
+                        [Op.in]: ['price_days','temporal_items']
+                    }
+                },
+                transaction: t
+            });
+
+            const params = {};
+            parameters.forEach(p=>{
+                params[p.name] = p.value;
+            });
+
+            const temporalItems = JSON.parse(params.temporal_items ?? "[]");
+            const priceDays = Number(params.price_days ?? 0);
+
+            // 4️⃣ Verificar item temporal
+            if (!temporalItems.includes(itemId) || userItem.limittime == 0) {
+                await t.rollback();
+                return {
+                    success:false,
+                    code:'200',
+                    message:'Este item no es temporal'
+                };
+            }
+
+            const totalCost = amount * priceDays;
+
+            // 6️⃣ Verificar puntos suficientes
+            if (userGame.clanpoint < totalCost) {
+                await t.rollback();
+                return {
+                    success:false,
+                    code:'200',
+                    message:'No tienes suficientes puntos de evento'
+                };
+            }
+            const befPn =  userGame.clanpoint;
+            // 7️⃣ Restar puntos
+            userGame.clanpoint -= totalCost;
+            const aftPn =  befPn-totalCost;
+            await userGame.save({ transaction:t });
+
+            console.log(totalCost)
+
+            const befLim = userItem.limittime;
+
+            // 8️⃣ Sumar días al item
+            userItem.limittime = await calculatePowerUse(befLim,amount); // días → segundos
+
+            var afterLim = userItem.limittime;
+
+            const remain = await getRemainingPowerTime(afterLim);
+
+            if(remain.days >= 15){
+                afterLim = 0;
+                userItem.limittime = 0;
+            }
+
+            await userItem.save({ transaction:t });
+
+            await LogRewardsUser.create({  
+                user:user,
+                origen:20,
+                recompensa: totalCost,
+                tipo_recompensa: 13,
+                last_pr: befPn ? befPn : 0,
+                curr_pr: aftPn ? aftPn : 0,
+                fecha: new Date(), 
+            }, { transaction:t });
+
+            await LogRewardsUser.create({  
+                user:user,
+                origen:21,
+                recompensa: amount,
+                tipo_recompensa: 20,
+                last_pr: befLim ? befLim : 0,
+                curr_pr: afterLim ? afterLim : 0,
+                fecha: new Date(), 
+            }, { transaction:t });
+    
+            await t.commit();
+
+            var message = (remain.days >= 15 ? `Con tu última compra de días, tu item ha sido convertido en permanente`: `Has comprado 5 días exitosamente`)
+            return { success: true, code: '000', message, };
     
         } catch (error) {
             await t.rollback();
@@ -449,7 +675,7 @@ class StoreService {
         try {
           const items = await ItemStore.findAll({
             where: { show: 1 },
-            order: [['id', 'ASC']],
+            order: [['type', 'DESC']],
           });
       
           // Separar itemIds por tipo

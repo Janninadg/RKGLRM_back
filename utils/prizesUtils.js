@@ -180,4 +180,46 @@ async function calculatePowerUse(powerUser = 0, daysToAdd = 5) {
   return result[0].new_powertime;
 }
 
-export { calculatePowerUse,getAmountItem,setClassName,setTypeName };
+async function getRemainingPowerTime(powerUser) {
+
+  await sequelize.query(`SET time_zone = '-05:00';`);
+
+  const result = await sequelize.query(`
+    SELECT 
+      FLOOR(MinRest/1440) AS days,
+      FLOOR(MOD(MinRest,1440)/60) AS hours,
+      MOD(MinRest,60) AS minutes
+    FROM (
+        SELECT TIMESTAMPDIFF(
+            MINUTE,
+            NOW(),
+            FROM_DAYS(:powerUser DIV 1440)
+            + INTERVAL (:powerUser DIV 60) MOD 24 HOUR
+            + INTERVAL :powerUser MOD 60 MINUTE
+        ) AS MinRest
+    ) t
+  `,{
+    replacements: { powerUser },
+    type: sequelize.QueryTypes.SELECT
+  });
+
+  const r = result[0];
+
+  if (!r || r.days === null) {
+    return {
+      days:0,
+      hours:0,
+      minutes:0,
+      text:"Restante: 0 día(s), 0 hora(s), 0 minuto(s)."
+    };
+  }
+
+  return {
+    days: Number(r.days),
+    hours: Number(r.hours),
+    minutes: Number(r.minutes),
+    text: `Restante: ${r.days} día(s), ${r.hours} hora(s), ${r.minutes} minuto(s).`
+  };
+}
+
+export { calculatePowerUse,getAmountItem,setClassName,setTypeName,getRemainingPowerTime };

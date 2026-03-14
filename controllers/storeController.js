@@ -48,6 +48,31 @@ class StoreController {
         }
     }
 
+     async buyDaysToItems(req, res, next) {
+        try {
+          const { user,token,itemid,amount,ip } = req.body;
+    
+          const response = await StoreService.buyDaysToItems(user,token,itemid,amount );
+          //console.log(ranking);
+
+          console.log("---------------------------------------------------------------".blue);
+          console.log("COMPRANDO DÍAS - FROM IP: ".blue,ip.green);
+          console.log('Usuario:'.blue,user.yellow);
+          console.log('ID:'.blue,String(itemid).yellow);
+          console.log('Amount:'.blue,String(amount).yellow);
+          console.log("---------------------------------------------------------------".blue);
+    
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+        } catch (error) {
+          console.error('Error al comprar item:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+    }
+
     async getHistoryPucharse(req, res, next) {
         try {
           const { user,token } = req.body;

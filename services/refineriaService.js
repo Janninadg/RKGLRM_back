@@ -10,7 +10,7 @@ import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import RefineryLog from '../models/refineryLogsModel.js';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
-import { setClassName, setTypeName } from '../utils/prizesUtils.js';
+import { getRemainingPowerTime, setClassName, setTypeName } from '../utils/prizesUtils.js';
 
 class RefineriaService {
 
@@ -44,7 +44,7 @@ class RefineriaService {
             console.log(userGame.bag)
            // Obtener todos los items del usuario, ordenados por 'slot' y luego por 'id'
             const allUserItems = await UserItemInfo.findAll({
-                attributes:['id','itemid','level','slot','exp'],
+                attributes:['id','itemid','level','slot','exp','limittime'],
                 where: {
                     userid: userGame.id,
                     characterid: 0,
@@ -95,11 +95,15 @@ class RefineriaService {
                         }
                     });
 
+                    const remainDays = await getRemainingPowerTime(item.limittime);
+
                     // Convertir el item a un objeto JSON y añadir el campo 'img' y 'name'
                     const itemData = item.toJSON();
                     const fullName = itemInfo ? itemInfo.name + setClassName(itemInfo.Class) : 'Unknown Item';
                     itemData.img = itemImage ? itemImage.image : '';
                     itemData.name = fullName;
+                    itemData.remain = remainDays.days;
+                    itemData.remText = remainDays.text;
 
                     return itemData;
                 })
