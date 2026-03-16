@@ -789,6 +789,25 @@ class MarketService {
                         return { success: false, code: "200", message: "Este método de pago no requiere confirmación." };
                     }
 
+                    const proofMessage = await TradeMessage.findOne({
+                        where: {
+                            chat_id: chat.id,
+                            sender: chat.buyer,
+                            content_type: 'IMAGE'
+                        },
+                        attributes: ['id'],
+                        transaction: t
+                    });
+
+                    if (!proofMessage) {
+                        await t.rollback();
+                        return {
+                            success: false,
+                            code: "200",
+                            message: "Debes enviar un comprobante o prueba de pago antes de confirmar."
+                        };
+                    }
+
                      await TradeActions.create({
                             chat_id:chat.id,
                             user: user,
@@ -835,15 +854,25 @@ class MarketService {
                     }
                     // Si el método es EXTERNAL → no debe existir CONFIRM_PAYMENT
                     if (paymentMeth.type === 'EXTERNAL') {
+
                         const confirmed = allActions.some(a => a.action === 'CONFIRM_PAYMENT');
 
                         if (confirmed) {
-                            await t.rollback();
-                            return {
-                                success: false,
-                                code: "200",
-                                message: "No puedes cancelar el chat luego de haber recibido un pago"
-                            };
+                            // await t.rollback();
+                            // return {
+                            //     success: false,
+                            //     code: "200",
+                            //     message: "No puedes cancelar el chat luego de haber recibido un pago"
+                            // };
+                             await TradeMessage.create({
+                                chat_id: chat.id,
+                                sender: null,
+                                message: `El chat ha sido cancelado luego de confirmarse un pago. En caso exista un reclamo o queja, se usará el chat como prueba para tomar las medidas del caso.`,
+                                message_type: 'SYSTEM',
+                                content_type: 'TEXT',
+                                visible_to: 'SELLER',
+                                created_at: new Date()
+                            }, { transaction: t });
                         }
                     } 
 
