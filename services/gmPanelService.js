@@ -56,93 +56,369 @@ class GMPanelService {
         }
       }
 
-      async getUserstoBan(user,token) {
-        try {
+      async getUsersToBanMulti(user, token, terms = [], searchType = 'user') {
+          try {
+            // Validar token
+            const sessionToken = await TokenSession.findOne({
+              attributes: ['token'],
+              where: {
+                token: token,
+                id: user,
+              },
+            });
 
-           // Verificar token:
-           const sessionToken = await TokenSession.findOne({
+            if (!sessionToken) {
+              console.log("!![GM Panel]".red, ' Sesión antigua'.red);
+              return {
+                success: false,
+                code: '002',
+                message: 'Token inválido o tienes una sesión iniciada en otro navegador...'
+              };
+            }
+
+            // Normalizar términos
+            const cleanTerms = Array.isArray(terms)
+              ? [...new Set(
+                  terms
+                    .map(t => String(t || '').trim())
+                    .filter(t => t !== '')
+                )]
+              : [];
+
+            if (cleanTerms.length === 0) {
+              return {
+                success: true,
+                code: '000',
+                message: 'ok',
+                results: [],
+              };
+            }
+
+            let matchedUsers = [];
+
+            if (searchType === 'user') {
+              // Buscar usuarios por nombre
+              const whereConditions = cleanTerms.map(term => ({
+                name: {
+                  [Op.like]: `%${term}%`
+                }
+              }));
+
+              matchedUsers = await UserGameInfo.findAll({
+                where: {
+                  ban: 0,
+                  [Op.or]: whereConditions,
+                },
+                attributes: ['id', 'name', 'gold', 'clanpoint'],
+                order: [['id', 'ASC']],
+                raw: true,
+              });
+            } else {
+              // Buscar por personaje
+              const whereConditions = cleanTerms.map(term => ({
+                name: {
+                  [Op.like]: `%${term}%`
+                }
+              }));
+
+              const matchedCharacters = await CharacterInfo.findAll({
+                where: {
+                  [Op.or]: whereConditions,
+                },
+                attributes: ['userid', 'name'],
+                raw: true,
+              });
+
+              const uniqueUserIds = [...new Set(matchedCharacters.map(c => c.userid))];
+
+              if (uniqueUserIds.length === 0) {
+                return {
+                  success: true,
+                  code: '000',
+                  message: 'ok',
+                  results: cleanTerms.map(term => ({
+                    term,
+                    matches: [],
+                  })),
+                };
+              }
+
+              matchedUsers = await UserGameInfo.findAll({
+                where: {
+                  ban: 0,
+                  id: {
+                    [Op.in]: uniqueUserIds
+                  }
+                },
+                attributes: ['id', 'name', 'gold', 'clanpoint'],
+                order: [['id', 'ASC']],
+                raw: true,
+              });
+            }
+
+            if (matchedUsers.length === 0) {
+              return {
+                success: true,
+                code: '000',
+                message: 'ok',
+                results: cleanTerms.map(term => ({
+                  term,
+                  matches: [],
+                })),
+              };
+            }
+
+            // Traer personajes y cash en lote
+            const userIds = matchedUsers.map(u => u.id);
+            const userNames = matchedUsers.map(u => u.name);
+
+            const [characters, cashList] = await Promise.all([
+              CharacterInfo.findAll({
+                where: {
+                  userid: {
+                    [Op.in]: userIds
+                  }
+                },
+                attributes: ['userid', 'name'],
+                raw: true,
+              }),
+              Cash.findAll({
+                where: {
+                  id: {
+                    [Op.in]: userNames
+                  }
+                },
+                attributes: ['id', 'cash'],
+                raw: true,
+              }),
+            ]);
+
+            // Maps
+            const charactersMap = {};
+            for (const character of characters) {
+              if (!charactersMap[character.userid]) {
+                charactersMap[character.userid] = [];
+              }
+              charactersMap[character.userid].push(character.name);
+            }
+
+            const cashMap = {};
+            for (const cash of cashList) {
+              cashMap[cash.id] = cash.cash;
+            }
+
+            // Usuarios enriquecidos
+            const fullUsers = matchedUsers.map(u => ({
+              id: u.id,
+              name: u.name,
+              personajes: charactersMap[u.id] || [],
+              gold: u.gold,
+              cash: cashMap[u.name] || 0,
+              ep: u.clanpoint || 0,
+            }));
+
+            // Agrupar por término, como tu frontend espera
+            const results = cleanTerms.map(term => {
+              const lowerTerm = term.toLowerCase();
+
+              let matches = [];
+
+              if (searchType === 'user') {
+                matches = fullUsers.filter(u =>
+                  u.name.toLowerCase().includes(lowerTerm)
+                );
+              } else {
+                matches = fullUsers.filter(u =>
+                  u.personajes.some(p =>
+                    p.toLowerCase().includes(lowerTerm)
+                  )
+                );
+              }
+
+              return {
+                term,
+                matches,
+              };
+            });
+
+            return {
+              success: true,
+              code: '000',
+              message: 'ok',
+              results,
+            };
+
+          } catch (error) {
+            console.error('Error en multibúsqueda de usuarios:', error);
+            throw new Error('Error interno del servidor');
+          }
+        }
+
+      async getUserstoBan(user, token, page = 1, pageSize = 10, search = '', searchType = 'user') {
+        try {
+          page = Number(page) || 1;
+          pageSize = Number(pageSize) || 10;
+
+          if (page < 1) page = 1;
+          if (pageSize < 1) pageSize = 10;
+
+          const offset = (page - 1) * pageSize;
+          const searchValue = (search || '').trim();
+
+          // Verificar token
+          const sessionToken = await TokenSession.findOne({
             attributes: ['token'],
             where: {
               token: token,
               id: user,
             },
-            //transaction: t, // Asociar la transacción con esta consulta
           });
 
-          if(!sessionToken){
-            //await t.rollback(); // Revertir la transacción en caso de error
-            console.log("!![GM Panel]".red,' Sesión antigua'.red);
-            return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+          if (!sessionToken) {
+            console.log("!![GM Panel]".red, ' Sesión antigua'.red);
+            return {
+              success: false,
+              code: '002',
+              message: 'Token inválido o tienes una sesión iniciada en otro navegador...'
+            };
           }
 
+          // Filtro base
+          const whereUser = {
+            ban: 0,
+          };
+
+          // Si busca por usuario, filtramos directo en UserGameInfo
+          if (searchValue && searchType === 'user') {
+            whereUser.name = {
+              [Op.like]: `%${searchValue}%`
+            };
+          }
+
+          // Si busca por personaje, primero buscamos los userid relacionados
+          if (searchValue && searchType === 'character') {
+            const matchingCharacters = await CharacterInfo.findAll({
+              attributes: ['userid'],
+              where: {
+                name: {
+                  [Op.like]: `%${searchValue}%`
+                }
+              },
+              group: ['userid'],
+              raw: true,
+            });
+
+            const userIds = matchingCharacters.map(c => c.userid);
+
+            if (userIds.length === 0) {
+              return {
+                success: true,
+                code: '000',
+                message: 'ok',
+                data: [],
+                total: 0,
+                page,
+                pageSize,
+              };
+            }
+
+            whereUser.id = {
+              [Op.in]: userIds
+            };
+          }
+
+          // Total de usuarios filtrados
+          const total = await UserGameInfo.count({
+            where: whereUser,
+          });
+
+          // Traer solo la página actual
           const users = await UserGameInfo.findAll({
-            where: { ban: 0 },
-            attributes: ['id','name','gold'],
+            where: whereUser,
+            attributes: ['id', 'name', 'gold', 'clanpoint'],
+            order: [['id', 'ASC']],
+            limit: pageSize,
+            offset,
+            raw: true,
           });
 
-           // Mapear los usuarios a un nuevo array con índice y preparar la información
-          const usersWithCharacters = [];
-
-          for (const user of users) {
-              // Obtener los nombres de personajes del usuario de la tabla characterinfo
-              const characters = await CharacterInfo.findAll({
-                  where: { userid: user.id },
-                  attributes: ['name'],
-              });
-
-              // Mapear los nombres de personajes
-              const characterNames = characters.map((character) => character.name);
-
-
-              //Obtener cash
-              const cashUser = await Cash.findOne({
-                where: { id: user.name },
-                attributes: ['cash'],
-              });
-
-              //Obtener event points
-              const eventPoints = await UserGameInfo.findOne({
-                // attributes: ['Points'],
-                where: {
-                  name: user.name, // Cambia esto para usar el nombre de usuario correcto
-                },
-                // transaction: t,
-                // lock: t.LOCK.UPDATE,
-              });
-
-
-              //console.log(cashUser);
-
-              // Agregar la información completa del usuario
-              usersWithCharacters.push({
-                  id: user.id,
-                  name: user.name,
-                  personajes: characterNames,
-                  gold: user.gold,
-                  cash: cashUser === null ? 0 :cashUser.cash,
-                  ep: eventPoints === null ? 0:eventPoints.clanpoint,
-              });
+          if (users.length === 0) {
+            return {
+              success: true,
+              code: '000',
+              message: 'ok',
+              data: [],
+              total,
+              page,
+              pageSize,
+            };
           }
 
-          // Mapear los usuarios a un nuevo array con índice
-            // const usersWithIndex = usersWithCharacters.map((user, index) => ({
-            //     id: index + 1, // Ajustar el índice según tus necesidades
-            //     name: user.name,
-            //     personajes: user.personajes,
-            //     gold:user.gold,
-            //     cash:user.cash,
-            //     ep:user.ep,
-            // }));
-        
-            return {success:true,code:'000',message:'ok',_lu:usersWithCharacters};
-    
-          //return users;
+          // Obtener personajes y cash en lote
+          const userIds = users.map(u => u.id);
+          const userNames = users.map(u => u.name);
+
+          const [characters, cashList] = await Promise.all([
+            CharacterInfo.findAll({
+              where: {
+                userid: {
+                  [Op.in]: userIds
+                }
+              },
+              attributes: ['userid', 'name'],
+              raw: true,
+            }),
+            Cash.findAll({
+              where: {
+                id: {
+                  [Op.in]: userNames
+                }
+              },
+              attributes: ['id', 'cash'],
+              raw: true,
+            }),
+          ]);
+
+          // Map personajes por userid
+          const charactersMap = {};
+          for (const character of characters) {
+            if (!charactersMap[character.userid]) {
+              charactersMap[character.userid] = [];
+            }
+            charactersMap[character.userid].push(character.name);
+          }
+
+          // Map cash por nombre de usuario
+          const cashMap = {};
+          for (const cash of cashList) {
+            cashMap[cash.id] = cash.cash;
+          }
+
+          // Resultado final
+          const usersWithCharacters = users.map(u => ({
+            id: u.id,
+            name: u.name,
+            personajes: charactersMap[u.id] || [],
+            gold: u.gold,
+            cash: cashMap[u.name] || 0,
+            ep: u.clanpoint || 0,
+          }));
+
+          return {
+            success: true,
+            code: '000',
+            message: 'ok',
+            data: usersWithCharacters,
+            total,
+            page,
+            pageSize,
+          };
+
         } catch (error) {
           console.error('Error al obtener usuarios:', error);
           throw new Error('Error interno del servidor');
         }
       }
-
       async getUsersName(user,token) {
         try {
 

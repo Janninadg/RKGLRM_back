@@ -38,7 +38,7 @@ router.post('/loadExch', GMPanelController.recargaCash);
 
 router.post('/getChrcUsr', GMPanelController.getPersonajeUser);
 router.post('/setChrUsr', GMPanelController.setLevelChUser);
-
+router.post('/users-multi', GMPanelController.getUsersToBanMulti);
 //Eventos
 router.post('/genCpn', GMPanelController.setCupon);
 

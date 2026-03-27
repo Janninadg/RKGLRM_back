@@ -25,6 +25,7 @@ import { enviarMensajeAUsuario } from '../socket/chatSocketServer.mjs';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
 import TradeRatings from '../models/Trades/tradeRatingsModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
+import MarketBanned from '../models/MarketBannedModel.js';
 
 class MarketService {
 
@@ -492,7 +493,7 @@ class MarketService {
         const { user, token, chat_id, rating, review = null, user_reviewed } = opts;
         const t = await sequelize.transaction();
         try {
-          return { success: false, code: "200", message: "Suspendido temporalmente" };
+        //   return { success: false, code: "200", message: "Suspendido temporalmente" };
             // 2) Buscar rater en UserGameInfo (recibiste 'user' como nombre del juego)
             const raterGame = await UserGameInfo.findOne({
                 where: { name: user },
@@ -624,9 +625,23 @@ class MarketService {
         const t = await sequelize.transaction();
 
         try {
-            return { success: false, code: "200", message: "Suspendido temporalmente" };
+            // return { success: false, code: "200", message: "Suspendido temporalmente" };
             // 1️⃣ Validar token
             const username = await User.findOne({where:{ apodo: user}});
+
+            const ban = await MarketBanned.findOne({
+                where: { user:username['id'] },
+                transaction: t
+            });
+
+            if (ban && (ban.ban_status === 1 || ban.ban_status === 2  || ban.ban_status === 3)) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'No puedes ejecutar ninguna acción en el chat porque estás baneado del mercado.'
+                };
+            }
 
             const session = await TokenSession.findOne({
                 where: { token, id: username['id'] },
@@ -837,6 +852,8 @@ class MarketService {
                     break;
                 case 'CANCEL_CHAT_RETURN':
                 case 'CANCEL_CHAT_REPOST':
+                    return { success: false, code: "200", message: "Suspendido temporalmente" };
+                    
                      if(chat.seller !== user) {
                         await t.rollback();
                         return { success: false, code: "200", message: "No autorizado" };
@@ -1087,7 +1104,7 @@ class MarketService {
     try {
         // 1️⃣ Validar token
         const username = await User.findOne({where:{ apodo: sender}});
-   return { success: false, code: "200", message: "Suspendido temporalmente" };
+//    return { success: false, code: "200", message: "Suspendido temporalmente" };
         const session = await TokenSession.findOne({
         where: { token, id: username['id'] },
         transaction: t,
@@ -1203,7 +1220,20 @@ class MarketService {
    async initChatTrade(user, token, idmarket) {
   const t = await sequelize.transaction();
   try {
-       return { success: false, code: "200", message: "Suspendido temporalmente" };
+    //    return { success: false, code: "200", message: "Suspendido temporalmente" };
+    const ban = await MarketBanned.findOne({
+        where: { user },
+        transaction: t
+    });
+
+    if (ban && (ban.ban_status === 2 || ban.ban_status === 3)) {
+        await t.rollback();
+        return {
+            success: false,
+            code: '200',
+            message: 'No puedes inicializar un chat en el mercado porque estás baneado.'
+        };
+    }
     // 1) validar token-session (lock)
     const session = await TokenSession.findOne({
       where: { token, id: user }, // según tu esquema
@@ -1986,7 +2016,22 @@ async getChat(user, token, chatId) {
     async sellItem(user,token,id,price,currency) {
         const t = await sequelize.transaction(); // Iniciar una transacción
         try {
-               return { success: false, code: "200", message: "Suspendido temporalmente" };
+            //    return { success: false, code: "200", message: "Suspendido temporalmente" };
+
+             const ban = await MarketBanned.findOne({
+                where: { user },
+                transaction: t
+            });
+
+            if (ban && (ban.ban_status === 1 || ban.ban_status === 3)) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'No puedes vender en el mercado porque estás baneado.'
+                };
+            }
+
             // Verificar token:
             const sessionToken = await TokenSession.findOne({
                 attributes: ['token'],

@@ -4,8 +4,14 @@ import http from 'http';
 import MarketService from '../services/marketService.js';
 import { logPing } from '../utils/logger.js';
 
+import socketLockManager from '../utils/socketLockManager.js';
+import { CHAT_CRITICAL_ACTIONS } from '../utils/socketLockConfig.js';
+import { buildSocketLockKey, logSocket, printSocketLocks } from '../utils/socketLockHelpers.js';
+
 // tradeId → Map(socketId → username)
 const tradeRooms = new Map();
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // socketId → { user, trades: Set<tradeId> }
 const sockets = new Map();
@@ -203,9 +209,41 @@ io.on('connection', (socket) => {
     if (!chat_id || !user || !action) return;
     const room = `trade_${chat_id}`;
 
+    const actionConfig = CHAT_CRITICAL_ACTIONS.get(action);
+    const lockKey = buildSocketLockKey(user, action);
+    let acquired = false;
+
     console.log(`[Chat] Acción recibida en ${room} de ${user}:`, action);
 
     try {
+
+      if (CHAT_CRITICAL_ACTIONS.has(action)) {
+
+        acquired = socketLockManager.acquire(lockKey, {
+          user,
+          action,
+          desc: actionConfig?.desc,
+          exclusiveGroup: actionConfig?.exclusiveGroup || null,
+          chat_id
+        });
+
+        if (!acquired) {
+          logSocket(`[${formatDate()}] [SOCKET][BLOCKED] user=${user} solicitud=${action}`);
+          // printSocketLocks(formatDate());
+
+          return io.to(room).emit('TRADE_ERROR', {
+            chat_id,
+            result:{message: 'Aún está procesando la acción'}
+          });
+        }
+
+        logSocket(`[${formatDate()}] [SOCKET][ADD] user=${user} solicitud=${action}`);
+        printSocketLocks(formatDate());
+      }
+
+    
+      // await sleep(10000);
+
       const result = await MarketService.pushAction({
         chat_id,
         user,
@@ -222,7 +260,13 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error(`[Chat] Error al guardar mensaje:`, err);
-      io.to(room).emit('TRADE_ERROR', { chat_id,error: 'Error al guardar mensaje' });
+      io.to(room).emit('TRADE_ERROR', { chat_id, result:{message: 'Error al guardar mensaje'} });
+    }finally {
+      if (lockKey && acquired) {
+        socketLockManager.release(lockKey);
+        logSocket(`[${formatDate()}] [SOCKET][RELEASE] user=${user} solicitud=${action}`);
+        printSocketLocks(formatDate());
+      }
     }
   });
 

@@ -211,11 +211,10 @@ class GMPanelController {
 
       async getUserstoBan(req, res, next) {
         try {
-          const { user,token } = req.body;
-
+          const { user, token, page, pageSize, search, searchType } = req.body;
 
           console.log("[GM Panel]".green,' Lista de usuarios'.white,(' - Admin: '+user).white);
-          const users = await GMPanelService.getUserstoBan(user,token);
+          const users = await GMPanelService.getUserstoBan(user, token, page, pageSize, search, searchType);
 
          
           //console.log(ranking);
@@ -229,6 +228,38 @@ class GMPanelController {
           console.error('Error al obtener usuarios:', error);
           return res.status(500).json({ error: 'Error interno del servidor' });
         }
+      }
+
+      async getUsersToBanMulti(req, res, next) {
+        try {
+          const { user, token, terms, searchType } = req.body;
+
+          console.log(
+            "[GM Panel]".green,
+            ' Lista múltiple de usuarios'.white,
+            (' - Admin: ' + user).white
+          );
+
+          const response = await GMPanelService.getUsersToBanMulti(
+                user,
+                token,
+                terms,
+                searchType
+              );
+
+              if (response.success || response.code) {
+                return res.status(200).json(response);
+              } else {
+                return res.status(400).json(response);
+              }
+            } catch (error) {
+              console.error('Error en multibúsqueda de usuarios:', error);
+              return res.status(500).json({
+                success: false,
+                code: '500',
+                message: 'Error interno del servidor'
+              });
+            }
       }
 
       async getUsersName(req, res, next) {

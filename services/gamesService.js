@@ -330,7 +330,7 @@ class GamesService {
                         pr: prizeafter
                     });
 
-                    console.log(allPrizes[selectedItem])
+                    // console.log(allPrizes[selectedItem])
 
                     return {all: allPrizes[selectedItem], win:true,params};
                 case 6:
@@ -560,7 +560,7 @@ class GamesService {
                 }
             );
 
-            console.log(prize);
+            // console.log(prize);
             // Verificar si el premio es una pocion :
             const itemData = await ItemInfo.findOne({
                 attributes: ['type'],
@@ -574,7 +574,7 @@ class GamesService {
             //   await transaction.rollback(); // Revertir la transacción en caso de error
             //   return { success: false, code: '402', message: 'ID de Item no encontrado' };
             // }
-            console.log(itemData);
+            // console.log(itemData);
             if(itemData && itemData.type === 12){
                 //Insertar en tabla poisions :)
                 //Verificar si el usuario ya tiene esa pocion:
