@@ -2681,8 +2681,8 @@ async getChat(user, token, chatId) {
             });
 
             mergedItemsFinal.sort((a, b) => {
-                const ratingA = parseFloat(a.seller_rating) || 0;
-                const ratingB = parseFloat(b.seller_rating) || 0;
+                const ratingA = parseFloat(Number(a.seller_rating.avg_rating)) || 0;
+                const ratingB = parseFloat(Number(b.seller_rating.avg_rating)) || 0;
 
                 return ratingB - ratingA;
             });
