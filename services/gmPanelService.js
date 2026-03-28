@@ -36,6 +36,7 @@ import path from 'path';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import FileManager from '../models/fileManagerModel.js';
 import { getSerialFromFile } from '../utils/utils.js';
+import UserCredits from '../models/Trades/userCreditsModel.js';
 
 
 class GMPanelService {
@@ -1172,6 +1173,7 @@ class GMPanelService {
         const cash = Number(data.c);
         const oro = Number(data.o);
         const eventPoints = Number(data.ep);
+        const credits = Number(data.cr);
         const users = data._lu;
         const tipo = data.trx;
 
@@ -1199,10 +1201,22 @@ class GMPanelService {
         var usersNoGold = [];
         var usersNoCash = [];
         var usersNoPoints = [];
+         var usersNoCredits = [];
 
         var lowOro = [];
         var lowCash = [];
         var lowEventPoints = [];
+        var lowCredits = [];
+
+        var bfCash = 0;
+        var bfOro = 0;
+        var bfPointEv = 0;
+        var bfCred = 0;
+
+        var afCash = 0;
+        var afOro = 0;
+        var afPointEv = 0;
+        var afCred = 0;
 
         for (const u of users) {
 
@@ -1217,6 +1231,8 @@ class GMPanelService {
 
           if(!userGold){
             usersNoGold.push(u.name);
+          } else{
+            bfOro = userGold.gold;
           }
 
           const userCash = await Cash.findOne({
@@ -1227,8 +1243,11 @@ class GMPanelService {
             transaction: t, // Asociar la transacción con esta consulta
           });
 
+
           if(!userCash){
             usersNoCash.push(u.name);
+          } else{
+             bfCash = userCash.cash;
           }
 
           const userEventPoints = await UserGameInfo.findOne({
@@ -1242,7 +1261,25 @@ class GMPanelService {
 
           if(!userEventPoints){
             usersNoPoints.push(u.name);
+          }else{
+            bfPointEv = userEventPoints.clanpoint;
           }
+
+          const userCredits = await UserCredits.findOne({
+            // attributes: ['Points'],
+            where: {
+              user: u.name, // Cambia esto para usar el nombre de usuario correcto
+            },
+            transaction: t,
+            // lock: t.LOCK.UPDATE,
+          });
+
+          if(!userCredits){
+            usersNoCredits.push(u.name);
+          }else{
+            bfCred = userCredits.credits;
+          }
+
 
           // Actualizar el cash en Cash
           if(cash>0){
@@ -1295,6 +1332,8 @@ class GMPanelService {
               origen:tipo === 1 ? 2 : 3,
               recompensa:tipo === 1 ? cash: (cash*-1),
               tipo_recompensa: 2,
+              last_pr: bfCash,
+              curr_pr: tipo === 1 ? (bfCash + cash): (bfCash - cash),
               fecha: new Date(), 
             }, { transaction:t });
           }
@@ -1334,6 +1373,8 @@ class GMPanelService {
               origen:tipo === 1 ? 2 : 3,
               recompensa:tipo === 1 ? oro: (oro*-1),
               tipo_recompensa: 1,
+              last_pr: bfOro,
+              curr_pr: tipo === 1 ? (bfOro + oro): (bfOro - oro),
               fecha: new Date(), 
             }, { transaction:t });
 
@@ -1389,6 +1430,8 @@ class GMPanelService {
               origen:tipo === 1 ? 2 : 3,
               recompensa:tipo === 1 ? eventPoints: (eventPoints*-1),
               tipo_recompensa: 13,
+                last_pr: bfPointEv,
+              curr_pr: tipo === 1 ? (bfPointEv + eventPoints): (bfPointEv - eventPoints),
               fecha: new Date(), 
             }, { transaction:t });
 
@@ -1399,6 +1442,62 @@ class GMPanelService {
                 user: u.name,
                 amount: eventPoints,
                 type:  tipo === 1 ? 11 : 12,
+                date: new Date(),
+              },
+              {
+                transaction: t, // Asociar la transacción con esta operación
+              }
+            );
+          }
+
+          if(credits>0){
+
+            if(tipo === 1){   
+              // console.log(eventPoints);
+              await UserCredits.increment(
+                'credits',
+                { by: credits, where: { user: u.name  }, transaction: t }
+              );
+              // console.log(2123);
+            } else {
+              //Descuento...
+              const ec = await UserCredits.findOne({
+                where: {
+                  user: u.name, // Cambia esto para usar el nombre de usuario correcto
+                  credits: {
+                    [Op.lte]: (credits-1), // Verifica que gold sea menor o igual a 4999
+                  },
+                },
+                transaction: t, // Asociar la transacción con esta consulta
+              });
+
+              if (ec) {
+                lowCredits.push(u.name);
+              } else{
+                await UserCredits.decrement(
+                  'credits',
+                  { by: credits, where: { user: u.name  }, transaction: t }
+                );
+              }
+            }
+
+            await LogRewardsUser.create({  
+              user:u.name,
+              origen:tipo === 1 ? 2 : 3,
+              recompensa:tipo === 1 ? credits: (credits*-1),
+              tipo_recompensa: 20,
+                last_pr: bfCred,
+              curr_pr: tipo === 1 ? (bfCred + credits): (bfCred - credits),
+              fecha: new Date(), 
+            }, { transaction:t });
+
+            await LogPanelGM.create(
+              {
+                userAction:user,
+                action: tipo === 1 ? 'Recarga de créditos' : 'Descuento de créditos',
+                user: u.name,
+                amount: credits,
+                type:  tipo === 1 ? 19 : 20,
                 date: new Date(),
               },
               {
@@ -1428,7 +1527,12 @@ class GMPanelService {
           return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCash)+' no tienen Cash suficiente para ser descontado' };
         }
 
-        
+         if(lowCredits.length > 0){
+          await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de créditos de usuarios'.red);
+          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCredits)+' no tienen créditos suficiente para ser descontado' };
+        }
+
         if(lowEventPoints.length > 0){
           await t.rollback(); // Revertir la transacción en caso de error
           console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de puntos de evento de usuarios'.red);
@@ -1442,6 +1546,13 @@ class GMPanelService {
         }
 
         
+        if (usersNoCredits.length > 0) {
+          await t.rollback(); // Revertir la transacción en caso de error
+          console.log("!![GM Panel- CREDITS]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCredits).magenta);
+          return { success: false, code: '002', message: 'Usuario(s) '+JSON.stringify(usersNoCredits)+' no encontrado [CREDITS: Comunicar con algún administrador]' };
+        }
+
+
         if (usersNoCash.length > 0) {
           await t.rollback(); // Revertir la transacción en caso de error
           console.log("!![GM Panel- CASH]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCash).magenta);
@@ -1461,11 +1572,13 @@ class GMPanelService {
         return {
           success: true,
           code: '000',
+          message:tipo === 1 ?  'Recarga exitosa' : 'Descuento exitoso'
         };
       
       }
       catch (error) {
           await t.rollback();
+          console.log(error);
           throw new Error('Error al recargar');
       }
   }

@@ -853,7 +853,7 @@ class MarketService {
                 case 'CANCEL_CHAT_RETURN':
                 case 'CANCEL_CHAT_REPOST':
                     return { success: false, code: "200", message: "Suspendido temporalmente" };
-                    
+
                      if(chat.seller !== user) {
                         await t.rollback();
                         return { success: false, code: "200", message: "No autorizado" };
@@ -1047,7 +1047,7 @@ class MarketService {
                         return { success: false, code: "200", message: "No autorizado" };
                     }
 
-                    console.log(1)
+                    // console.log(1)
 
                     const released = allActions.some(a => a.action === 'RELEASE_ITEM');
 
