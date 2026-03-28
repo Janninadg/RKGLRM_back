@@ -265,18 +265,18 @@ class GamesService {
                         // 🎯 CASO 1: Usuario ya tiene 8004 → bloquear
                         if (userAlreadyHas8004) {
 
-                            console.log(allPrizes)
+                            // console.log(allPrizes)
                             const blockedProb = Number(allPrizes[targetIndex].probability);
                             allPrizes[targetIndex].probability = 0;
 
-                            console.log(allPrizes)
+                            // console.log(allPrizes)
 
                             const totalRemaining = allPrizes.reduce((sum, p, i) => {
                                 if (i !== targetIndex) return sum + Number(p.probability);
                                 return sum;
                             }, 0);
 
-                            console.log(totalRemaining)
+                            // console.log(totalRemaining)
 
                             allPrizes.forEach((p, i) => {
                                 if (i !== targetIndex) {
@@ -285,7 +285,7 @@ class GamesService {
                                 }
                             });
 
-                            console.log(allPrizes)
+                            // console.log(allPrizes)
 
 
                         }
