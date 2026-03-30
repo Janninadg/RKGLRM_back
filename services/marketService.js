@@ -185,7 +185,7 @@ class MarketService {
              var afCred = userCredits.credits;
 
             await LogRewardsUser.create({  
-                user:u.name,
+                user:sellerInfo.id,
                 origen:22,
                 recompensa: -1,
                 tipo_recompensa: 21,
