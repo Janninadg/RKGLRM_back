@@ -192,7 +192,7 @@ class MarketService {
                 last_pr: bfCr,
                 curr_pr: afCred,
                 fecha: new Date(), 
-            }, { transaction:t });
+            }, { transaction });
 
             if(medioPago.type == 'INTERNAL'){
                 const totalCost = item.precio;
