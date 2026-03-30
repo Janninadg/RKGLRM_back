@@ -178,11 +178,21 @@ class MarketService {
                     message: 'No tienes créditos disponibles para publicar tu item en trades.',
                 };
             }
+            var bfCr = userCredits.credits;
+            userCredits.credits -= 1;
+            await userCredits.save({ transaction });
 
-            await UserCredits.decrement(
-                { credits: 1 },
-                { where: { id: sellerInfo.id }, transaction }
-            );
+             var afCred = userCredits.credits;
+
+            await LogRewardsUser.create({  
+                user:u.name,
+                origen:22,
+                recompensa: -1,
+                tipo_recompensa: 21,
+                last_pr: bfCr,
+                curr_pr: afCred,
+                fecha: new Date(), 
+            }, { transaction:t });
 
             if(medioPago.type == 'INTERNAL'){
                 const totalCost = item.precio;

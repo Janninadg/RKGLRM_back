@@ -1485,7 +1485,7 @@ class GMPanelService {
               user:u.name,
               origen:tipo === 1 ? 2 : 3,
               recompensa:tipo === 1 ? credits: (credits*-1),
-              tipo_recompensa: 20,
+              tipo_recompensa: 21,
                 last_pr: bfCred,
               curr_pr: tipo === 1 ? (bfCred + credits): (bfCred - credits),
               fecha: new Date(), 
