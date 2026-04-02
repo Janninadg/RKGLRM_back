@@ -2,6 +2,7 @@ import GMPanelService from '../services/gmPanelService.js';
 import { encrypt,decrypt,generateKey } from '../helpers/encryption.js';
 import { verifySignature,calculateDataHash } from '../helpers/signedData.js';
 import colors from "colors";
+import marketService from '../services/marketService.js';
 
 class GMPanelController {
 
@@ -425,6 +426,57 @@ class GMPanelController {
           return res.status(500).json({ error: 'Error interno del servidor' });
         }
       }
+
+      async getAllChats(req, res, next) {
+        try {
+           const { user, token, page, pageSize, filters } = req.body;
+
+            console.log(
+              "[GM Panel]".green,
+              ' Obtener chats paginados'.white,
+              (' - Admin: ' + user).white
+            );
+
+            const response = await GMPanelService.getAllChats(user, token, page, pageSize, filters);
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          } else {
+            return res.status(400).json(response);
+          }
+
+        } catch (error) {
+          console.error('Error al obtener chats:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async cancelChat(req, res, next) {
+      try {
+        const { user, token, chat_id, action } = req.body;
+
+        console.log("[GM Panel]".green, ' Cancelar chat'.white, (' - Admin: ' + user).white);
+
+        const response = await marketService.pushAction({
+          chat_id,
+          user,
+          action,
+          token,
+          ismodifiedbypanel: true,
+          panelUser: user
+        });
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+
+      } catch (error) {
+        console.error('Error al cancelar chat:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
 
       async getLogs(req, res, next) {
         try {

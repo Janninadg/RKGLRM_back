@@ -26,6 +26,8 @@ import TradeActions from '../models/Trades/tradeActionsModel.js';
 import TradeRatings from '../models/Trades/tradeRatingsModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
 import MarketBanned from '../models/MarketBannedModel.js';
+import UsersPanel from '../models/usersPanelModel.js';
+import LogPanelGM from '../models/logPanelGMModel.js';
 
 class MarketService {
 
@@ -631,35 +633,67 @@ class MarketService {
     }
 
     async pushAction(payload) {
-        const { chat_id, user,action,token } = payload;
+        const { chat_id, user, action, token, ismodifiedbypanel, panelUser } = payload;
         const t = await sequelize.transaction();
 
         try {
             // return { success: false, code: "200", message: "Suspendido temporalmente" };
             // 1️⃣ Validar token
-            const username = await User.findOne({where:{ apodo: user}});
+            const isPanel = ismodifiedbypanel === true;
 
-            const ban = await MarketBanned.findOne({
-                where: { user:username['id'] },
-                transaction: t
-            });
+            // 1️⃣ Obtener usuario base
+            const username = await User.findOne({ where: { apodo: user } });
 
-            if (ban && (ban.ban_status === 1 || ban.ban_status === 2  || ban.ban_status === 3)) {
+            if (!username && !isPanel) {
                 await t.rollback();
-                return {
-                    success: false,
-                    code: '200',
-                    message: 'No puedes ejecutar ninguna acción en el chat porque estás baneado del mercado.'
-                };
+                return { success: false, code: "999", message: "Usuario no encontrado" };
             }
 
-            const session = await TokenSession.findOne({
-                where: { token, id: username['id'] },
-                transaction: t,
-            });
-            if (!session) {
-                await t.rollback();
-                return { success: false, code: "999", message: "Token inválido o expirado." };
+            let message = "";
+
+             // 2️⃣ Validar ban (solo si NO es panel)
+            if (!isPanel) {
+                const ban = await MarketBanned.findOne({
+                    where: { user: username['id'] },
+                    transaction: t
+                });
+
+                if (ban && (ban.ban_status === 1 || ban.ban_status === 2 || ban.ban_status === 3)) {
+                    await t.rollback();
+                    return {
+                        success: false,
+                        code: '200',
+                        message: 'No puedes ejecutar ninguna acción en el chat porque estás baneado del mercado.'
+                    };
+                }
+            }
+
+            // 3️⃣ Validar sesión (solo si NO es panel)
+            if (!isPanel) {
+                const session = await TokenSession.findOne({
+                    where: { token, id: username['id'] },
+                    transaction: t,
+                });
+
+                if (!session) {
+                    await t.rollback();
+                    return { success: false, code: "999", message: "Token inválido o expirado." };
+                }
+            } else{
+                 const sessionToken = await TokenSession.findOne({
+                    attributes: ['token'],
+                    where: {
+                        token: token,
+                        id: panelUser,
+                    },
+                    transaction: t, // Asociar la transacción con esta consulta
+                });
+
+                if(!sessionToken){
+                    await t.rollback(); // Revertir la transacción en caso de error
+                    console.log("!![GM Panel]".red,' Sesión antigua'.red);
+                    return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+                }
             }
 
             // 2️⃣ Validar chat y permisos
@@ -674,7 +708,17 @@ class MarketService {
                 return { success: false, code: "200", message: "Chat no encontrado" };
             }
 
-            if (chat.buyer !== user && chat.seller !== user) {
+            // 5️⃣ Usuario efectivo
+            let effectiveUser = user;
+
+            if (isPanel) {
+                if (action === 'CANCEL_CHAT_RETURN' || action === 'CANCEL_CHAT_REPOST') {
+                    effectiveUser = chat.seller;
+                }
+            }
+
+            // 6️⃣ Validación de permisos
+            if (!isPanel && chat.buyer !== user && chat.seller !== user) {
                 await t.rollback();
                 return { success: false, code: "200", message: "No autorizado" };
             }
@@ -862,9 +906,60 @@ class MarketService {
                     break;
                 case 'CANCEL_CHAT_RETURN':
                 case 'CANCEL_CHAT_REPOST':
-                    return { success: false, code: "200", message: "Suspendido temporalmente" };
+                    // return { success: false, code: "200", message: "Suspendido temporalmente" };
 
-                     if(chat.seller !== user) {
+                    //Verificar si es GM otra vez:
+                    if (isPanel) {
+                    await LogPanelGM.create(
+                        {
+                            userAction: panelUser,
+                            action: 'Cancelar chat de usuario',
+                            user: chat.id,
+                            amount: 0,
+                            type: 21,
+                            date: new Date(),
+                        },
+                        { transaction: t }
+                    );
+                }
+
+
+                    if(isPanel){
+                        const existGM = await UsersPanel.findOne({
+                            attributes:['id'],
+                            where:{
+                            user: user,
+                            [Op.or]: [ { type: 9 }],
+                            },
+                            transaction: t,
+                        });
+                
+                        if(!existGM){
+                            await t.rollback();
+                            console.log("!![GM Panel]".red,' Ya no es GM'.red);
+                            return {
+                            success: false,
+                            code: '200',
+                            message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+                            };
+                        
+                        }
+                         await LogPanelGM.create(
+                            {
+                                userAction: panelUser,
+                                action: 'Cancelar chat de usuario',
+                                user: chat.id,
+                                amount: 0,
+                                type: 21,
+                                date: new Date(),
+                            },
+                            // { transaction: t }
+                        );
+                    }
+
+                    if(!isPanel) return { success: false, code: "200", message: "Suspendido temporalmente" };
+
+                     if(chat.seller !== effectiveUser && !isPanel) {
                         await t.rollback();
                         return { success: false, code: "200", message: "No autorizado" };
                     }
@@ -876,7 +971,7 @@ class MarketService {
                         return {
                             success: false,
                             code: "200",
-                            message: "No puedes cancelar el chat luego de haber liberado el item"
+                            message: isPanel ? "El chat no puede ser cancelado porque ya se liberó el item" : "No puedes cancelar el chat luego de haber liberado el item"
                         };
                     }
                     // Si el método es EXTERNAL → no debe existir CONFIRM_PAYMENT
@@ -912,14 +1007,14 @@ class MarketService {
                         if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
                             await TradeActions.create({
                                 chat_id:chat.id,
-                                user: user,
+                                user: effectiveUser,
                                 action: 'CANCEL_CHAT_RETURN',
                             },{ transaction: t });
 
                             await TradeMessage.create({
                                 chat_id: chat.id,
                                 sender: null,
-                                message: `El chat ha sido cancelado por el vendedor`,
+                                message: `El chat ha sido cancelado por ` + (isPanel ? "un administrador" : "el vendedor") ,
                                 message_type: 'SYSTEM',
                                 content_type: 'TEXT',
                                 visible_to: 'BOTH',
@@ -940,15 +1035,19 @@ class MarketService {
                             await chat.save({ transaction: t  });
 
                         } else if(!res.success && res.code === '201'){
-                            await TradeMessage.create({
-                                chat_id: chat.id,
-                                sender: null,
-                                message: `Por favor, desocupe un espacio en su inventario para poder cancelar el chat y devolver el item`,
-                                message_type: 'SYSTEM',
-                                content_type: 'TEXT',
-                                visible_to: 'SELLER',
-                                created_at: new Date()
-                            }, { transaction: t });
+                            if(isPanel){
+                                return { success: false, code: "200", message: "El vendedor no tiene espacio disponible en su inventario" };
+                            } else{
+                                await TradeMessage.create({
+                                    chat_id: chat.id,
+                                    sender: null,
+                                    message: `Por favor, desocupe un espacio en su inventario para poder cancelar el chat y devolver el item`,
+                                    message_type: 'SYSTEM',
+                                    content_type: 'TEXT',
+                                    visible_to: 'SELLER',
+                                    created_at: new Date()
+                                }, { transaction: t });
+                             }
                         } else if(!res.success && res.code === '200'){
                             await t.rollback();
                             return { success: false, code: "200", message: res.message };
@@ -958,14 +1057,14 @@ class MarketService {
                     } else if(action=='CANCEL_CHAT_REPOST'){
                         await TradeActions.create({
                             chat_id:chat.id,
-                            user: user,
+                            user: effectiveUser,
                             action: 'CANCEL_CHAT_REPOST',
                         },{ transaction: t });
 
                          await TradeMessage.create({
                                 chat_id: chat.id,
                                 sender: null,
-                                message: `El chat ha sido cancelado por el vendedor`,
+                                message: `El chat ha sido cancelado por ` + (isPanel ? "un administrador" : "el vendedor") ,
                                 message_type: 'SYSTEM',
                                 content_type: 'TEXT',
                                 visible_to: 'BOTH',
@@ -1049,6 +1148,7 @@ class MarketService {
                             }, { transaction: t }); 
                     }
                  
+                    message ='El chat #'+String(chat.id)+ ' ha sido cancelado'
                     
                     break;
                 case 'END_CHAT':
@@ -1096,6 +1196,7 @@ class MarketService {
             return {
                 success: true,
                 code: "000",
+                message,
             };
 
         } catch (error) {

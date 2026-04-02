@@ -37,6 +37,10 @@ import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketS
 import FileManager from '../models/fileManagerModel.js';
 import { getSerialFromFile } from '../utils/utils.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
+import TradeChats from '../models/Trades/tradeChatsModel.js';
+import TradeActions from '../models/Trades/tradeActionsModel.js';
+import User from '../models/userModel.js';
+import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 
 
 class GMPanelService {
@@ -771,6 +775,297 @@ class GMPanelService {
           throw new Error('Error interno del servidor');
         }
       }
+
+     async getAllChats(user, token, page = 1, pageSize = 20, filters = {}) {
+        const t = await sequelize.transaction();
+
+        try {
+            const currentPage = Number(page) > 0 ? Number(page) : 1;
+            const currentPageSize = Number(pageSize) > 0 ? Number(pageSize) : 20;
+            const offset = (currentPage - 1) * currentPageSize;
+
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: {
+                    token: token,
+                    id: user,
+                },
+                transaction: t,
+            });
+
+            if (!sessionToken) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '002',
+                    message: 'Token inválido o tienes una sesión iniciada en otro navegador...'
+                };
+            }
+
+            const existGM = await UsersPanel.findOne({
+                attributes: ['id'],
+                where: {
+                    user: user,
+                    [Op.or]: [{ type: 0 }, { type: 9 }, { type: 4 }],
+                },
+                transaction: t,
+            });
+
+            if (!existGM) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '001',
+                    message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+                };
+            }
+
+            const safeFilters = filters || {};
+            const filterChatId = safeFilters.chat_id ? Number(safeFilters.chat_id) : null;
+            const filterLastAction = safeFilters.last_action ? String(safeFilters.last_action).trim() : null;
+            const filterRealNameSeller = safeFilters.real_name_seller
+                ? String(safeFilters.real_name_seller).trim().toLowerCase()
+                : null;
+            const filterRealNameBuyer = safeFilters.real_name_buyer
+                ? String(safeFilters.real_name_buyer).trim().toLowerCase()
+                : null;
+
+            const tradeChatsWhere = {};
+            if (filterChatId) {
+                tradeChatsWhere.id = filterChatId;
+            }
+
+            const chats = await TradeChats.findAll({
+                where: tradeChatsWhere,
+                order: [['id', 'DESC']],
+                transaction: t
+            });
+
+            if (!chats.length) {
+                await t.commit();
+                return {
+                    success: true,
+                    code: "000",
+                    chats: [],
+                    pagination: {
+                        page: currentPage,
+                        pageSize: currentPageSize,
+                        totalRecords: 0,
+                        totalPages: 0
+                    }
+                };
+            }
+
+            const chatIds = chats.map(c => c.id);
+            const paymentMethodIds = [...new Set(chats.map(c => c.payment_method_id).filter(Boolean))];
+            const nicknames = [...new Set([
+                ...chats.map(c => c.buyer).filter(Boolean),
+                ...chats.map(c => c.seller).filter(Boolean)
+            ])];
+
+            const allActions = await TradeActions.findAll({
+                where: { chat_id: chatIds },
+                order: [['created_at', 'DESC'], ['id', 'DESC']],
+                transaction: t
+            });
+
+            const lastActionMap = {};
+            for (const action of allActions) {
+                if (!lastActionMap[action.chat_id]) {
+                    lastActionMap[action.chat_id] = action;
+                }
+            }
+
+            const users = await User.findAll({
+                where: {
+                    apodo: {
+                        [Op.in]: nicknames
+                    }
+                },
+                attributes: ['id', 'apodo'],
+                transaction: t
+            });
+
+            const userMap = users.reduce((acc, item) => {
+                acc[item.apodo] = {
+                    id: item.id,
+                    real_name: item.id
+                };
+                return acc;
+            }, {});
+
+            const paymentMethods = await PaymentMethods.findAll({
+                where: {
+                    id: {
+                        [Op.in]: paymentMethodIds
+                    }
+                },
+                attributes: ['id', 'name', 'color', 'type', 'icon'],
+                transaction: t
+            });
+
+            const paymentMap = paymentMethods.reduce((acc, item) => {
+                acc[item.id] = item;
+                return acc;
+            }, {});
+
+            await t.commit();
+
+           let formatted = chats.map(chat => {
+
+            const lastActionObj = lastActionMap[chat.id] || null;
+            const lastAction = lastActionObj ? lastActionObj.action : 'CREATE_TRADE';
+
+            // ❌ EXCLUIR CREATE_TRADE
+            // if (lastAction === 'CREATE_TRADE') {
+            //     return null;
+            // }
+
+            const sellerInfo = userMap[chat.seller] || null;
+            const buyerInfo = userMap[chat.buyer] || null;
+            const paymentInfo = paymentMap[chat.payment_method_id] || null;
+
+            // 🏷️ LABEL AMIGABLE
+            let actionLabel = '';
+            let stateColor = 'gray';
+
+            switch (lastAction) {
+                case 'CREATE_TRADE':
+                    actionLabel = 'Chat iniciado';
+                    stateColor = '#7ab65c';
+                    break;
+
+                case 'CONFIRM_PAYMENT':
+                    actionLabel = 'Pago confirmado';
+                    stateColor = '#3c8664';
+                    break;
+
+                case 'RELEASE_ITEM':
+                    actionLabel = 'Item liberado';
+                    stateColor = '#4d79a8';
+                    break;
+
+                case 'END_CHAT':
+                    actionLabel = 'Chat finalizado';
+                    stateColor = '#70253d';
+                    break;
+
+                case 'CANCEL_CHAT_RETURN':
+                    actionLabel = 'Cancelado (retorno)';
+                    stateColor = '#9c1a1a';
+                    break;
+
+                case 'CANCEL_CHAT_REPOST':
+                    actionLabel = 'Cancelado (republicado)';
+                    stateColor = '#e03c3c';
+                    break;
+
+                default:
+                    actionLabel = lastAction;
+                    stateColor = 'gray';
+                    break;
+            }
+
+            const isActive =
+                lastAction !== 'CANCEL_CHAT_RETURN' &&
+                lastAction !== 'CANCEL_CHAT_REPOST' &&
+                lastAction !== 'END_CHAT';
+
+            return {
+                chat_id: chat.id,
+                seller: chat.seller,
+                buyer: chat.buyer,
+
+                real_name_seller: sellerInfo?.real_name || chat.seller,
+                real_name_buyer: buyerInfo?.real_name || chat.buyer,
+
+                seller_id: sellerInfo?.id || null,
+                buyer_id: buyerInfo?.id || null,
+
+                status: chat.status,
+                created_at: chat.created_at,
+
+                // 🔥 IMPORTANTE
+                last_action: lastAction,
+                last_action_label: actionLabel,
+                last_action_date: lastActionObj?.created_at || null,
+
+                is_active: isActive,
+                state_color: stateColor,
+
+                payment_method: paymentInfo ? {
+                    id: paymentInfo.id,
+                    name: paymentInfo.name,
+                    color: paymentInfo.color,
+                    type: paymentInfo.type,
+                    icon: paymentInfo.icon
+                } : null
+            };
+        })
+        .filter(x => x !== null);
+
+            if (filterLastAction) {
+                formatted = formatted.filter(x => x.last_action === filterLastAction);
+            }
+
+            if (filterRealNameSeller) {
+                formatted = formatted.filter(x =>
+                    (x.real_name_seller || '').toLowerCase().includes(filterRealNameSeller)
+                );
+            }
+
+            if (filterRealNameBuyer) {
+                formatted = formatted.filter(x =>
+                    (x.real_name_buyer || '').toLowerCase().includes(filterRealNameBuyer)
+                );
+            }
+
+            formatted.sort((a, b) => {
+                if (a.is_active !== b.is_active) {
+                    return a.is_active ? -1 : 1;
+                }
+
+                const dateA = a.last_action_date
+                    ? new Date(a.last_action_date)
+                    : new Date(a.created_at);
+
+                const dateB = b.last_action_date
+                    ? new Date(b.last_action_date)
+                    : new Date(b.created_at);
+
+                return dateB - dateA;
+            });
+
+            const totalRecords = formatted.length;
+            const totalPages = Math.ceil(totalRecords / currentPageSize);
+            const paginated = formatted.slice(offset, offset + currentPageSize);
+
+            return {
+                success: true,
+                code: "000",
+                chats: paginated,
+                pagination: {
+                    page: currentPage,
+                    pageSize: currentPageSize,
+                    totalRecords,
+                    totalPages
+                },
+                filters_applied: {
+                    chat_id: filterChatId,
+                    last_action: filterLastAction,
+                    real_name_seller: filterRealNameSeller,
+                    real_name_buyer: filterRealNameBuyer
+                }
+            };
+
+        } catch (error) {
+            console.error("❌ Error en getAllChats:", error);
+            try {
+                await t.rollback();
+            } catch (_) {}
+            return { success: false, code: "999", message: "Error interno del servidor." };
+        }
+    }
 
       async changeStreamerStatus(user,token,streamerId) {
         const t = await sequelize.transaction();
@@ -1508,61 +1803,80 @@ class GMPanelService {
 
         }
 
-        // if(lowCash.length > 0 && lowOro.length>0){
-        //   const low = lowCash.concat(lowOro);
-        //   await t.rollback(); // Revertir la transacción en caso de error
-        //   console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de cash de usuarios');
-        //   return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(low)+' no tienen suficiente Cash u Oro para descontar' };
-        // }
+        // 🔥 VALIDACIONES SOLO SI SE USÓ EL CAMPO
 
-        if(lowOro.length > 0){
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de oro de usuarios'.red);
-          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowOro)+' no tienen Gold suficiente para ser descontado' };
+        if (oro > 0 && lowOro.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Los siguientes usuario(s) ' + JSON.stringify(lowOro) + ' no tienen Gold suficiente'
+          };
         }
 
-        if(lowCash.length > 0){
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de cash de usuarios'.red);
-          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCash)+' no tienen Cash suficiente para ser descontado' };
+        if (cash > 0 && lowCash.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Los siguientes usuario(s) ' + JSON.stringify(lowCash) + ' no tienen Cash suficiente'
+          };
         }
 
-         if(lowCredits.length > 0){
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de créditos de usuarios'.red);
-          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowCredits)+' no tienen créditos suficiente para ser descontado' };
+        if (credits > 0 && lowCredits.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Los siguientes usuario(s) ' + JSON.stringify(lowCredits) + ' no tienen créditos suficiente'
+          };
         }
 
-        if(lowEventPoints.length > 0){
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel]".red,' Error al decrementar - Saldo insuficiente de puntos de evento de usuarios'.red);
-          return { success: false, code: '002', message: 'Los siguientes usuario(s) '+JSON.stringify(lowEventPoints)+' no tienen Puntos de evento suficiente para ser descontado' };
+        if (eventPoints > 0 && lowEventPoints.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Los siguientes usuario(s) ' + JSON.stringify(lowEventPoints) + ' no tienen puntos suficientes'
+          };
         }
 
-        if (usersNoGold.length > 0) {
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel- GOLD]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCash).magenta);
-          return { success: false, code: '002', message: 'Usuario(s) '+JSON.stringify(usersNoGold)+' no encontrado [GOLD: Comunicar con algún administrador]' };
+        // ❗ VALIDAR EXISTENCIA SOLO SI SE USA
+
+        if (oro > 0 && usersNoGold.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Usuario(s) ' + JSON.stringify(usersNoGold) + ' no encontrado [GOLD]'
+          };
         }
 
-        
-        if (usersNoCredits.length > 0) {
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel- CREDITS]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCredits).magenta);
-          return { success: false, code: '002', message: 'Usuario(s) '+JSON.stringify(usersNoCredits)+' no encontrado [CREDITS: Comunicar con algún administrador]' };
+        if (credits > 0 && usersNoCredits.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Usuario(s) ' + JSON.stringify(usersNoCredits) + ' no encontrado [CREDITS]'
+          };
         }
 
-
-        if (usersNoCash.length > 0) {
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel- CASH]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoCash).magenta);
-          return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoCash)+' no encontrado [CASH: Comunicar con algún administrador]' };
+        if (cash > 0 && usersNoCash.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '003',
+            message: 'Usuario(s) ' + JSON.stringify(usersNoCash) + ' no encontrado [CASH]'
+          };
         }
 
-        if (usersNoPoints.length > 0) {
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel- EVENT POINT]".red,' Usuarios no encontrados: '.red,JSON.stringify(usersNoPoints).magenta);
-          return { success: false, code: '003', message: 'Usuario(s) '+JSON.stringify(usersNoPoints)+' no encontrado [EVENT POINTS: Comunicar con algún administrador]' };
+        if (eventPoints > 0 && usersNoPoints.length > 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '003',
+            message: 'Usuario(s) ' + JSON.stringify(usersNoPoints) + ' no encontrado [EVENT POINTS]'
+          };
         }
         
 
