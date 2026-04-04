@@ -2118,6 +2118,30 @@ class EventService {
 
           message = `Has obtenido un(a) ${cuponPrize.name_prize} temporal`;
           break;
+        case 13:
+          //Verificar que el usuario exista:
+          const userPoints = await UserGameInfo.findOne({
+            attributes: ['id','clanpoint'],
+            where: {
+              name: user, // Cambia esto para usar el nombre de usuario correcto
+            },
+            transaction: t, // Asociar la transacción con esta consulta
+          });
+
+          if (!userPoints) {
+            await t.rollback(); // Revertir la transacción en caso de error
+            return { success: false, code: '004', message: 'Usuario no encontrado [EVENTPOINTS: Comunicar con algún administrador]' };
+          }
+
+          // Actualizar el gold en UserGameInfo
+          await UserGameInfo.increment(
+            'clanpoint',
+            { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
+          );
+
+          message = `Has obtenido ${cuponPrize.id_prize} de Punto(s) de evento`;
+          break;
+          break;
         default:
           await t.rollback(); // Revertir la transacción en caso de error
           return { success: false, code: '201', message: 'Tipo de premio no válido' };

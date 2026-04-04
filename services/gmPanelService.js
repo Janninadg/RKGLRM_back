@@ -35,7 +35,7 @@ import path from 'path';
 // import { v4 as uuidv4 } from 'uuid';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import FileManager from '../models/fileManagerModel.js';
-import { getSerialFromFile } from '../utils/utils.js';
+import { generateRandomCoupon, getSerialFromFile } from '../utils/utils.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import TradeChats from '../models/Trades/tradeChatsModel.js';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
@@ -1477,7 +1477,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
+            [Op.or]: [{ type: 0 }, { type: 9 },{type:4},{type:2}],
           },
           transaction: t,
         });
@@ -1897,143 +1897,120 @@ class GMPanelService {
       }
   }
 
-  async setCupon(token,data,user,isDataIntegrityValid,paramsString, req) {
+  async setCupon(token, data, user, isDataIntegrityValid, paramsString, req) {
     const t = await sequelize.transaction();
-  
+
     try {
-
-      // Verificar el paquete utilizando la clase PacketVerifier
-
-      const verifyPacketEqual = (isDataIntegrityValid); //&& (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
-      const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-
-      // console.log(banInfo);
+      const verifyPacketEqual = (isDataIntegrityValid);
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
 
       if (banInfo) {
-        await t.rollback(); // Revertir la transacción en caso de error
+        await t.rollback();
         return banInfo;
       }
 
-      const trx = await sequelize.transaction(); 
-      // Si la cadena de parámetros no existe, insertarla en trackingpacket
-      await TrackingPacket.create(
-        {
-          packet: paramsString,
-          user: user,
-          fecha_uso: new Date(),
-        },
-        {
-          transaction: trx, // Asociar la transacción con esta operación
-        }
-      );
+      const trx = await sequelize.transaction();
 
-      await trx.commit(); 
+      await TrackingPacket.create({
+        packet: paramsString,
+        user: user,
+        fecha_uso: new Date(),
+      }, { transaction: trx });
 
-       // Verificar token:
-       const sessionToken = await TokenSession.findOne({
+      await trx.commit();
+
+      const sessionToken = await TokenSession.findOne({
         attributes: ['token'],
-        where: {
-          token: token,
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
+        where: { token: token, id: user },
+        transaction: t,
       });
 
-      if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        console.log("!![GM Panel]".red,' Sesión antigua'.red);
-        return { success: false, code: '002', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+      if (!sessionToken) {
+        await t.rollback();
+        return { success: false, code: '002', message: 'Token inválido...' };
       }
 
       const name = data._pn;
       const limit = Number(data.lm);
-      const cupon = data.cp;
       const type = Number(data._tc);
-      const prize = parseInt(data._prc,10);
+      const prize = parseInt(data._prc, 10);
+      const qty = Number(data.qty) || 1;
 
-      //Verificar si es GM otra vez:
       const existGM = await UsersPanel.findOne({
         attributes:['id'],
         where:{
           user: user,
-          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
+          [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 }, { type: 4 }],
         },
         transaction: t,
       });
 
-      if(!existGM){
+      if (!existGM) {
         await t.rollback();
-        console.log("!![GM Panel]".red,' Ya no es GM'.red);
-        return {
-          success: false,
-          code: '001',
-          message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
-        };
-      
+        return { success: false, code: '001', message: 'Ya no es GM' };
       }
 
-      if(type === 0){
-        //console.log(prize);
+      // validar item
+      if (type === 0) {
         const itemData = await ItemInfo.findOne({
           attributes: ['type'],
-          where: {
-            id: prize, // Cambia esto para usar el nombre de usuario correcto
-          },
-          transaction: t, // Asociar la transacción con esta consulta
+          where: { id: prize },
+          transaction: t,
         });
 
-        //console.log(itemData);
-    
         if (!itemData) {
-          await t.rollback(); // Revertir la transacción en caso de error
-          console.log("!![GM Panel]".red,' Item ID ingresado no existe'.red);
-          return { success: false, code: '003',message:'¡El item ID ingresado no existe!' };
+          await t.rollback();
+          return { success: false, code: '003', message:'Item no existe' };
         }
-        //console.log(1);
       }
 
-      //Insertar en LOG
-      await LogPanelGM.create(
-        {
-          userAction:user,
-          action: 'Generar Cupón',
-          cupon:cupon,
-          type:3,
-          date: new Date(),
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
-      );
+      // 🔥 generar cupones
+      const generatedCoupons = [];
 
-      await Cupon.create(
-        {
+      for (let i = 0; i < qty; i++) {
+        generatedCoupons.push(generateRandomCoupon());
+      }
+
+      // 🔥 insert masivo
+      await Cupon.bulkCreate(
+        generatedCoupons.map(c => ({
           name_prize: name,
           limite: limit,
-          ticket:cupon,
-          type:type,
-          id_prize:prize,
-          uri:'',
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
+          ticket: c,
+          type: type,
+          id_prize: prize,
+          uri: '',
+        })),
+        { transaction: t }
+      );
+
+      // 🔥 logs
+      await LogPanelGM.bulkCreate(
+        generatedCoupons.map(c => ({
+          userAction: user,
+          action: 'Generar Cupón',
+          cupon: c,
+          type: 3,
+          date: new Date(),
+        })),
+        { transaction: t }
       );
 
       await t.commit();
-      console.log("[GM Panel]".green,' Exito'.green);
+
       return {
         success: true,
         code: '000',
-        message:'Se ha generado el cupon '+cupon+' correctamente'
+        message: `Se generaron ${generatedCoupons.length} cupones correctamente`,
+        coupons: generatedCoupons
       };
-    
+
+    } catch (error) {
+      await t.rollback();
+      console.log(error)
+      throw new Error('Error al generar cupon');
     }
-    catch (error) {
-        await t.rollback();
-        throw new Error('Error al generar cupon');
-    }
-}
+  }
 
   async createClan(user,token,clan,master,members) {
     const t = await sequelize.transaction();
@@ -3030,7 +3007,7 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4}],
+            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 2 },{type:4},{type:2}],
           },
           transaction: t,
         });

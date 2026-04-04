@@ -15,6 +15,7 @@ import Streamer from '../models/streamersModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
 import UsersPanel from '../models/usersPanelModel.js';
+import { generateRandomCoupon } from '../utils/utils.js';
 
 class StreamersService {
     async verifyIsStreamer(user) {
@@ -34,199 +35,166 @@ class StreamersService {
         }
       }
 
-      async setCupon(token,data,user,isDataIntegrityValid,paramsString, req) {
-        const t = await sequelize.transaction();
-      
-        try {
-    
-          // Verificar el paquete utilizando la clase PacketVerifier
-    
-          const verifyPacketEqual = (isDataIntegrityValid); //&& (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
-          const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-    
-          console.log(banInfo);
-    
-          if (banInfo) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return banInfo;
-          }
-    
-          const trx = await sequelize.transaction(); 
-          // Si la cadena de parámetros no existe, insertarla en trackingpacket
-          await TrackingPacket.create(
-            {
-              packet: paramsString,
-              user: user,
-              fecha_uso: new Date(),
-            },
-            {
-              transaction: trx, // Asociar la transacción con esta operación
-            }
-          );
-    
-          await trx.commit(); 
+    async setCupon(token,data,user,isDataIntegrityValid,paramsString, req) {
+      const t = await sequelize.transaction();
 
-          // Verificar token:
-          const sessionToken = await TokenSession.findOne({
-            attributes: ['token'],
-            where: {
-              token: token,
-              id: user,
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
+      try {
 
-          if(!sessionToken){
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '005', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
-          }
-    
-          const name = data._pn;
-          const limit = Number(data.lm);
-          const cupon = data.cp;
-          const prize = parseInt(data._prc,10);
-          const tipoCupon = parseInt(data.sc,10);
-          const type = tipoCupon === 0 ? 2 : (Number(data._tc) === 2 ? 0 :Number(data._tc)+1);
-    
-          //Verificar si es GM otra vez:
+        const verifyPacketEqual = (isDataIntegrityValid);
+        const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
+
+        if (banInfo) {
+          await t.rollback();
+          return banInfo;
+        }
+
+        const trx = await sequelize.transaction();
+
+        await TrackingPacket.create({
+          packet: paramsString,
+          user: user,
+          fecha_uso: new Date(),
+        }, { transaction: trx });
+
+        await trx.commit();
+
+        const sessionToken = await TokenSession.findOne({
+          attributes: ['token'],
+          where: { token: token, id: user },
+          transaction: t,
+        });
+
+        if(!sessionToken){
+          await t.rollback();
+          return { success: false, code: '005', message: 'Token inválido...' };
+        }
+
+        const name = data._pn;
+        const limit = Number(data.lm);
+        const prize = parseInt(data._prc,10);
+        const tipoCupon = parseInt(data.sc,10);
+        const qty = Number(data.qty) || 1;
+
+        if (qty > 1) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '006',
+            message: 'Solo puedes generar un cupón por solicitud.',
+          };
+        }
+
+        const type = tipoCupon === 0 ? 2 : (Number(data._tc) === 2 ? 0 : Number(data._tc)+1);
+
         const existSt = await UsersPanel.findOne({
           attributes:['id'],
-          where:{
-            user: user,
-            type: 1,
-          },
+          where:{ user: user, type: 1 },
           transaction: t,
         });
 
         if(!existSt){
           await t.rollback();
-          return {
-            success: false,
-            code: '001',
-            message: 'Usted no puede realizar ninguna acción porque ya no es Streamer, esta sesión será cerrada...'
-          };
-        
+          return { success:false, code:'001', message:'Ya no es Streamer' };
         }
 
+        // validar item
         if(type === 0){
-          //console.log(prize);
           const itemData = await ItemInfo.findOne({
             attributes: ['type'],
-            where: {
-              id: prize, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
+            where: { id: prize },
+            transaction: t,
           });
-  
-          //console.log(itemData);
-      
+
           if (!itemData) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            console.log("!![Streamer Panel]".red,' Item ID ingresado no existe'.red);
-            return { success: false, code: '003',message:'¡El item ID ingresado no existe!' };
-          }
-          //console.log(1);
-        }
-
-          //Verificar nro de cupones generados al dia por streamer...
-          // Obtener la fecha actual
-            const fechaActual = new Date();
-            // Establecer la fecha al principio del día actual
-            fechaActual.setHours(0, 0, 0, 0);
-            
-            // Obtener la fecha al final del día actual
-            const fechaFin = new Date();
-            fechaFin.setHours(23, 59, 59, 999);
-
-            // Contar el número de cupones generados por el usuario en el día actual y el tipo específico
-    
-            const cuponesGenerados = await LogStream.count({
-            where: {
-                user: user,
-                type: tipoCupon,
-                date: {
-                    [Op.between]: [fechaActual, fechaFin],
-                },
-            },  transaction: t
-            });
-            //console.log(cuponesGenerados);
-            
-
-            // Establecer límites según el tipo de cupón
-            var limite;
-            var codigoError='005';
-            var msg='';
-
-          switch (tipoCupon) {
-            case 0:
-                limite = 2;
-                codigoError = '003';
-                msg='No puedes generar más de 2 cupones para torneos en un día. Espera hasta mañana...';
-                break;
-            case 1:
-                limite = 6;
-                codigoError = '004';
-                msg='No puedes generar más de 6 cupones para viewers en un día. Espera hasta mañana...';
-                break;
-            }
-    
-            // Verificar si el usuario supera el límite permitido
-            // if (cuponesGenerados >= limite) {
-            //     await t.rollback();
-            //     return {
-            //         success: false,
-            //         code: codigoError,
-            //         message: msg,
-            //       };
-             
-            // }
-
-          //Crear Log de cupon
-          await LogStream.create(
-            {
-              action:'Generacion de cupon - '+ (type === 1 ? 'Gold' : (type===2 ? 'Cash' : 'Item')),
-              user: user,
-              prize: prize,
-              type: tipoCupon,
-              cupon:cupon,
-              date: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
-
-          //Crear cupon
-    
-          await Cupon.create(
-            {
-              name_prize: name,
-              limite: limit,
-              ticket:cupon,
-              type:type,
-              id_prize:prize,
-              uri:'',
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
-    
-          await t.commit();
-          
-          return {
-            success: true,
-            code: '000',
-            message:'Se ha generado el cupon '+cupon+' correctamente'
-          };
-        
-        }
-        catch (error) {
-            console.error('Error al contar los cupones:', error);
             await t.rollback();
-            throw new Error('Error al generar cupon');
-            //console.log(error);
+            return { success:false, code:'003', message:'Item no existe' };
+          }
         }
+
+        // 🔥 VALIDAR LIMITE DIARIO
+        const fechaActual = new Date();
+        fechaActual.setHours(0, 0, 0, 0);
+
+        const fechaFin = new Date();
+        fechaFin.setHours(23, 59, 59, 999);
+
+        const cuponesGenerados = await LogStream.count({
+          where: {
+            user: user,
+            type: tipoCupon,
+            date: { [Op.between]: [fechaActual, fechaFin] },
+          },
+          transaction: t
+        });
+
+        let limite;
+        let codigoError = '005';
+        let msg = '';
+
+        switch (tipoCupon) {
+          case 0:
+            limite = 2;
+            codigoError = '003';
+            msg = 'No puedes generar más de 2 cupones para torneos en un día.';
+            break;
+          case 1:
+            limite = 6;
+            codigoError = '004';
+            msg = 'No puedes generar más de 6 cupones para viewers en un día.';
+            break;
+        }
+
+        if ((cuponesGenerados + qty) > limite) {
+          await t.rollback();
+          return { success:false, code:codigoError, message:msg };
+        }
+
+        // 🔥 GENERAR CUPONES
+        const generatedCoupons = [];
+
+        for (let i = 0; i < qty; i++) {
+          generatedCoupons.push(generateRandomCoupon());
+        }
+
+        // 🔥 LOGS
+        await LogStream.bulkCreate(
+          generatedCoupons.map(c => ({
+            action:'Generacion de cupon - ' + (type === 1 ? 'Gold' : (type===2 ? 'Cash' : 'Item')),
+            user: user,
+            prize: prize,
+            type: tipoCupon,
+            cupon: c,
+            date: new Date(),
+          })),
+          { transaction: t }
+        );
+
+        // 🔥 CUPONES
+        await Cupon.bulkCreate(
+          generatedCoupons.map(c => ({
+            name_prize: name,
+            limite: limit,
+            ticket: c,
+            type: type,
+            id_prize: prize,
+            uri: '',
+          })),
+          { transaction: t }
+        );
+
+        await t.commit();
+
+        return {
+          success: true,
+          code: '000',
+          message: `Se generaron ${generatedCoupons.length} cupones correctamente`,
+          coupons: generatedCoupons
+        };
+
+      } catch (error) {
+        await t.rollback();
+        throw new Error('Error al generar cupon');
+      }
     }
 
 }

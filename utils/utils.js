@@ -76,4 +76,23 @@ const getDateAdjustedMeridiam = (date) => {
     return adjustedDate;
 }
 
-export {getFormatDate,getDateMinusTimeZone,getDateAdjustedMeridiam};
+const generateRandomCoupon = () => {
+  const prefix = "RKN";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+  const now = Date.now();
+  const rnd = Math.floor(Math.random() * 2 ** 32);
+
+  let seed = (now & 0xffffffff) ^ rnd;
+
+  const outChars = [];
+  for (let i = 0; i < 7; i++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const idx = seed % chars.length;
+    outChars.push(chars.charAt(idx));
+  }
+
+  return prefix + outChars.join("");
+};
+
+export {getFormatDate,getDateMinusTimeZone,getDateAdjustedMeridiam,generateRandomCoupon};
