@@ -2363,7 +2363,7 @@ async getMyClan(user, token, req) {
 
     const userGame = await UserGameInfo.findOne({
       attributes: ['id', 'name', 'charname', 'clanid', 'country'],
-      where: { id: user },
+      where: { name: user },
       transaction: t,
     });
 
@@ -2382,7 +2382,7 @@ async getMyClan(user, token, req) {
     }
 
     const existingMaster = await ClanInfo.findOne({
-      where: { masterid: user },
+      where: { masterid: userGame.id },
       transaction: t,
     });
 
@@ -2410,7 +2410,7 @@ async getMyClan(user, token, req) {
     }
 
     const createdClan = await ClanInfo.create({
-      masterid: user,
+      masterid: userGame.id,
       mastername: userGame.name,
       name: cleanName,
       point: 0,
@@ -2420,16 +2420,16 @@ async getMyClan(user, token, req) {
       country: userGame.country || 9,
     }, { transaction: t });
 
-    await UserGameInfo.update({
+     await UserGameInfo.update({
       clanid: createdClan.id,
       clangrade: 1,
     }, {
-      where: { id: user },
+      where: { id: userGame.id },
       transaction: t,
     });
 
     await ClanLog.create({
-      user: String(userGame.id),
+      user: user,
       rol: 'master',
       target: cleanName,
       action: 'CREATE',
