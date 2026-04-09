@@ -50,4 +50,15 @@ router.post('/shopAst', UserController.buyAssets);
 router.post('/comAn', UserController.setComentarioAnuncio);
 router.post('/calEvt', UserController.calificarEvento);
 
+//Clanes:
+router.post('/clans/all', UserController.getAllClans);
+router.post('/clans/my', UserController.getMyClan);
+router.post('/clans/members', UserController.getClanMembers);
+router.post('/clans/requests', UserController.getClanRequests);
+router.post('/clans/request/send', UserController.sendClanRequest);
+router.post('/clans/request/cancel', UserController.cancelClanRequest);
+router.post('/clans/create', UserController.createClan);
+router.post('/clans/request/resolve', UserController.resolveClanRequest);
+router.post('/clans/member/delete', UserController.deleteClanMember);
+
 export default router;

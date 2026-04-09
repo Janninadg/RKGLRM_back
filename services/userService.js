@@ -39,6 +39,10 @@ import ForumUserRole from '../models/Forum/ForumRole.js';
 import Role from '../models/Forum/Role.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import StagesReset from '../models/stagesResetModel.js';
+import ClanInfo from '../models/clanInfoModel.js';
+import { validateUserSession } from '../utils/utils.js';
+import ClanLog from '../models/clanLogModel.js';
+import ClanRequest from '../models/clanRequestModel.js';
 
 class UserService {
 
@@ -1924,6 +1928,871 @@ async getRanking() {
       throw new Error('Error al realizar al comentar');
     }
   }
+async getAllClans(user, token, search, page = 1, limit = 10, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 10, 1);
+    const offset = (pageNumber - 1) * pageSize;
+
+    // console.log(pageNumber);
+    const where = {};
+    if (search && search.trim() !== '') {
+      where.name = { [Op.like]: `%${search.trim()}%` };
+    }
+
+    const { count, rows } = await ClanInfo.findAndCountAll({
+      attributes: ['id', 'name', 'members', 'masterid'],
+      where,
+      order: [
+        ['members', 'DESC'],
+        ['name', 'ASC'],
+        ['id', 'ASC'],
+      ],
+      offset,
+      limit: pageSize,
+      transaction: t,
+    });
+
+    const masterIds = [...new Set(rows.map(c => Number(c.masterid)).filter(Boolean))];
+
+    const gameUsers = await UserGameInfo.findAll({
+      attributes: ['id', 'name'],
+      where: {
+        id: { [Op.in]: masterIds }
+      },
+      transaction: t,
+    });
+
+    const gameUserMap = new Map(
+      gameUsers.map(g => [Number(g.id), g.name])
+    );
+
+    const userIds = [...new Set(gameUsers.map(g => g.name).filter(Boolean))];
+
+    const users = await User.findAll({
+      attributes: ['id', 'apodo'],
+      where: {
+        id: { [Op.in]: userIds }
+      },
+      transaction: t,
+    });
+
+    const userMap = new Map(
+      users.map(u => [String(u.id), u.apodo])
+    );
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      clans: rows.map(c => {
+        const gameUserName = gameUserMap.get(Number(c.masterid));
+        const apodo = userMap.get(String(gameUserName));
+
+        return {
+          id: c.id,
+          name: c.name,
+          memberCount: c.members,
+          masterName: apodo || 'Desconocido',
+        };
+      }),
+      pagination: {
+        total: count,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages: Math.ceil(count / pageSize),
+      },
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al obtener clanes');
+  }
+}
+
+async getMyClan(user, token, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const userGame = await UserGameInfo.findOne({
+      attributes: ['id', 'name', 'clanid'],
+      where: { name: user },
+      transaction: t,
+    });
+
+    if (!userGame) {
+      await t.rollback();
+      return { success: false, code: '404', message: 'Usuario no encontrado.' };
+    }
+
+    let clan = null;
+
+    if (userGame.clanid && Number(userGame.clanid) > 0) {
+      const clanInfo = await ClanInfo.findOne({
+        attributes: ['id', 'name', 'masterid'],
+        where: { id: userGame.clanid },
+        transaction: t,
+      });
+
+      if (clanInfo) {
+        let masterName = null;
+        let masterNickname = null;
+
+        const masterUserGame = await UserGameInfo.findOne({
+          attributes: ['id', 'name'],
+          where: { id: clanInfo.masterid },
+          transaction: t,
+        });
+
+        if (masterUserGame) {
+          masterName = masterUserGame.name;
+
+          const masterUser = await User.findOne({
+            attributes: ['id', 'apodo'],
+            where: { id: masterUserGame.name },
+            transaction: t,
+          });
+
+          if (masterUser) {
+            masterNickname = masterUser.apodo;
+          }
+        }
+
+        clan = {
+          id: clanInfo.id,
+          name: clanInfo.name,
+          isMaster: Number(clanInfo.masterid) === Number(userGame.id),
+          masterName: masterName,
+          masterNickname: masterNickname || masterName,
+        };
+      }
+    }
+
+    const pendingRequest = await ClanRequest.findOne({
+      where: { userid: String(user) },
+      order: [['id', 'DESC']],
+      transaction: t,
+    });
+
+    let pendingRequestInfo = null;
+
+    if (pendingRequest) {
+      const clanRequested = await ClanInfo.findOne({
+        attributes: ['id', 'name'],
+        where: { id: pendingRequest.clanid },
+        transaction: t,
+      });
+
+      if (clanRequested) {
+        pendingRequestInfo = {
+          clanId: clanRequested.id,
+          clanName: clanRequested.name,
+        };
+      }
+    }
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      clan,
+      pendingRequest: pendingRequestInfo,
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al obtener clan del usuario');
+  }
+}
+
+ async getClanMembers(user, token, clanId, search = '', page = 1, limit = 10, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const pageSize = Math.max(parseInt(limit) || 10, 1);
+    const offset = (pageNumber - 1) * pageSize;
+
+    const where = {
+      clanid: clanId,
+    };
+
+    if (search && search.trim() !== '') {
+      where.name = { [Op.like]: `%${search.trim()}%` };
+    }
+
+    const { count, rows } = await UserGameInfo.findAndCountAll({
+      attributes: ['id', 'name', 'clanid'],
+      where,
+      offset,
+      limit: pageSize,
+      order: [['name', 'ASC']],
+      transaction: t,
+    });
+
+    const clanInfo = await ClanInfo.findOne({
+      attributes: ['masterid'],
+      where: { id: clanId },
+      transaction: t,
+    });
+
+    const userNames = rows.map(m => m.name).filter(Boolean);
+
+    const users = await User.findAll({
+      attributes: ['id', 'apodo'],
+      where: {
+        id: { [Op.in]: userNames }
+      },
+      transaction: t,
+    });
+
+    const apodoMap = new Map(
+      users.map(u => [String(u.id), u.apodo])
+    );
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      members: rows.map(m => ({
+        id: m.id,
+        user: m.name,
+        nickname: apodoMap.get(String(m.name)) || m.name,
+        isMaster: Number(clanInfo?.masterid) === Number(m.id),
+      })),
+      pagination: {
+        total: count,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages: Math.ceil(count / pageSize),
+      },
+    };
+
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al obtener miembros del clan');
+  }
+}
+ async sendClanRequest(user, token, clanId, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const userGame = await UserGameInfo.findOne({
+      attributes: ['id', 'clanid'],
+      where: { name: user },
+      transaction: t,
+    });
+
+    if (!userGame) {
+      await t.rollback();
+      return { success: false, code: '404', message: 'Usuario no encontrado.' };
+    }
+
+    if (Number(userGame.clanid) > 0) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '100',
+        message: 'Ya perteneces a un clan.',
+      };
+    }
+
+    const existingMaster = await ClanInfo.findOne({
+      attributes: ['id'],
+      where: { masterid: user },
+      transaction: t,
+    });
+
+    if (existingMaster) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '101',
+        message: 'No puedes solicitar ingreso a otro clan porque eres master de un clan.',
+      };
+    }
+
+    const clan = await ClanInfo.findOne({
+      attributes: ['id'],
+      where: { id: clanId },
+      transaction: t,
+    });
+
+    if (!clan) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '103',
+        message: 'El clan no existe.',
+      };
+    }
+
+    const pendingRequest = await ClanRequest.findOne({
+      where: { userid: String(user) },
+      transaction: t,
+    });
+
+    if (pendingRequest) {
+      // Si ya existe una solicitud al mismo clan, puedes decidir si devolver mensaje
+      if (String(pendingRequest.clanid) === String(clanId)) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '102',
+          message: 'Ya tienes una solicitud pendiente para este clan.',
+        };
+      }
+
+      // Elimina la solicitud anterior para reemplazarla por la nueva
+      await pendingRequest.destroy({ transaction: t });
+    }
+
+    await ClanRequest.create(
+      {
+        userid: String(user),
+        clanid: clanId,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      message: pendingRequest
+        ? 'Se reemplazó la solicitud anterior y se envió la nueva solicitud correctamente.'
+        : 'Se envió la solicitud al clan correctamente.',
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al enviar solicitud al clan');
+  }
+}
+  async cancelClanRequest(user, token, clanId, req) {
+    const t = await sequelize.transaction();
+
+    try {
+      const invalidSession = await validateUserSession(user, token, t);
+      if (invalidSession) {
+        await t.rollback();
+        return invalidSession;
+      }
+
+      const deleted = await ClanRequest.destroy({
+        where: {
+          userid: String(user),
+          clanid: clanId,
+        },
+        transaction: t,
+      });
+
+      if (!deleted) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'No existe una solicitud pendiente a ese clan.',
+        };
+      }
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Solicitud cancelada correctamente.',
+      };
+    } catch (error) {
+      await t.rollback();
+       console.log(error);
+      throw new Error('Error al cancelar solicitud del clan');
+    }
+  }
+  async createClan(user, token, clanName, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const cleanName = (clanName || '').trim();
+
+    if (!cleanName || cleanName.length < 3 || cleanName.length > 12) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '100',
+        message: 'El nombre del clan debe tener entre 3 y 12 caracteres.',
+      };
+    }
+
+    const userGame = await UserGameInfo.findOne({
+      attributes: ['id', 'name', 'charname', 'clanid', 'country'],
+      where: { id: user },
+      transaction: t,
+    });
+
+    if (!userGame) {
+      await t.rollback();
+      return { success: false, code: '404', message: 'Usuario no encontrado.' };
+    }
+
+    if (Number(userGame.clanid) > 0) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '101',
+        message: 'No puedes crear un clan porque ya perteneces a uno.',
+      };
+    }
+
+    const existingMaster = await ClanInfo.findOne({
+      where: { masterid: user },
+      transaction: t,
+    });
+
+    if (existingMaster) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '102',
+        message: 'Ya eres master de un clan.',
+      };
+    }
+
+    const existingName = await ClanInfo.findOne({
+      where: { name: cleanName },
+      transaction: t,
+    });
+
+    if (existingName) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '103',
+        message: 'Ese nombre de clan ya existe.',
+      };
+    }
+
+    const createdClan = await ClanInfo.create({
+      masterid: user,
+      mastername: userGame.name,
+      name: cleanName,
+      point: 0,
+      members: 1,
+      rank: 0,
+      createtime: new Date(),
+      country: userGame.country || 9,
+    }, { transaction: t });
+
+    await UserGameInfo.update({
+      clanid: createdClan.id,
+      clangrade: 1,
+    }, {
+      where: { id: user },
+      transaction: t,
+    });
+
+    await ClanLog.create({
+      user: String(userGame.id),
+      rol: 'master',
+      target: cleanName,
+      action: 'CREATE',
+    }, { transaction: t });
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      message: 'Clan creado correctamente.',
+      clanId: createdClan.id,
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al crear clan');
+  }
+}
+  async resolveClanRequest(user, token, requestId, action, req) {
+    const t = await sequelize.transaction();
+
+    try {
+      const invalidSession = await validateUserSession(user, token, t);
+      if (invalidSession) {
+        await t.rollback();
+        return invalidSession;
+      }
+
+      const request = await ClanRequest.findOne({
+        where: { id: requestId },
+        transaction: t,
+      });
+
+      if (!request) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'La solicitud no existe.',
+        };
+      }
+
+      const clan = await ClanInfo.findOne({
+        where: { id: request.clanid },
+        transaction: t,
+      });
+
+       const userMaster= await UserGameInfo.findOne({
+        where: { name: user },
+        transaction: t,
+      });
+
+      if (!clan || Number(clan.masterid) !== userMaster.id) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '401',
+          message: 'No tienes permisos para resolver esta solicitud.',
+        };
+      }
+
+      if (action !== 'accept' && action !== 'reject') {
+        await t.rollback();
+        return {
+          success: false,
+          code: '400',
+          message: 'Acción inválida.',
+        };
+      }
+
+      const targetUser = await UserGameInfo.findOne({
+        where: { name: request.userid },
+        transaction: t,
+      });
+
+      if (!targetUser) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '405',
+          message: 'El usuario de la solicitud ya no existe.',
+        };
+      }
+
+      if (action === 'accept') {
+        if (Number(targetUser.clanid) > 0) {
+          await ClanRequest.destroy({
+            where: { id: requestId },
+            transaction: t,
+          });
+
+          await t.rollback();
+          return {
+            success: false,
+            code: '406',
+            message: 'El usuario ya pertenece a un clan.',
+          };
+        }
+
+        await UserGameInfo.update({
+          clanid: clan.id,
+        }, {
+          where: { id: targetUser.id },
+          transaction: t,
+        });
+
+        await ClanInfo.update({
+          members: Number(clan.members || 0) + 1,
+        }, {
+          where: { id: clan.id },
+          transaction: t,
+        });
+
+        await ClanLog.create({
+          user: String(user),
+          rol: 'master',
+          target: String(targetUser.name),
+          action: 'ACCEPT',
+        }, { transaction: t });
+
+        await ClanRequest.destroy({
+          where: { id: requestId },
+          transaction: t,
+        });
+
+        await t.commit();
+
+        return {
+          success: true,
+          code: '000',
+          message: 'Solicitud aceptada correctamente.',
+        };
+      }
+
+     await ClanLog.create({
+          user: String(user),
+          rol: 'master',
+          target: String(targetUser.name),
+          action: 'DECLINE',
+        }, { transaction: t });
+
+      await ClanRequest.destroy({
+        where: { id: requestId },
+        transaction: t,
+      });
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Solicitud rechazada correctamente.',
+      };
+    } catch (error) {
+      await t.rollback();
+       console.log(error);
+      throw new Error('Error al resolver solicitud del clan');
+    }
+  }
+
+async getClanRequests(user, token, clanId, search = '', page = 1, limit = 10, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const pageSize = Math.max(parseInt(limit) || 10, 1);
+    const offset = (pageNumber - 1) * pageSize;
+
+    const requests = await ClanRequest.findAll({
+      where: { clanid: clanId },
+      order: [['id', 'DESC']],
+      transaction: t,
+    });
+
+    const userIds = requests.map(r => String(r.userid));
+
+    const userGames = await UserGameInfo.findAll({
+      attributes: ['id', 'name'],
+      where: {
+        name: { [Op.in]: userIds }
+      },
+      transaction: t,
+    });
+
+    const userNames = userGames.map(u => u.name).filter(Boolean);
+
+    const users = await User.findAll({
+      attributes: ['id', 'apodo'],
+      where: {
+        id: { [Op.in]: userNames }
+      },
+      transaction: t,
+    });
+
+    const apodoMap = new Map(
+      users.map(u => [String(u.id), u.apodo])
+    );
+
+    const requestMap = new Map(
+      requests.map(r => [String(r.userid), r.id])
+    );
+
+    let filtered = userGames.map(u => ({
+      requestId: requestMap.get(String(u.name)) || null,
+      user: u.name,
+      nickname: apodoMap.get(String(u.name)) || u.name,
+    }));
+
+    if (search && search.trim() !== '') {
+      const term = search.toLowerCase();
+      filtered = filtered.filter(u =>
+        (u.user || '').toLowerCase().includes(term) ||
+        (u.nickname || '').toLowerCase().includes(term)
+      );
+    }
+
+    const total = filtered.length;
+    const paginated = filtered.slice(offset, offset + pageSize);
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      requests: paginated,
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al obtener solicitudes');
+  }
+}
+async deleteClanMember(user, token, clanId, memberId, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const currentUser = await UserGameInfo.findOne({
+      where: { name: user },
+      transaction: t,
+    });
+
+    if (!currentUser) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '404',
+        message: 'El usuario autenticado no existe.',
+      };
+    }
+
+    const clan = await ClanInfo.findOne({
+      where: { id: clanId },
+      transaction: t,
+    });
+
+    if (!clan) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '405',
+        message: 'El clan no existe.',
+      };
+    }
+
+    if (Number(clan.masterid) !== Number(currentUser.id)) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '401',
+        message: 'No tienes permisos para eliminar miembros de este clan.',
+      };
+    }
+
+    const targetUser = await UserGameInfo.findOne({
+      where: { name: memberId },
+      transaction: t,
+    });
+
+    if (!targetUser) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '406',
+        message: 'El miembro no existe.',
+      };
+    }
+
+    if (Number(targetUser.id) === Number(clan.masterid)) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '407',
+        message: 'No puedes eliminar al master del clan.',
+      };
+    }
+
+    if (Number(targetUser.clanid) !== Number(clan.id)) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '408',
+        message: 'El usuario no pertenece a este clan.',
+      };
+    }
+
+    await UserGameInfo.update(
+      { clanid: 0 },
+      {
+        where: { id: targetUser.id },
+        transaction: t,
+      }
+    );
+
+    await ClanInfo.update(
+      {
+        members: Math.max(Number(clan.members || 1) - 1, 0),
+      },
+      {
+        where: { id: clan.id },
+        transaction: t,
+      }
+    );
+
+    await ClanLog.create({
+      user: String(currentUser.name),
+      rol: 'master',
+      target: String(targetUser.name),
+      action: 'DELETE',
+    }, { transaction: t });
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      message: 'Miembro eliminado correctamente del clan.',
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al eliminar miembro del clan');
+  }
+}
 }
 
 export default new UserService();

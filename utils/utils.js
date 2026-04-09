@@ -1,7 +1,10 @@
+import { Sequelize,Op, Transaction } from 'sequelize';
 import { execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promisify } from 'util';
+import Blackout from '../models/blackoutModel.js';
+import TokenSession from '../models/tokenSessionModel.js';
 
 // __dirname para ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -95,4 +98,42 @@ const generateRandomCoupon = () => {
   return prefix + outChars.join("");
 };
 
-export {getFormatDate,getDateMinusTimeZone,getDateAdjustedMeridiam,generateRandomCoupon};
+const validateUserSession = async(user, token, t) => {
+  const sessionToken = await TokenSession.findOne({
+    attributes: ['token'],
+    where: {
+      token,
+      id: user,
+    },
+    transaction: t,
+  });
+
+  if (!sessionToken) {
+    return {
+      success: false,
+      code: '999',
+      message: 'Token inválido o sesión antigua.',
+    };
+  }
+
+  const blackoutToken = await Blackout.findOne({
+    attributes: ['token'],
+    where: {
+      token,
+      user,
+    },
+    transaction: t,
+  });
+
+  if (blackoutToken) {
+    return {
+      success: false,
+      code: '999',
+      message: 'Sesión inválida, ya ha cerrado sesión.',
+    };
+  }
+
+  return null;
+}
+
+export {getFormatDate,getDateMinusTimeZone,getDateAdjustedMeridiam,generateRandomCoupon,validateUserSession};

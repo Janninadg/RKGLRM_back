@@ -431,6 +431,149 @@ class UserController {
       return res.status(500).json({error: 'Error interno del servidor'});
     }
   }  
+
+  async getAllClans(req, res) {
+    try {
+      const { user, token, search, page, limit } = req.body;
+
+      const result = await UserService.getAllClans(
+        user,
+        token,
+        search,
+        Number(page) || 1,
+        Number(limit) || 10,
+        req
+      );
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al obtener clanes:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async getMyClan(req, res) {
+    try {
+      const { user, token } = req.body;
+      const result = await UserService.getMyClan(user, token, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al obtener mi clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async getClanMembers(req, res) {
+    try {
+      const { user, token, clanId, search, page, limit } = req.body;
+      const result = await UserService.getClanMembers(user, token, clanId, search, page, limit, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al obtener miembros del clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async deleteClanMember(req, res) {
+    try {
+      const { user, token, clanId, memberId } = req.body;
+      const result = await UserService.deleteClanMember(user, token, clanId, memberId, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al eliminar miembro del clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async getClanRequests(req, res) {
+    try {
+      const { user, token, clanId, search, page, limit } = req.body;
+      const result = await UserService.getClanRequests(user, token, clanId, search, page, limit, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al obtener solicitudes del clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async sendClanRequest(req, res) {
+    try {
+      const { user, token, clanId } = req.body;
+      const result = await UserService.sendClanRequest(user, token, clanId, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al enviar solicitud al clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async cancelClanRequest(req, res) {
+    try {
+      const { user, token, clanId } = req.body;
+      const result = await UserService.cancelClanRequest(user, token, clanId, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al cancelar solicitud al clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async createClan(req, res) {
+    try {
+      const { user, token, clanName } = req.body;
+      const result = await UserService.createClan(user, token, clanName, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al crear clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+
+  async resolveClanRequest(req, res) {
+    try {
+      const { user, token, requestId, action } = req.body;
+      const result = await UserService.resolveClanRequest(user, token, requestId, action, req);
+
+      if (result.success || result.code) {
+        return res.status(200).json(result);
+      }
+      return res.status(400).json(result);
+    } catch (error) {
+      console.error('Error al resolver solicitud del clan:', error);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
 }
 
 export default new UserController();

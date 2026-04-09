@@ -1086,7 +1086,7 @@ class MarketService {
                     }
 
                     if(paymentMeth.type === 'INTERNAL'){
-                         console.log(1)
+                        //  console.log(1)
                         const UserHolds = await UserInternalHolds.findOne({
                             where: {  trade_id: chat.trade_id, chat_id: chat.id },
                             transaction: t,
