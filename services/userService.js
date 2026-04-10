@@ -923,9 +923,14 @@ class UserService {
         attributes: ['cash'], // Ajusta esto según tus necesidades
       });
   
-      const characters = await CharacterInfo.findAll({
-        where: { userid: userGameInfo.id },
-        order:[['slot','ASC']],
+     const characters = await CharacterInfo.findAll({
+        where: {
+          userid: userGameInfo.id,
+          auth: {
+            [Op.ne]: 10
+          }
+        },
+        order: [['slot', 'ASC']],
       });
   
       for (const character of characters) {
@@ -1106,9 +1111,9 @@ class UserService {
         user:username,
         fecha: new Date(),
       }, { transaction: t });
-
-      // 8. Eliminar el personaje de CharacterInfo
-      await characterReg.destroy({ transaction: t });
+      
+       characterReg.auth = 10;
+      await characterReg.save({ transaction: t });
       
       // Commit de la transacción si todo fue exitoso
       await t.commit();
