@@ -25,6 +25,12 @@ const Marketplace = sequelize.define('marketplace', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  descripcion: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+    defaultValue: null,
+    collate: 'utf8mb4_general_ci',
+  },
   estado: {
     type: DataTypes.TINYINT,
     allowNull: false,
@@ -36,7 +42,7 @@ const Marketplace = sequelize.define('marketplace', {
   },
 }, {
   tableName: 'marketplace',
-  timestamps: false, // Evita la creación automática de campos createdAt y updatedAt
+  timestamps: false,
 });
 
 export default Marketplace;

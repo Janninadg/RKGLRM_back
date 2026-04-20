@@ -29,7 +29,7 @@ const PaymentMethods = sequelize.define('payment_methods', {
     collate: 'utf8mb4_general_ci',
   },
   type: {
-    type: DataTypes.ENUM('INTERNAL', 'EXTERNAL'),
+    type: DataTypes.ENUM('INTERNAL', 'EXTERNAL','EXCHANGE'),
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
