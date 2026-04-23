@@ -1867,7 +1867,7 @@ class EventService {
   }
 
 
-  async redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid, req) {
+  async redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid,ip, req) {
     const t = await sequelize.transaction();
   
     try {
@@ -1954,6 +1954,24 @@ class EventService {
       if (userRedeem) {
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '001', message: 'Ya canjeaste este cupón anteriormente' };
+      }
+
+     const userRedeemxIP = await TempCupon.findAll({
+        where: {
+          ip: ip,
+          ticket: cupon,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (userRedeemxIP.length >= 3) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '001',
+          message: 'No puedes canjear este cupón más de 3 veces desde la misma IP',
+        };
       }
 
       var typePrize = cuponPrize.type;
@@ -2159,6 +2177,7 @@ class EventService {
         {
           user: user,
           ticket: cupon,
+          ip: ip,
           fecha: new Date()
         },
         {
@@ -2184,6 +2203,7 @@ class EventService {
     }
     catch (error) {
         await t.rollback();
+        console.log(error);
         throw new Error('Error al canjear cupón');
     }
   } 

@@ -18,6 +18,10 @@ const TempCupon = sequelize.define('temp_cupon', {
     allowNull: false,
     collate: 'utf8mb4_general_ci',
   },
+  ip: {
+    type: DataTypes.STRING(200),
+    allowNull: false,
+  },
   fecha: {
     type: DataTypes.DATE,
     allowNull: true,

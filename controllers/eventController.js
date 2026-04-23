@@ -351,7 +351,7 @@ class EventController {
       console.log("REDEEM CUPON - FROM IP: ".blue,req.clientIp.green);
 
       //enviar otro key para comparar...
-      const { TEMDLa,/*K2tFvE,T7hLpW,*/TIIDsK } = req.body;
+      const { TEMDLa,/*K2tFvE,T7hLpW,*/TIIDsK,ip } = req.body;
 
       //const signature = K2tFvE;
 
@@ -376,7 +376,7 @@ class EventController {
 
       const paramsString = `${KIddmL}-${USIDA4}-${GMTDDs}-${IODKSD}`;
 
-      const result = await EventService.redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid, req);
+      const result = await EventService.redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid,ip, req);
 
       if (result.success || result.code) {
         return res.status(200).json(result);
