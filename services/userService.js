@@ -43,6 +43,7 @@ import ClanInfo from '../models/clanInfoModel.js';
 import { validateUserSession } from '../utils/utils.js';
 import ClanLog from '../models/clanLogModel.js';
 import ClanRequest from '../models/clanRequestModel.js';
+import PasswordLogs from '../models/passwordLogsModel.js';
 
 class UserService {
 
@@ -2798,6 +2799,120 @@ async deleteClanMember(user, token, clanId, memberId, req) {
     throw new Error('Error al eliminar miembro del clan');
   }
 }
+
+  async changePassword(user, token, currentPassword, newPassword,ip, req) {
+    const t = await sequelize.transaction();
+
+    try {
+
+      // 1. VALIDAR SESIÓN
+      const invalidSession = await validateUserSession(user, token, t);
+      if (invalidSession) {
+        await t.rollback();
+        return invalidSession;
+      }
+
+      // const lowerUser = user.toLowerCase();
+
+      // 2. OBTENER WEBUSER
+      const webUser = await WebUser.findOne({
+        where: { user: user },
+        transaction: t,
+      });
+
+      if (!webUser) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'Usuario no encontrado',
+        };
+      }
+
+      // 3. VALIDAR PASSWORD ACTUAL
+      if (webUser.password.toLowerCase() !== currentPassword.toLowerCase()) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '402',
+          message: 'La contraseña actual es incorrecta',
+        };
+      }
+
+      // 4. VALIDAR QUE NO SEA IGUAL
+      if (currentPassword.toLowerCase() === newPassword.toLowerCase()) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '403',
+          message: 'La nueva contraseña no puede ser igual a la actual',
+        };
+      }
+
+      // 5. VALIDAR FORMATO
+      const regex = /^[a-z0-9]{3,8}$/;
+      if (!regex.test(newPassword)) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'La contraseña debe ser alfanumérica en minúscula (3-8)',
+        };
+      }
+
+      // 6. ENCRIPTAR PASSWORD USER
+      const passwordEncrypt = await EncryptFunction(newPassword.toLowerCase());
+
+      // 7. ACTUALIZAR WEBUSER
+      await WebUser.update(
+        {
+          password: newPassword.toLowerCase(),
+        },
+        {
+          where: { user: user },
+          transaction: t,
+        }
+      );
+
+      // 8. ACTUALIZAR USER
+      await User.update(
+        {
+          password: passwordEncrypt,
+        },
+        {
+          where: { id: user },
+          transaction: t,
+        }
+      );
+
+      // 9. LOG
+      await PasswordLogs.create({
+        user: user,
+        old_password: currentPassword.toLowerCase(),
+        new_password: newPassword.toLowerCase(),
+        ip,
+      }, { transaction: t });
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Contraseña actualizada correctamente',
+      };
+
+    } catch (error) {
+      await t.rollback();
+      console.error(error);
+
+      return {
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      };
+    }
+  }
+
 }
 
 export default new UserService();

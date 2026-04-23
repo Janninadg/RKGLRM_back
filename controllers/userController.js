@@ -574,6 +574,28 @@ class UserController {
       return res.status(500).json({ error: 'Error interno del servidor' });
     }
   }
+
+  async changePassword(req, res) {
+  try {
+    const { user, token, currentPassword, newPassword,ip } = req.body;
+    const result = await UserService.changePassword(
+      user,
+      token,
+      currentPassword,
+      newPassword,
+      ip,
+      req
+    );
+
+    if (result.success || result.code) {
+      return res.status(200).json(result);
+    }
+    return res.status(400).json(result);
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
 }
 
 export default new UserController();

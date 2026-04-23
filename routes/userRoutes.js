@@ -61,4 +61,7 @@ router.post('/clans/create', UserController.createClan);
 router.post('/clans/request/resolve', UserController.resolveClanRequest);
 router.post('/clans/member/delete', UserController.deleteClanMember);
 
+
+router.post('/chngPss', UserController.changePassword);
+
 export default router;
