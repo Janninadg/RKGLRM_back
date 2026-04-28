@@ -41,6 +41,7 @@ import TradeChats from '../models/Trades/tradeChatsModel.js';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
 import User from '../models/userModel.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
+import CharacterInfoLog from '../models/characterInfoLogModel.js';
 
 
 class GMPanelService {
@@ -3206,7 +3207,7 @@ class GMPanelService {
 
        // 3) Obtener el id interno de usuario por su username
       const userGameInfo = await UserGameInfo.findOne({
-        attributes: ['id'],
+        attributes: ['id','name'],
         where: { name: username },
         transaction: t,
       });
@@ -3242,10 +3243,10 @@ class GMPanelService {
       await LogPanelGM.create(
         {
           userAction:user,
-          action: 'Cambiar nivel de personaje',
-          user:personaje,
-          amount:level,
-          type:7,
+          action: 'Reset de personaje',
+          user:userGameInfo.name,
+          amount:personaje,
+          type:22,
           date: new Date(),
         },
         {
@@ -3253,34 +3254,124 @@ class GMPanelService {
         }
       );
 
-      await LogPanelGM.create(
-        {
-          userAction:user,
-          action: 'Cambiar experiencia de personaje',
-          user:personaje,
-          amount:exp,
-          type:8,
-          date: new Date(),
+      const RESET_COST = 3000;
+
+      const statsToReset = [
+        'hit1',
+        'hit2',
+        'hit3',
+        'hit4',
+        'chit',
+        'hp',
+        'ap',
+        'attackspeed',
+        'speed',
+        'maxcp',
+      ];
+
+      const totalStats = statsToReset.reduce((total, stat) => {
+        return total + Number(personajeUser[stat] || 0);
+      }, 0);
+
+      if (totalStats <= 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '005',
+          message: 'El personaje no tiene stats para resetear.',
+        };
+      }
+
+      // Buscar cash del usuario con lock
+      const userCash = await Cash.findOne({
+        where: {
+          id: userGameInfo.name,
         },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
-      );
-      
-      // 6) Actualizar nivel y experiencia
-      personajeUser.level = level;
-      personajeUser.exp = exp;
-      await personajeUser.save({ transaction: t });
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!userCash) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '006',
+          message: 'No se encontró información de cash para este usuario.',
+        };
+      }
+
+      // 1) Obtener cash antes de descontar
+      const prevCash = Number(userCash.cash || 0);
+
+     // 1) Validar cash
+    if (prevCash < RESET_COST) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '007',
+        message: 'No tiene suficiente cash para realizar el reset.',
+      };
+    }
+
+    // 2) Calcular cash después del descuento
+    const actualCash = prevCash - RESET_COST;
+
+    // 3) Crear o actualizar CharacterInfoLog SIN transaction
+    let characterLog = await CharacterInfoLog.findOne({
+      where: {
+        player_name: personajeUser.name,
+        userid: userGameInfo.id,
+        account_name: userGameInfo.name,
+      },
+    });
+
+    if (!characterLog) {
+      characterLog = await CharacterInfoLog.create({
+        player_name: personajeUser.name,
+        userid: userGameInfo.id,
+        account_name: userGameInfo.name,
+        total_sum: 0,
+        prevcash: prevCash,
+        actualcash: prevCash,
+        created_at: new Date(),
+      });
+    } else {
+      characterLog.prevcash = prevCash;
+      characterLog.actualcash = prevCash;
+      characterLog.created_at = new Date();
+
+      await characterLog.save();
+    }
+
+    // 4) Descontar cash CON transaction
+    userCash.cash = actualCash;
+    await userCash.save({ transaction: t });
+
+    // 5) Resetear stats CON transaction
+    statsToReset.forEach((stat) => {
+      personajeUser[stat] = 0;
+    });
+
+    await personajeUser.save({ transaction: t });
+
+    // 6) Actualizar log SIN transaction después del descuento
+    characterLog.total_sum = Number(characterLog.total_sum || 0) + totalStats;
+    characterLog.actualcash = actualCash;
+    characterLog.created_at = new Date();
+
+    await characterLog.save();
 
       // 7) Obtener el nombre para el mensaje
       const personajeName = personajeUser.name;
 
       await t.commit();
-      console.log("[GM Panel]".green,' Exito'.green);
+
+      console.log("[GM Panel]".green, ' Exito'.green);
+
       return {
         success: true,
         code: '000',
-        message: `El personaje "${personajeName}" fue actualizado a nivel ${level} y ${exp} de experiencia.`,
+        message: `Los stats del personaje "${personajeName}" fueron reseteados.`,
       };
 
   } catch (error) {

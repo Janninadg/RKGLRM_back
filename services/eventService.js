@@ -1431,7 +1431,7 @@ class EventService {
 
       if (prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite || prizesGame.limite == -1){
         await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '100', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a girar la ruleta para obtener un premio :)`};
+        return { success: false, code: '100', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a jugar para obtener el premio :)`};
       } else if(prizesGame.limite > 0 && prizesGame.users < prizesGame.limite){
         //update
         await PrizesGame.increment(
