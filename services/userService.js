@@ -44,6 +44,7 @@ import { validateUserSession } from '../utils/utils.js';
 import ClanLog from '../models/clanLogModel.js';
 import ClanRequest from '../models/clanRequestModel.js';
 import PasswordLogs from '../models/passwordLogsModel.js';
+import CharacterInfoLog from '../models/characterInfoLogModel.js';
 
 class UserService {
 
@@ -2682,6 +2683,107 @@ async getClanRequests(user, token, clanId, search = '', page = 1, limit = 10, re
     throw new Error('Error al obtener solicitudes');
   }
 }
+
+async leaveClan(user, token, clanId, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    const currentUser = await UserGameInfo.findOne({
+      where: { name: user },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!currentUser) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '404',
+        message: 'El usuario autenticado no existe.',
+      };
+    }
+
+    const clan = await ClanInfo.findOne({
+      where: { id: clanId },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!clan) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '405',
+        message: 'El clan no existe.',
+      };
+    }
+
+    if (Number(currentUser.clanid) !== Number(clan.id)) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '408',
+        message: 'No perteneces a este clan.',
+      };
+    }
+
+    if (Number(clan.masterid) === Number(currentUser.id)) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '409',
+        message: 'El master no puede salirse del clan.',
+      };
+    }
+
+    await UserGameInfo.update(
+      { clanid: 0 },
+      {
+        where: { id: currentUser.id },
+        transaction: t,
+      }
+    );
+
+    await ClanInfo.update(
+      {
+        members: Math.max(Number(clan.members || 1) - 1, 0),
+      },
+      {
+        where: { id: clan.id },
+        transaction: t,
+      }
+    );
+
+    await ClanLog.create(
+      {
+        user: String(currentUser.name),
+        rol: 'member',
+        target: String(clan.name || clan.id),
+        action: 'LEAVE',
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      message: 'Saliste del clan correctamente.',
+    };
+  } catch (error) {
+    await t.rollback();
+    console.log(error);
+    throw new Error('Error al salir del clan');
+  }
+}
+
 async deleteClanMember(user, token, clanId, memberId, req) {
   const t = await sequelize.transaction();
 
@@ -2912,6 +3014,161 @@ async deleteClanMember(user, token, clanId, memberId, req) {
       };
     }
   }
+
+  async resetCharacterStats(user, token, personaje, req) {
+  const t = await sequelize.transaction();
+
+  try {
+    const RESET_COST = 3000;
+
+    const statsToReset = [
+      'hit1',
+      'hit2',
+      'hit3',
+      'hit4',
+      'chit',
+      'hp',
+      'ap',
+      'attackspeed',
+      'speed',
+      'maxcp',
+    ];
+
+    // 1. Validar sesión
+    const invalidSession = await validateUserSession(user, token, t);
+    if (invalidSession) {
+      await t.rollback();
+      return invalidSession;
+    }
+
+    // 2. Buscar usergameinfo
+    const userGameInfo = await UserGameInfo.findOne({
+      attributes: ['id', 'name'],
+      where: { name: user },
+      transaction: t,
+    });
+
+    if (!userGameInfo) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '003',
+        message: 'Usuario de juego no encontrado.',
+      };
+    }
+
+    // 3. Buscar personaje del usuario
+    const personajeUser = await CharacterInfo.findOne({
+      where: {
+        id: personaje,
+        userid: userGameInfo.id,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!personajeUser) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '004',
+        message: 'El personaje no pertenece a este usuario.',
+      };
+    }
+
+    // 4. Sumar stats
+    const totalStats = statsToReset.reduce((total, stat) => {
+      return total + Number(personajeUser[stat] || 0);
+    }, 0);
+
+    if (totalStats <= 0) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '005',
+        message: 'El personaje no tiene stats para resetear.',
+      };
+    }
+
+    // 5. Buscar cash con lock
+    const userCash = await Cash.findOne({
+      where: {
+        id: userGameInfo.name,
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!userCash) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '006',
+        message: 'No se encontró información de cash para este usuario.',
+      };
+    }
+
+    const prevCash = Number(userCash.cash || 0);
+
+    if (prevCash < RESET_COST) {
+      await t.rollback();
+      return {
+        success: false,
+        code: '007',
+        message: 'No tienes suficiente cash para realizar el reset.',
+      };
+    }
+
+    const actualCash = prevCash - RESET_COST;
+
+    // 6. Crear log inicial, una sola vez
+    const characterLog = await CharacterInfoLog.create({
+      player_name: personajeUser.name,
+      userid: userGameInfo.id,
+      account_name: userGameInfo.name,
+      total_sum: totalStats,
+      prevcash: prevCash,
+      actualcash: prevCash,
+      created_at: new Date(),
+    });
+
+    // 7. Descontar cash
+    userCash.cash = actualCash;
+    await userCash.save({ transaction: t });
+
+    // 8. Sumar totalStats a levelpoint
+    personajeUser.levelpoint = Number(personajeUser.levelpoint || 0) + totalStats;
+
+    // 9. Resetear stats a 0
+    statsToReset.forEach((stat) => {
+      personajeUser[stat] = 0;
+    });
+
+    await personajeUser.save({ transaction: t });
+
+    // 10. Actualizar ese mismo log después del descuento
+    characterLog.actualcash = actualCash;
+    await characterLog.save({ transaction: t });
+
+    await t.commit();
+
+    return {
+      success: true,
+      code: '000',
+      message: `Los stats de ${personajeUser.name} fueron reseteados correctamente.`,
+    };
+
+  } catch (error) {
+    await t.rollback();
+    console.error(error);
+
+    return {
+      success: false,
+      code: '500',
+      message: 'Error interno del servidor',
+    };
+  }
+}
 
 }
 

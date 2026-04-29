@@ -60,8 +60,11 @@ router.post('/clans/request/cancel', UserController.cancelClanRequest);
 router.post('/clans/create', UserController.createClan);
 router.post('/clans/request/resolve', UserController.resolveClanRequest);
 router.post('/clans/member/delete', UserController.deleteClanMember);
+router.post('/clans/leave', UserController.leaveClan);
 
 
 router.post('/chngPss', UserController.changePassword);
+
+router.post('/character/reset-stats', UserController.resetCharacterStats);
 
 export default router;

@@ -21,7 +21,7 @@ const ClanLog = sequelize.define('clanlog', {
     allowNull: false,
   },
   action: {
-    type: DataTypes.ENUM('ACCEPT', 'DECLINE', 'DELETE', 'CREATE'),
+    type: DataTypes.ENUM('ACCEPT', 'DECLINE', 'DELETE', 'CREATE','LEAVE'),
     allowNull: false,
   },
   created_at: {

@@ -575,6 +575,23 @@ class UserController {
     }
   }
 
+  async leaveClan(req, res) {
+  try {
+    const { user, token, clanId } = req.body;
+
+    const result = await UserService.leaveClan(user, token, clanId, req);
+
+    if (result.success || result.code) {
+      return res.status(200).json(result);
+    }
+
+    return res.status(400).json(result);
+  } catch (error) {
+    console.error('Error al salir del clan:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
   async changePassword(req, res) {
   try {
     const { user, token, currentPassword, newPassword,ip } = req.body;
@@ -593,6 +610,28 @@ class UserController {
     return res.status(400).json(result);
   } catch (error) {
     console.error('Error al cambiar contraseña:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+async resetCharacterStats(req, res) {
+  try {
+    const { user, token, personaje } = req.body;
+
+    const result = await UserService.resetCharacterStats(
+      user,
+      token,
+      personaje,
+      req
+    );
+
+    if (result.success || result.code) {
+      return res.status(200).json(result);
+    }
+
+    return res.status(400).json(result);
+  } catch (error) {
+    console.error('Error al resetear stats del personaje:', error);
     return res.status(500).json({ error: 'Error interno del servidor' });
   }
 }

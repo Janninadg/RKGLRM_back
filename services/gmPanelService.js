@@ -3303,63 +3303,47 @@ class GMPanelService {
       // 1) Obtener cash antes de descontar
       const prevCash = Number(userCash.cash || 0);
 
-     // 1) Validar cash
-    if (prevCash < RESET_COST) {
-      await t.rollback();
-      return {
-        success: false,
-        code: '007',
-        message: 'No tiene suficiente cash para realizar el reset.',
-      };
-    }
+      // 1) Validar cash
+      if (prevCash < RESET_COST) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '007',
+          message: 'No tiene suficiente cash para realizar el reset.',
+        };
+      }
 
-    // 2) Calcular cash después del descuento
-    const actualCash = prevCash - RESET_COST;
+      // 2) Calcular cash después del descuento
+      const actualCash = prevCash - RESET_COST;
 
-    // 3) Crear o actualizar CharacterInfoLog SIN transaction
-    let characterLog = await CharacterInfoLog.findOne({
-      where: {
+      // 1) Crear nuevo log ANTES del descuento
+      const characterLog = await CharacterInfoLog.create({
         player_name: personajeUser.name,
         userid: userGameInfo.id,
         account_name: userGameInfo.name,
-      },
-    });
-
-    if (!characterLog) {
-      characterLog = await CharacterInfoLog.create({
-        player_name: personajeUser.name,
-        userid: userGameInfo.id,
-        account_name: userGameInfo.name,
-        total_sum: 0,
+        total_sum: totalStats,
         prevcash: prevCash,
         actualcash: prevCash,
         created_at: new Date(),
       });
-    } else {
-      characterLog.prevcash = prevCash;
-      characterLog.actualcash = prevCash;
-      characterLog.created_at = new Date();
 
-      await characterLog.save();
-    }
+      // 2) Descontar cash CON transaction
+      userCash.cash = actualCash;
+      await userCash.save({ transaction: t });
 
-    // 4) Descontar cash CON transaction
-    userCash.cash = actualCash;
-    await userCash.save({ transaction: t });
+      // 3) Sumar totalStats a levelpoint y resetear stats CON transaction
+      personajeUser.levelpoint = Number(personajeUser.levelpoint || 0) + totalStats;
 
-    // 5) Resetear stats CON transaction
-    statsToReset.forEach((stat) => {
-      personajeUser[stat] = 0;
-    });
+      statsToReset.forEach((stat) => {
+        personajeUser[stat] = 0;
+      });
 
-    await personajeUser.save({ transaction: t });
+      await personajeUser.save({ transaction: t });
 
-    // 6) Actualizar log SIN transaction después del descuento
-    characterLog.total_sum = Number(characterLog.total_sum || 0) + totalStats;
-    characterLog.actualcash = actualCash;
-    characterLog.created_at = new Date();
+      // 4) Actualizar ESE MISMO LOG dentro de la transacción
+      characterLog.actualcash = actualCash;
 
-    await characterLog.save();
+      await characterLog.save({ transaction: t });
 
       // 7) Obtener el nombre para el mensaje
       const personajeName = personajeUser.name;
