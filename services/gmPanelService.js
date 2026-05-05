@@ -42,6 +42,7 @@ import TradeActions from '../models/Trades/tradeActionsModel.js';
 import User from '../models/userModel.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
+import couponCache from '../modules/coupons/coupon.cache.js';
 
 
 class GMPanelService {
@@ -1998,6 +1999,19 @@ class GMPanelService {
       );
 
       await t.commit();
+
+      // actualizar cache en memoria
+      generatedCoupons.forEach((couponCode) => {
+        couponCache.addOrUpdate({
+          ticket: couponCode,
+          name_prize: name,
+          limite: limit,
+          users: 0,
+          type: type,
+          id_prize: prize,
+          uri: '',
+        });
+      });
 
       return {
         success: true,

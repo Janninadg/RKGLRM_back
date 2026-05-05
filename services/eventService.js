@@ -37,6 +37,8 @@ import EventsReview from '../models/eventsReviewModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
+import couponCache from '../modules/coupons/coupon.cache.js';
+import tempCouponCache from '../modules/coupons/tempCoupon.cache.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -1868,205 +1870,212 @@ class EventService {
 
 
   async redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid,ip, req) {
-    const t = await sequelize.transaction();
-  
-    try {
-
-      // Verificar el paquete utilizando la clase PacketVerifier
-
-      const verifyPacketEqual = (isDataIntegrityValid); //&& (userId === userId2) && ((ticketCount+operator) === resOp) && (ticketCount === ticketCount2) && (key1 === key2);
-      const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-
-      console.log(banInfo);
-
-      if (banInfo) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return banInfo;
-      }
-
-      const trx = await sequelize.transaction(); 
-      // Si la cadena de parámetros no existe, insertarla en trackingpacket
-      await TrackingPacket.create(
-        {
-          packet: paramsString,
-          user: user,
-          fecha_uso: new Date(),
-        },
-        {
-          transaction: trx, // Asociar la transacción con esta operación
-        }
-      );
-
-      await trx.commit(); 
-
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: user,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
-      if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '300', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
-      }
-
-      // Obtener el tipo, nombre,uri:
-      // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
-      const cuponPrize = await Cupon.findOne({
-        // attributes: ['type', 'id_prize', 'name_prize', 'uri','limite','users'],
-        where: {
-          ticket: cupon,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-        lock: t.LOCK.UPDATE,
-      });
-  
-      if (!cuponPrize) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '004', message: 'El cupón ingresado no existe' };
-      }
-
-      //console.log(cuponPrize);
-
-      //Verificar si ya expiro:
-
-      if (cuponPrize.limite <= cuponPrize.users) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '002', message: 'El cupón ingresado ya expiró' };
-      }
-
-      //Verificar si el usuario ya redimio anteriormente el cupon:
-
-      const userRedeem = await TempCupon.findOne({
-        // attributes: ['id'],
-        where: {
-          user: user,
-          ticket: cupon,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (userRedeem) {
-        await t.rollback(); // Revertir la transacción en caso de error
-        return { success: false, code: '001', message: 'Ya canjeaste este cupón anteriormente' };
-      }
-
-     const userRedeemxIP = await TempCupon.findAll({
-        where: {
-          ip: ip,
-          ticket: cupon,
-        },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (userRedeemxIP.length >= 3) {
-        await t.rollback();
+      // ============================================================
+      // FILTRO RÁPIDO EN MEMORIA
+      // Esto evita tocar BD cuando el cupón claramente no existe,
+      // ya expiró, el usuario ya lo redimió o la IP llegó al límite.
+      // La BD sigue siendo la verificación final dentro de la transacción.
+      // ============================================================
+      const localCouponCheck = couponCache.canRedeemLocal(cupon);
+      if (!localCouponCheck.ok) {
         return {
           success: false,
-          code: '001',
-          message: 'No puedes canjear este cupón más de 3 veces desde la misma IP',
+          code: localCouponCheck.code,
+          message: localCouponCheck.message,
         };
       }
-
-      var typePrize = cuponPrize.type;
-      var message;
-
-      // Agregar el premio según el tipo
-      switch (typePrize) {
-        case 0:
-          // Obtener el ID de usuario desde UserGameInfo por su nombre
-          const userGameInfo = await UserGameInfo.findOne({
-            attributes: ['id'],
-            where: {
-              name: user, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
-
-          if (!userGameInfo) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-          }
-          
-          // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-          await PendingPresents.create(
-            {
-              present_id: cuponPrize.id_prize,
-              user_id: userGameInfo.id, // Usar el ID de usuario obtenido
-              added_time: new Date(),
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
-            }
-          );
-
-          //console.log(res);
-
-          message = `Has obtenido un(a) ${cuponPrize.name_prize}`;
-          break;
-        case 1:
-           //Verificar que el usuario exista:
-          const userGold = await UserGameInfo.findOne({
-            attributes: ['id','gold'],
-            where: {
-              name: user, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
-
-          if (!userGold) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '004', message: 'Usuario no encontrado [GOLD: Comunicar con algún administrador]' };
-          }
-
-          // Actualizar el gold en UserGameInfo
-          await UserGameInfo.increment(
-            'gold',
-            { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
-          );
-
-          message = `Has obtenido ${cuponPrize.id_prize} de Oro`;
-          break;
-        case 2:
-           //Verificar que el usuario exista:
-          const userCash = await Cash.findOne({
-            attributes: ['cash'],
-            where: {
-              id: user, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
+  
+      const localTempCouponCheck = tempCouponCache.canRedeemLocal(user, cupon, ip);
+      if (!localTempCouponCheck.ok) {
+        return {
+          success: false,
+          code: localTempCouponCheck.code,
+          message: localTempCouponCheck.message,
+        };
+      }
+  
+      const t = await sequelize.transaction();
     
-          if (!userCash) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '004', message: 'Usuario no encontrado [CASH: Comunicar con algún administrador]' };
+      try {
+  
+        // Verificar el paquete utilizando la clase PacketVerifier
+        const verifyPacketEqual = (isDataIntegrityValid);
+        const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
+  
+        console.log(banInfo);
+  
+        if (banInfo) {
+          await t.rollback();
+          return banInfo;
+        }
+  
+        // Antes tenías otra transacción trx aquí. Eso aumenta conexiones y puede generar inconsistencias.
+        // Lo metemos en la misma transacción principal.
+        await TrackingPacket.create(
+          {
+            packet: paramsString,
+            user: user,
+            fecha_uso: new Date(),
+          },
+          {
+            transaction: t,
           }
-
-          // Actualizar el cash en Cash
-          await Cash.increment(
-            'cash',
-            { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
-          );
-
-          message = `Has obtenido ${cuponPrize.id_prize} de Cash`;
-          break;
-        case 3:
-          // Actualizar el cash en Cash
-          await Ticket.increment(
-            'tickets',
-            { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
-          );
-
-          message = `Has obtenido ${cuponPrize.id_prize} ticket(s) de cash`;
-          break;
-        case 4:
-            // Actualizar el cash en Cash
+        );
+  
+        // Verificar token:
+        const sessionToken = await TokenSession.findOne({
+          attributes: ['token'],
+          where: {
+            token: token,
+            id: user,
+          },
+          transaction: t,
+        });
+  
+        if(!sessionToken){
+          await t.rollback();
+          return { success: false, code: '300', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
+        }
+  
+        // Verificación final en BD con lock.
+        const cuponPrize = await Cupon.findOne({
+          where: {
+            ticket: cupon,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+    
+        if (!cuponPrize) {
+          await t.rollback();
+          couponCache.remove(cupon);
+          return { success: false, code: '004', message: 'El cupón ingresado no existe' };
+        }
+  
+        if (cuponPrize.limite <= cuponPrize.users) {
+          await t.rollback();
+          couponCache.addOrUpdate(cuponPrize);
+          return { success: false, code: '002', message: 'El cupón ingresado ya expiró' };
+        }
+  
+        // Verificación final en BD por usuario.
+        const userRedeem = await TempCupon.findOne({
+          where: {
+            user: user,
+            ticket: cupon,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+  
+        if (userRedeem) {
+          await t.rollback();
+          tempCouponCache.addRedeem(userRedeem);
+          return { success: false, code: '001', message: 'Ya canjeaste este cupón anteriormente' };
+        }
+  
+        // Verificación final en BD por IP.
+        // Usamos count en vez de findAll para traer menos datos.
+        const userRedeemxIPCount = await TempCupon.count({
+          where: {
+            ip: ip,
+            ticket: cupon,
+          },
+          transaction: t,
+        });
+  
+        if (userRedeemxIPCount >= 3) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '001',
+            message: 'No puedes canjear este cupón más de 3 veces desde la misma IP',
+          };
+        }
+  
+        var typePrize = cuponPrize.type;
+        var message;
+  
+        // Agregar el premio según el tipo
+        switch (typePrize) {
+          case 0:
+            const userGameInfo = await UserGameInfo.findOne({
+              attributes: ['id'],
+              where: {
+                name: user,
+              },
+              transaction: t,
+            });
+  
+            if (!userGameInfo) {
+              await t.rollback();
+              return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
+            }
+            
+            await PendingPresents.create(
+              {
+                present_id: cuponPrize.id_prize,
+                user_id: userGameInfo.id,
+                added_time: new Date(),
+              },
+              {
+                transaction: t,
+              }
+            );
+  
+            message = `Has obtenido un(a) ${cuponPrize.name_prize}`;
+            break;
+          case 1:
+            const userGold = await UserGameInfo.findOne({
+              attributes: ['id','gold'],
+              where: {
+                name: user,
+              },
+              transaction: t,
+            });
+  
+            if (!userGold) {
+              await t.rollback();
+              return { success: false, code: '004', message: 'Usuario no encontrado [GOLD: Comunicar con algún administrador]' };
+            }
+  
+            await UserGameInfo.increment(
+              'gold',
+              { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
+            );
+  
+            message = `Has obtenido ${cuponPrize.id_prize} de Oro`;
+            break;
+          case 2:
+            const userCash = await Cash.findOne({
+              attributes: ['cash'],
+              where: {
+                id: user,
+              },
+              transaction: t,
+            });
+      
+            if (!userCash) {
+              await t.rollback();
+              return { success: false, code: '004', message: 'Usuario no encontrado [CASH: Comunicar con algún administrador]' };
+            }
+  
+            await Cash.increment(
+              'cash',
+              { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
+            );
+  
+            message = `Has obtenido ${cuponPrize.id_prize} de Cash`;
+            break;
+          case 3:
+            await Ticket.increment(
+              'tickets',
+              { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
+            );
+  
+            message = `Has obtenido ${cuponPrize.id_prize} ticket(s) de cash`;
+            break;
+          case 4:
             await TicketOro.increment(
               'tickets',
               { by: cuponPrize.id_prize, where: { id: user }, transaction: t }
@@ -2074,144 +2083,130 @@ class EventService {
     
             message = `Has obtenido ${cuponPrize.id_prize} ticket(s) de oro`;
             break;
-        case 5:
-          //Obtener id de usuario
-          // Obtener el ID de usuario desde UserGameInfo por su nombre
-          const userGame = await UserGameInfo.findOne({
-            attributes: ['id'],
-            where: {
-              name: user, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
-
-          if (!userGame) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
-          }
-          
-          //Obtener el nro de slot mas cercano disponible
-          // Obtener todos los slots distintos del usuario
-          const distinctSlots = await UserItemInfo.findAll({
-            attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
-            where: {
-              userid: userGame.id,
-            },
-            raw: true,
-            transaction: t,
-          });
-
-          // Mapear los resultados a un array de números
-          const distinctSlotsArray = distinctSlots.map((item) => item.slot)
-          var slotFree = null;
-
-          //console.log(distinctSlotsArray);
-
-          for (let i = 0; i <= 89; i++) {
-            if (!distinctSlotsArray.includes(i)) {
-              slotFree = i;
-              break;
+          case 5:
+            const userGame = await UserGameInfo.findOne({
+              attributes: ['id'],
+              where: {
+                name: user,
+              },
+              transaction: t,
+            });
+  
+            if (!userGame) {
+              await t.rollback();
+              return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
             }
-          }
-          //console.log(slotFree);
-          //Si no hay, volver a enviar el mensaje de slot no disponible
-          if(slotFree === null){
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '003', message: 'No tiene slots disponbiles para canjear el premio' };
-          }
-
-
-          //Si tiene, guardar el premio temporal en useriteminfo
-          await UserItemInfo.create(
-            {
-              userid: userGame.id,
-              itemid: cuponPrize.id_prize,
-              slot: slotFree,
-              limittime: 0,
-            },
-            {
-              transaction: t, // Asociar la transacción con esta operación
+            
+            const distinctSlots = await UserItemInfo.findAll({
+              attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
+              where: {
+                userid: userGame.id,
+              },
+              raw: true,
+              transaction: t,
+            });
+  
+            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
+            var slotFree = null;
+  
+            for (let i = 0; i <= 89; i++) {
+              if (!distinctSlotsArray.includes(i)) {
+                slotFree = i;
+                break;
+              }
             }
-          );
-
-          message = `Has obtenido un(a) ${cuponPrize.name_prize} temporal`;
-          break;
-        case 13:
-          //Verificar que el usuario exista:
-          const userPoints = await UserGameInfo.findOne({
-            attributes: ['id','clanpoint'],
-            where: {
-              name: user, // Cambia esto para usar el nombre de usuario correcto
-            },
-            transaction: t, // Asociar la transacción con esta consulta
-          });
-
-          if (!userPoints) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            return { success: false, code: '004', message: 'Usuario no encontrado [EVENTPOINTS: Comunicar con algún administrador]' };
-          }
-
-          // Actualizar el gold en UserGameInfo
-          await UserGameInfo.increment(
-            'clanpoint',
-            { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
-          );
-
-          message = `Has obtenido ${cuponPrize.id_prize} de Punto(s) de evento`;
-          break;
-          break;
-        default:
-          await t.rollback(); // Revertir la transacción en caso de error
-          return { success: false, code: '201', message: 'Tipo de premio no válido' };
-      }
-
-      // await Cupon.increment(
-      //   'users',
-      //   { by: 1, where: { ticket: cupon }, transaction: t }
-      // );
-
-      cuponPrize.users += 1;
-      await cuponPrize.save({ transaction: t });
-
-      await TempCupon.create(
-        {
-          user: user,
-          ticket: cupon,
-          ip: ip,
-          fecha: new Date()
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
+  
+            if(slotFree === null){
+              await t.rollback();
+              return { success: false, code: '003', message: 'No tiene slots disponbiles para canjear el premio' };
+            }
+  
+            await UserItemInfo.create(
+              {
+                userid: userGame.id,
+                itemid: cuponPrize.id_prize,
+                slot: slotFree,
+                limittime: 0,
+              },
+              {
+                transaction: t,
+              }
+            );
+  
+            message = `Has obtenido un(a) ${cuponPrize.name_prize} temporal`;
+            break;
+          case 13:
+            const userPoints = await UserGameInfo.findOne({
+              attributes: ['id','clanpoint'],
+              where: {
+                name: user,
+              },
+              transaction: t,
+            });
+  
+            if (!userPoints) {
+              await t.rollback();
+              return { success: false, code: '004', message: 'Usuario no encontrado [EVENTPOINTS: Comunicar con algún administrador]' };
+            }
+  
+            await UserGameInfo.increment(
+              'clanpoint',
+              { by: cuponPrize.id_prize, where: { name: user }, transaction: t }
+            );
+  
+            message = `Has obtenido ${cuponPrize.id_prize} de Punto(s) de evento`;
+            break;
+          default:
+            await t.rollback();
+            return { success: false, code: '201', message: 'Tipo de premio no válido' };
         }
-      );
+  
+        cuponPrize.users += 1;
+        await cuponPrize.save({ transaction: t });
+  
+        const tempCuponCreated = await TempCupon.create(
+          {
+            user: user,
+            ticket: cupon,
+            ip: ip,
+            fecha: new Date()
+          },
+          {
+            transaction: t,
+          }
+        );
+  
+        await LogRewardsUser.create({  
+          user:user,
+          origen:13,
+          recompensa:cuponPrize.id_prize,
+          tipo_recompensa: typePrize,
+          fecha: new Date(), 
+        }, { transaction: t });
+  
+        await t.commit();
+  
+        // Actualizar caches SOLO después del commit exitoso.
+        couponCache.markRedeemed(cupon, cuponPrize.users);
+        tempCouponCache.addRedeem(tempCuponCreated);
 
-      await LogRewardsUser.create({  
-        user:user,
-        origen:13,
-        recompensa:cuponPrize.id_prize,
-        tipo_recompensa: typePrize,
-        fecha: new Date(), 
-      }, { transaction: t });
-
-      //const key = generateKey();
-      //const MnOpQr = encrypt(JSON.stringify(cuponPrize), key) + '-' + key;
-
-      await t.commit(); // Confirmar la transacción si todas las operaciones tienen éxito
-
-      return { success: true, code: '000', message };
-    
-    }
-    catch (error) {
-        await t.rollback();
-        console.log(error);
-        throw new Error('Error al canjear cupón');
-    }
-  } 
+        // console.log('===== CACHE DE CUPONES =====');
+        // console.table(couponCache.getAll());
+        // console.log('============================');
+  
+        return { success: true, code: '000', message };
+      }
+      catch (error) {
+          await t.rollback();
+          console.log(error);
+          throw new Error('Error al canjear cupón');
+      }
+    } 
 
   async getAllPrizesGames(type) {
     try {
       const roulettePrizes = await PrizesGame.findAll({
-        attributes: ['orderPrize','name','url','clase','limite','users'],
+        attributes: ['id','orderPrize','name','url','clase','limite','users'],
         where: {
           type_game: type,
         },

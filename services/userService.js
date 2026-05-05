@@ -1514,6 +1514,11 @@ async getRanking() {
           tiporec = 19;
           console.log('Asset:'.blue,'Ticket de Puntos'.yellow,(' [' +String(cantidad)+ ']').yellow);
           break;
+        case 6:
+          origen = 23;
+          tiporec = 22;
+          console.log('Asset:'.blue,'Chances'.yellow,(' [' +String(cantidad)+ ']').yellow);
+          break;
         default:
           origen = 0;
           tiporec = 0;

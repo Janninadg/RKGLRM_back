@@ -21,6 +21,9 @@ router.use('/auth', authRoutes);
 // Montar rutas de usuarios bajo api/users
 router.use('/users', userRoutes);
 
+// Nuevo módulo de clanes. Mantiene URLs finales como /api/users/clans/*
+// router.use('/users/clans', clanRoutes);
+
 // Montar rutas de eventos bajo api/events
 router.use('/events', eventRoutes);
 

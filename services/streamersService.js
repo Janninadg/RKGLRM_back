@@ -16,6 +16,7 @@ import LogStream from '../models/logStreamsModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
 import UsersPanel from '../models/usersPanelModel.js';
 import { generateRandomCoupon } from '../utils/utils.js';
+import couponCache from '../modules/coupons/coupon.cache.js';
 
 class StreamersService {
     async verifyIsStreamer(user) {
@@ -183,6 +184,19 @@ class StreamersService {
         );
 
         await t.commit();
+
+        // actualizar cache en memoria
+        generatedCoupons.forEach((couponCode) => {
+          couponCache.addOrUpdate({
+            ticket: couponCode,
+            name_prize: name,
+            limite: limit,
+            users: 0,
+            type: type,
+            id_prize: prize,
+            uri: '',
+          });
+        });
 
         return {
           success: true,
