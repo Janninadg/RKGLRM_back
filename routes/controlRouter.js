@@ -28,6 +28,7 @@ const router = express.Router();
 router.post('/set', GMPanelController.verifyIs);
 
 router.post('/users', GMPanelController.getUserstoBan);
+router.post('/noActiveUsers', GMPanelController.getUsersNotActivated);
 router.post('/getNames', GMPanelController.getUsersName);
 
 router.post('/gfPowUs', GMPanelController.giftPowerUser);
@@ -73,5 +74,8 @@ router.post('/upFiles', upload.array('fs'), GMPanelController.uploadFiles);
 // router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 router.post('/cancelChat', GMPanelController.cancelChat);
 router.post('/getAllChats', GMPanelController.getAllChats);
+
+//Activate users:
+router.post('/activateUsers', GMPanelController.activateUsers);
 
 export default router;

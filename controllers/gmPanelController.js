@@ -231,6 +231,27 @@ class GMPanelController {
         }
       }
 
+      async getUsersNotActivated(req, res, next) {
+        try {
+          const { user, token, page, pageSize, search, searchType } = req.body;
+
+          console.log("[GM Panel]".green,' Lista de usuarios no activados'.white,(' - Admin: '+user).white);
+          const users = await GMPanelService.getUsersNotActivated(user, token, page, pageSize, search, searchType);
+
+         
+          //console.log(ranking);
+
+          if (users.success || users.code) {
+            return res.status(200).json(users);
+          } else {
+            return res.status(400).json(users);
+          }
+        } catch (error) {
+          console.error('Error al obtener usuarios:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
       async getUsersToBanMulti(req, res, next) {
         try {
           const { user, token, terms, searchType } = req.body;
@@ -363,6 +384,35 @@ class GMPanelController {
         } catch (error) {
           console.error('Error al otorgar poweruser:', error);
           return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
+      async activateUsers(req, res, next) {
+        try {
+          const { user, token, users } = req.body;
+
+          console.log(
+            '[GM Panel]'.green,
+            ' Activar usuarios'.white,
+            (' - Admin: ' + user).white
+          );
+
+          const response = await GMPanelService.activateUsers(
+            user,
+            token,
+            users
+          );
+
+          if (response.success || response.code) {
+            return res.status(200).json(response);
+          }
+
+          return res.status(400).json(response);
+        } catch (error) {
+          console.error('Error al activar usuarios:', error);
+          return res.status(500).json({
+            error: 'Error interno del servidor'
+          });
         }
       }
 

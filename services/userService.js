@@ -40,7 +40,7 @@ import Role from '../models/Forum/Role.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import StagesReset from '../models/stagesResetModel.js';
 import ClanInfo from '../models/clanInfoModel.js';
-import { validateUserSession } from '../utils/utils.js';
+import { generateRandomPassword, validateUserSession } from '../utils/utils.js';
 import ClanLog from '../models/clanLogModel.js';
 import ClanRequest from '../models/clanRequestModel.js';
 import PasswordLogs from '../models/passwordLogsModel.js';
@@ -702,7 +702,8 @@ class UserService {
           return { success: false,message:"El nombre de usuario debe tener entre 3 y 11 caracteres", code: '100' };
       }
 
-      const passwordEncrypt = await EncryptFunction(password.toLowerCase());
+      // const passwordEncrypt = await EncryptFunction(password.toLowerCase());
+      const randomPassword = generateRandomPassword();
 
       // console.log(password);
       // console.log(passwordEncrypt);
@@ -712,7 +713,7 @@ class UserService {
       await User.create(
         {
           id: lowerUser,
-          password:passwordEncrypt,
+          password:randomPassword,
           apodo,
           e_mail: email,
           phone:phoneNumber,

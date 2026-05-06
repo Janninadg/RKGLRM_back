@@ -1,7 +1,7 @@
 
 import { Sequelize,Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { verifyPacketAndBan } from '../utils/securityUtils.js';
+import { EncryptFunction, verifyPacketAndBan } from '../utils/securityUtils.js';
 import { encrypt,generateKey } from '../helpers/encryption.js';
 import PanelGM from '../models/gmPanelModel.js';
 import UserGameInfo from '../models/userGameInfoModel.js';
@@ -43,6 +43,7 @@ import User from '../models/userModel.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
+import WebUser from '../models/webUsersModel.js';
 
 
 class GMPanelService {
@@ -423,6 +424,171 @@ class GMPanelService {
 
         } catch (error) {
           console.error('Error al obtener usuarios:', error);
+          throw new Error('Error interno del servidor');
+        }
+      }
+      async getUsersNotActivated(user, token, page = 1, pageSize = 10, search = '', searchType = 'user') {
+        try {
+          page = Number(page) || 1;
+          pageSize = Number(pageSize) || 10;
+
+          if (page < 1) page = 1;
+          if (pageSize < 1) pageSize = 10;
+
+          const offset = (page - 1) * pageSize;
+          const searchValue = (search || '').trim();
+
+          const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+              token,
+              id: user,
+            },
+          });
+
+          if (!sessionToken) {
+            console.log("!![GM Panel]".red, 'Sesión antigua'.red);
+
+            return {
+              success: false,
+              code: '002',
+              message: 'Token inválido o tienes una sesión iniciada en otro navegador...',
+            };
+          }
+
+          /*
+          1. Obtener todos los webusers
+          */
+          const webUsers = await WebUser.findAll({
+            attributes: ['user', 'password'],
+            order: [['user', 'ASC']],
+            raw: true,
+          });
+
+          if (webUsers.length === 0) {
+            return {
+              success: true,
+              code: '000',
+              message: 'ok',
+              data: [],
+              total: 0,
+              page,
+              pageSize,
+            };
+          }
+
+          const webUsernames = webUsers.map((w) => w.user);
+
+          /*
+          2. Obtener users reales relacionados
+          */
+          const realUsers = await User.findAll({
+            where: {
+              id: {
+                [Op.in]: webUsernames,
+              },
+            },
+            attributes: ['id', 'password', 'e_mail', 'phone'],
+            raw: true,
+          });
+
+          const realUsersMap = {};
+          for (const u of realUsers) {
+            realUsersMap[u.id] = u;
+          }
+
+          /*
+          3. Construir lista completa de no activados
+          */
+          const notActivatedUsers = [];
+
+          for (const webUser of webUsers) {
+            const realUser = realUsersMap[webUser.user];
+
+            if (!realUser) continue;
+
+            const passwordEncrypt = await EncryptFunction(
+              webUser.password.toLowerCase()
+            );
+
+            if (passwordEncrypt !== realUser.password) {
+              notActivatedUsers.push({
+                user: realUser.id,
+                email: realUser.e_mail,
+                phone: realUser.phone,
+              });
+            }
+          }
+
+          /*
+          4. Aplicar búsqueda sobre lista ya filtrada
+          */
+          let filteredUsers = notActivatedUsers;
+
+          if (searchValue && searchType === 'user') {
+            const lowerSearch = searchValue.toLowerCase();
+
+            filteredUsers = filteredUsers.filter((u) =>
+              String(u.user).toLowerCase().includes(lowerSearch)
+            );
+          }
+
+          if (searchValue && searchType === 'character') {
+            const notActivatedUserIds = notActivatedUsers.map((u) => u.user);
+
+            if (notActivatedUserIds.length === 0) {
+              return {
+                success: true,
+                code: '000',
+                message: 'ok',
+                data: [],
+                total: 0,
+                page,
+                pageSize,
+              };
+            }
+
+            const matchingCharacters = await CharacterInfo.findAll({
+              attributes: ['userid'],
+              where: {
+                userid: {
+                  [Op.in]: notActivatedUserIds,
+                },
+                name: {
+                  [Op.like]: `%${searchValue}%`,
+                },
+              },
+              group: ['userid'],
+              raw: true,
+            });
+
+            const matchingUserIds = new Set(
+              matchingCharacters.map((c) => c.userid)
+            );
+
+            filteredUsers = filteredUsers.filter((u) =>
+              matchingUserIds.has(u.user)
+            );
+          }
+
+          /*
+          5. Paginación final
+          */
+          const total = filteredUsers.length;
+          const paginatedUsers = filteredUsers.slice(offset, offset + pageSize);
+
+          return {
+            success: true,
+            code: '000',
+            message: 'ok',
+            data: paginatedUsers,
+            total,
+            page,
+            pageSize,
+          };
+
+        } catch (error) {
+          console.error('Error al obtener usuarios no activados:', error);
           throw new Error('Error interno del servidor');
         }
       }
@@ -1418,7 +1584,150 @@ class GMPanelService {
             throw new Error('Error al banear usuarios');
         }
     }
+    async activateUsers(user, token, users) {
+      const t = await sequelize.transaction();
 
+      try {
+        const sessionToken = await TokenSession.findOne({
+          attributes: ['token'],
+          where: {
+            token,
+            id: user,
+          },
+          transaction: t,
+        });
+
+        if (!sessionToken) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '002',
+            message: 'Token inválido o tienes una sesión iniciada en otro navegador...'
+          };
+        }
+
+        const existGM = await UsersPanel.findOne({
+          attributes: ['id'],
+          where: {
+            user,
+            [Op.or]: [{ type: 0 }, { type: 9 }, { type: 4 }, { type: 2 }],
+          },
+          transaction: t,
+        });
+
+        if (!existGM) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '001',
+            message: 'No tienes permisos para realizar esta acción.'
+          };
+        }
+
+        if (!Array.isArray(users) || users.length === 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '400',
+            message: 'No se enviaron usuarios para activar.'
+          };
+        }
+
+        const results = [
+          {
+            success: true,
+            message: 'Usuarios activados',
+            users: [],
+          },
+          {
+            success: false,
+            message: 'Usuarios no activados',
+            users: [],
+          },
+        ];
+
+        for (const item of users) {
+          const userId = typeof item === 'string' ? item : item.user;
+
+          if (!userId) continue;
+
+          const webUser = await WebUser.findOne({
+            where: { user: userId },
+            attributes: ['user', 'password'],
+            transaction: t,
+            raw: true,
+          });
+
+          if (!webUser) {
+            results[1].users.push({
+              user: userId,
+              reason: 'No existe en webusers.',
+            });
+            continue;
+          }
+
+          const passwordEncrypt = await EncryptFunction(
+            webUser.password.toLowerCase()
+          );
+
+          const [updated] = await User.update(
+            {
+              password: passwordEncrypt,
+            },
+            {
+              where: {
+                id: userId,
+              },
+              transaction: t,
+            }
+          );
+
+          if (updated > 0) {
+            await LogPanelGM.create(
+              {
+                userAction: user,
+                action: 'Activación de usuario',
+                user: userId,
+                amount: 0,
+                type: 23,
+                date: new Date(),
+              },
+              {
+                transaction: t,
+              }
+            );
+
+            results[0].users.push({
+              user: userId,
+            });
+          } else {
+            results[1].users.push({
+              user: userId,
+              reason: 'No existe en user.',
+            });
+          }
+        }
+
+        await t.commit();
+
+        return {
+          success: true,
+          code: '000',
+          message: 'Usuarios activados correctamente.',
+          results,
+        };
+
+      } catch (error) {
+        await t.rollback();
+        console.error('Error al activar usuarios:', error);
+
+        return {
+          success: false,
+          code: '500',
+          message: 'Error interno del servidor.'
+        };
+      }
+    }
     async recargaCash(token,data,user,isDataIntegrityValid,paramsString, req) {
       const t = await sequelize.transaction();
     
