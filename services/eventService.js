@@ -2247,7 +2247,7 @@ class EventService {
         where: {
           type_game: type,
         },
-        order: [['orderPrize', 'ASC']],
+        order: [['id','ASC'],['orderPrize', 'ASC']],
       });
   
       // Función para calcular el nombre con el rango y tipo
