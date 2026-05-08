@@ -505,7 +505,7 @@ class MarketService {
         const { user, token, chat_id, rating, review = null, user_reviewed } = opts;
         const t = await sequelize.transaction();
         try {
-        //   return { success: false, code: "200", message: "Suspendido temporalmente" };
+          return { success: false, code: "200", message: "Suspendido temporalmente" };
             // 2) Buscar rater en UserGameInfo (recibiste 'user' como nombre del juego)
             const raterGame = await UserGameInfo.findOne({
                 where: { name: user },
@@ -637,7 +637,7 @@ class MarketService {
         const t = await sequelize.transaction();
 
         try {
-            // return { success: false, code: "200", message: "Suspendido temporalmente" };
+            return { success: false, code: "200", message: "Suspendido temporalmente" };
             // 1️⃣ Validar token
             const isPanel = ismodifiedbypanel === true;
 
@@ -1215,7 +1215,7 @@ class MarketService {
     try {
         // 1️⃣ Validar token
         const username = await User.findOne({where:{ apodo: sender}});
-//    return { success: false, code: "200", message: "Suspendido temporalmente" };
+   return { success: false, code: "200", message: "Suspendido temporalmente" };
         const session = await TokenSession.findOne({
         where: { token, id: username['id'] },
         transaction: t,
@@ -1331,7 +1331,7 @@ class MarketService {
    async initChatTrade(user, token, idmarket) {
   const t = await sequelize.transaction();
   try {
-    //    return { success: false, code: "200", message: "Suspendido temporalmente" };
+       return { success: false, code: "200", message: "Suspendido temporalmente" };
     const ban = await MarketBanned.findOne({
         where: { user },
         transaction: t
@@ -2127,7 +2127,7 @@ async getChat(user, token, chatId) {
     async sellItem(user,token,id,price,currency) {
         const t = await sequelize.transaction(); // Iniciar una transacción
         try {
-            //    return { success: false, code: "200", message: "Suspendido temporalmente" };
+               return { success: false, code: "200", message: "Suspendido temporalmente" };
 
              const ban = await MarketBanned.findOne({
                 where: { user },
