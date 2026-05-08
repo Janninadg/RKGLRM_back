@@ -121,7 +121,7 @@ class EventController {
       // Compara el resumen de los datos recibidos con el resumen incluido en los datos
       const isDataIntegrityValid = receivedDataHash === j1xYbZ;
 
-      const { TuVjKl,EeF789,GhIjKl,qF7z2N,f4rDnT,BSSIMO,LLODKF,FLGMDN,MTORLD } = W4aRzY;
+      const { TuVjKl,EeF789,GhIjKl,qF7z2N,f4rDnT,BSSIMO,LLODKF,FLGMDN,MTORLD,PRZZZZ } = W4aRzY;
 
       //console.log("DATA:",W4aRzY);
       //console.log(signature);
@@ -150,6 +150,9 @@ class EventController {
         case 6: 
           console.log('Evento:'.blue,'Rompecabezas'.red);
           break;
+        case 8: 
+          console.log('Evento:'.blue,'Chances'.red);
+          break;
         default:
           break;
       }
@@ -162,9 +165,13 @@ class EventController {
 
       const modalidad = Number(decrypt(BSSIMO,key)); //segun el evento, es 0 si no hay modalidad
 
+      const prizeData = JSON.parse(
+        decrypt(PRZZZZ, key)
+      );
+
       const paramsString = `${EeF789}-${GhIjKl}-${TuVjKl}-${qF7z2N}-${f4rDnT}-${BSSIMO}-${LLODKF}-${FLGMDN}-${MTORLD}`;
 
-      const result = await EventService.playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2, req);
+      const result = await EventService.playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,id,id2,key,key2,prizeData,  req);
 
       console.log("---------------------------------------------------------------".magenta);
 
@@ -592,6 +599,24 @@ class EventController {
       return res.status(500).json({ error: 'Error interno del servidor' });
     }
   }
+
+  async getAllTestUsers(req, res, next) {
+  try {
+
+    const response = await EventService.getAllTestUsers();
+
+    if (response.success || response.code) {
+      return res.status(200).json(response);
+    } else {
+      return res.status(400).json(response);
+    }
+  } catch (error) {
+    console.error('Error al obtener usuarios test:', error);
+    return res.status(500).json({
+      error: 'Error interno del servidor'
+    });
+  }
+}
 
   async setPersonaje(req, res, next) {
     try {

@@ -39,6 +39,7 @@ import ConfigParameters from '../models/configParametersModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import tempCouponCache from '../modules/coupons/tempCoupon.cache.js';
+import EventTestUser from '../models/eventTestUserModel.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -1310,7 +1311,7 @@ class EventService {
   }
   
 
-  async playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,userId,user2,key1,key2, req) {
+  async playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,userId,user2,key1,key2,przId, req) {
     const t = await sequelize.transaction(); // Iniciar una transacción
 
     try {
@@ -1385,6 +1386,28 @@ class EventService {
         return { success: false, code: '999', message:`Este evento ya ha concluido. ¡Por favor, actualice la página!` };
       }
 
+      if (Number(gameActive.mode) === 0) {
+        const testUser = await EventTestUser.findOne({
+          attributes: ['id'],
+          where: {
+            user: userId,
+            event: type,
+          },
+          transaction: t,
+        });
+
+        if (!testUser) {
+          await t.rollback();
+          console.log('Win:'.magenta, 'false'.red);
+
+          return {
+            success: false,
+            code: '999',
+            message: 'Este evento está en modo test y no tienes acceso.',
+          };
+        }
+      }
+
       // Verificar token (todos los juegos sin partida):
       const tokenCount = await GameAuth.findOne({
         attributes: ['token'],
@@ -1403,7 +1426,7 @@ class EventService {
       }
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,t);
+      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,przId,t);
 
       if(GameRes.code){
         console.log('Win:'.magenta,'false'.red);
@@ -1426,7 +1449,10 @@ class EventService {
       // const prizesGame = allPrizes[selectedItem];
       //console.log(prizesGame);
 
-      var typePrize = prizesGame.type;
+     var typePrize = prizesGame.type;
+      if (GameRes.params?.prize) {
+        typePrize = Number(GameRes.params.prize.temporal) === 1 ? 5 : 0;
+      }
       // var cofres; //solo para juego 5 y 6
 
       // Verificar si el premio excedio el limite :( :
@@ -1639,12 +1665,23 @@ class EventService {
           });
 
           break;
+        case 8:
+          // console.log(prizesGame);
+          params['prize'] = GameRes.params.prize;
+          break;
         default:
           await t.rollback(); 
           return { success: false, code: '200', message: 'No existe este tipo de juego' };
       }
       // console.log('aqui llego');
-      var resWin = await gamesService.setWinPrizes(type,typePrize,prizesGame,userId,t);
+      var resWin = await gamesService.setWinPrizes(
+        type,
+        typePrize,
+        prizesGame,
+        userId,
+        t,
+        params?.prize || null
+      );
       if(!resWin.success) return resWin;
   
       await TempPrize.create(
@@ -2206,7 +2243,7 @@ class EventService {
   async getAllPrizesGames(type) {
     try {
       const roulettePrizes = await PrizesGame.findAll({
-        attributes: ['id','orderPrize','name','url','clase','limite','users'],
+        attributes: ['id','orderPrize','name','url','clase','limite','users','mode'],
         where: {
           type_game: type,
         },
@@ -2780,7 +2817,29 @@ class EventService {
       throw new Error('Error en el servidor');
     }
   }
+  async getAllTestUsers() {
+    try {
+      const users = await EventTestUser.findAll({
+        order: [['event', 'ASC'], ['user', 'ASC']],
+        raw: true
+      });
 
+      return {
+        success: true,
+        code: '000',
+        message: 'ok',
+        data: users
+      };
+    } catch (error) {
+      console.error('Error obteniendo usuarios test:', error);
+
+      return {
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor'
+      };
+    }
+  }
   async setPersonaje(user,token,character) {
     const t = await sequelize.transaction();
     try {

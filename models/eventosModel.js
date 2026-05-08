@@ -31,20 +31,25 @@ const Evento = sequelize.define('evento', {
   inicio: {
     type: DataTypes.DATE,
     allowNull: false,
-    defaultValue: DataTypes.NOW
+    defaultValue: sequelize.literal('current_timestamp()')
   },
   fin: {
     type: DataTypes.DATE,
     allowNull: true,
     defaultValue: null
   },
-  show: {
-    type: DataTypes.TINYINT(1),
+  mode: {
+    type: DataTypes.TINYINT(2),
     allowNull: false,
-    defaultValue: 0
+    defaultValue: 1,
+    comment: '0: test, 1 game'
+  },
+  show: {
+    type: DataTypes.TINYINT(4),
+    allowNull: false
   },
   estado: {
-    type: DataTypes.TINYINT(1),
+    type: DataTypes.TINYINT(4),
     allowNull: false,
     defaultValue: 1
   }

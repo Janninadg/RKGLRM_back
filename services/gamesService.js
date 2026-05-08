@@ -35,10 +35,11 @@ import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import TempPrize from '../models/tempPrizes.js';
+import UserPrizeTracker from '../models/userPrizeTrackerModel.js';
 
 class GamesService {
 
-    async getPrizeByGame(game,clase,user,modalidad,transaction) {
+    async getPrizeByGame(game,clase,user,modalidad,prizeData,transaction) {
         try {
             let allP;
             let rP;
@@ -493,6 +494,191 @@ class GamesService {
                     });
 
                     return {all: prizeChests[SelIt], win:true,params};
+               case 8:
+
+                    const userGame = await UserGameInfo.findOne({
+                        attributes: ['id', 'bag'],
+                        where: { name: user },
+                        transaction,
+                    });
+
+                    if (!userGame) {
+                    return {
+                        success: false,
+                        code: '200',
+                        message: 'ID de Usuario no encontrado'
+                    };
+                    }
+
+                    const distinctSlots = await UserItemInfo.findAll({
+                    attributes: [
+                        [Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']
+                    ],
+                    where: {
+                        userid: userGame.id,
+                        characterid: 0,
+                    },
+                    raw: true,
+                    transaction,
+                    });
+
+                    const distinctSlotsArray = distinctSlots.map((item) => Number(item.slot));
+
+                    const bagCount = Number(userGame.bag || 1);
+                    const maxSlotIndex = bagCount * 30 - 1;
+
+                    let slotFree = null;
+
+                    for (let i = 0; i <= maxSlotIndex; i++) {
+                    if (!distinctSlotsArray.includes(i)) {
+                        slotFree = i;
+                        break;
+                    }
+                    }
+
+                    if (slotFree === null) {
+                        return {
+                            success: false,
+                            code: '200',
+                            message: 'Debes liberar espacio en tu inventario para jugar este juego, ya que recibirás el premio en tu inventario o como regalo pendiente.'
+                        };
+                    }
+
+                    const prize = await PrizesGame.findOne({
+                        where: {
+                            id: prizeData.id,
+                            type_game: game
+                        },
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    });
+
+                    if (!prize) {
+                        return {
+                            success: false,
+                            code: '404',
+                            message: 'Premio no válido'
+                        };
+                    }
+
+                    const chance = await UserAsset.findOne({
+                        where: {
+                            user,
+                            asset: 6
+                        },
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    });
+
+                    if (!chance || chance.amount <= 0) {
+                        return {
+                            success: false,
+                            code: '200',
+                            message: 'No tienes chances suficientes.'
+                        };
+                    }
+
+                    await UserAsset.decrement('amount', {
+                        by: 1,
+                        where: {
+                            user,
+                            asset: 6
+                        },
+                        transaction
+                    });
+
+                    const maxSpentConfig = await ConfigParameters.findOne({
+                        where: {
+                            name: 'max_spent'
+                        },
+                        transaction
+                    });
+
+                    const tempConfig = await ConfigParameters.findOne({
+                        where: {
+                            name: 'prob_temporal'
+                        },
+                        transaction
+                    });
+
+                    const maxSpent = Number(
+                        maxSpentConfig?.value || 50
+                    );
+
+                    const probTemporal = Number(
+                        tempConfig?.value || 0.5
+                    );
+
+                    let tracker = await UserPrizeTracker.findOne({
+                        where: {
+                            user,
+                            prize: prize.id
+                        },
+                        transaction,
+                        lock: transaction.LOCK.UPDATE
+                    });
+
+                    if (!tracker) {
+                        tracker = await UserPrizeTracker.create(
+                            {
+                                user,
+                                prize: prize.id,
+                                tries: 0,
+                                spent: 0
+                            },
+                            {
+                                transaction
+                            }
+                        );
+                    }
+
+                    tracker.tries += 1;
+                    tracker.spent += 1;
+
+                    const forcedWin =
+                        tracker.spent >= maxSpent;
+
+                    const probabilityWin =
+                        Math.random() <= Number(prize.probability);
+
+                    const win = forcedWin || probabilityWin;
+
+                    Object.assign(params, {});
+
+                    if (!win) {
+                        await tracker.save({
+                            transaction
+                        });
+
+                        return {
+                            all: null,
+                            win: false,
+                            params,
+                            ms: 'No ganaste esta vez'
+                        };
+                    }
+
+                    const isTemporary =
+                        Math.random() <= probTemporal ? 1 : 0;
+
+                    await tracker.destroy({
+                        transaction
+                    });
+
+                    params.prize = {
+                        id: prize.id,
+                        level: prizeData.lvl || 1,
+                        tipo: prizeData.tipo,
+                        temporal: isTemporary,
+                        days: 15,
+                    };
+
+                    return {
+                        all: prize,
+                        win: true,
+                        params
+                    };
+
                 default:
                     // const allP = await PrizesGame.findAll({
                     //     attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
@@ -540,86 +726,122 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-    async saveItem(userId,prize,t) {
+    async saveItem(userId, prize, t, prizeParams = null) {
         try {
-             // Obtener el ID de usuario desde UserGameInfo por su nombre
-             const userGameInfo = await UserGameInfo.findOne({
-                attributes: ['id'],
-                where: {
-                name: userId, // Cambia esto para usar el nombre de usuario correcto
-                },
-                transaction: t, // Asociar la transacción con esta consulta
+            const userGameInfo = await UserGameInfo.findOne({
+            attributes: ['id', 'bag'],
+            where: {
+                name: userId,
+            },
+            transaction: t,
             });
-    
+
             if (!userGameInfo) {
-                await t.rollback(); // Revertir la transacción en caso de error
-                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            await t.rollback();
+            return {
+                success: false,
+                code: '200',
+                message: 'ID de Usuario no encontrado'
+            };
             }
-            
-            // Agregar el premio a PendingPresents usando el ID de usuario obtenido
-            await PendingPresents.create(
+
+            /*
+            Si es criatura y level > 1:
+            guardar directo en UserItemInfo
+            */
+
+            if (
+            prizeParams?.tipo === 0 &&
+            Number(prizeParams?.level || 1) > 1
+            ) {
+            const distinctSlots = await UserItemInfo.findAll({
+                attributes: [
+                [Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']
+                ],
+                where: {
+                userid: userGameInfo.id,
+                characterid: 0,
+                },
+                raw: true,
+                transaction: t,
+            });
+
+            const distinctSlotsArray = distinctSlots.map((item) =>
+                Number(item.slot)
+            );
+
+            let slotFree = null;
+
+            const bagCount = Number(userGameInfo.bag || 1);
+            const maxSlotIndex = bagCount * 30 - 1;
+
+            for (let i = 0; i <= maxSlotIndex; i++) {
+                if (!distinctSlotsArray.includes(i)) {
+                slotFree = i;
+                break;
+                }
+            }
+
+            if (slotFree === null) {
+                await t.rollback();
+                return {
+                success: false,
+                code: '200',
+                message: 'No tiene slots disponibles para jugar'
+                };
+            }
+
+            const responseAmount = await getAmountItem(
+                prize.prize,
+                t
+            );
+
+            await UserItemInfo.create(
                 {
-                    present_id: prize.prize,
-                    user_id: userGameInfo.id, // Usar el ID de usuario obtenido
-                    added_time: new Date(),
+                userid: userGameInfo.id,
+                itemid: prize.prize,
+                slot: slotFree,
+                characterid: 0,
+                limittime: 0,
+                exp: responseAmount,
+                level: Number(prizeParams.level || 1),
                 },
                 {
-                    transaction: t, // Asociar la transacción con esta operación
+                transaction: t,
                 }
             );
 
-            // console.log(prize);
-            // Verificar si el premio es una pocion :
-            const itemData = await ItemInfo.findOne({
-                attributes: ['type'],
-                where: {
-                    id: prize.prize, // Cambia esto para usar el nombre de usuario correcto
-                },
-                // transaction: t, // Asociar la transacción con esta consulta
-            });
-        
-            // if (!itemData) {
-            //   await transaction.rollback(); // Revertir la transacción en caso de error
-            //   return { success: false, code: '402', message: 'ID de Item no encontrado' };
-            // }
-            // console.log(itemData);
-            if(itemData && itemData.type === 12){
-                //Insertar en tabla poisions :)
-                //Verificar si el usuario ya tiene esa pocion:
-                const userPocion = await UserPoisons.findOne({
-                    where: {
-                    idpocion: prize.prize, // Cambia esto para usar el nombre de usuario correcto
-                    user: userId,
-                    },
-                    //transaction: t, // Asociar la transacción con esta consulta
-                });
-        
-                if (!userPocion) {
-                    await UserPoisons.create(
-                    {
-                        user: userId,
-                        idpocion: prize.prize,
-                        cantidad: 1,
-                    },
-                    {
-                        //transaction: t, // Asociar la transacción con esta operación
-                    }
-                    );
-                } else{
-                    await UserPoisons.increment(
-                    'cantidad',
-                    { by: 1, where: { user: userId,idpocion: prize.prize }/*, transaction: t*/ }
-                    );
-                }
+            return {
+                message: `Has obtenido un(a) ${prize.name}`,
+                success: true
+            };
             }
-            
-            return { message:`Has obtenido un(a) ${prize.name}`, success: true };
+
+            /*
+            flujo normal
+            */
+
+            await PendingPresents.create(
+            {
+                present_id: prize.prize,
+                user_id: userGameInfo.id,
+                added_time: new Date(),
+            },
+            {
+                transaction: t,
+            }
+            );
+
+            return {
+            message: `Has obtenido un(a) ${prize.name}`,
+            success: true
+            };
         } catch (error) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            console.error('Error al guardar item:', error);
+            await t.rollback();
+            console.error(error);
             throw new Error('Error interno del servidor');
         }
-    }
+        }
 
     /**
      * Guarda oro para el usuario.
@@ -745,83 +967,100 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-    async saveItemTemporal(userId,prize,t) {
+    async saveItemTemporal(userId, prize, t, prizeParams = null) {
         try {
-            //Obtener id de usuario
-            // Obtener el ID de usuario desde UserGameInfo por su nombre
             const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
-                where: {
-                name: userId, // Cambia esto para usar el nombre de usuario correcto
-                },
-                transaction: t, // Asociar la transacción con esta consulta
+            attributes: ['id', 'bag'],
+            where: {
+                name: userId,
+            },
+            transaction: t,
             });
-    
+
             if (!userGame) {
-                await t.rollback(); // Revertir la transacción en caso de error
-                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+            await t.rollback();
+            return {
+                success: false,
+                code: '200',
+                message: 'ID de Usuario no encontrado'
+            };
             }
-            
-            //Obtener el nro de slot mas cercano disponible
-            // Obtener todos los slots distintos del usuario
+
             const distinctSlots = await UserItemInfo.findAll({
-                attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
-                where: {
+            attributes: [
+                [Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']
+            ],
+            where: {
                 userid: userGame.id,
-                },
-                raw: true,
-                transaction: t,
+                characterid: 0,
+            },
+            raw: true,
+            transaction: t,
             });
 
-            // Mapear los resultados a un array de números
-            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
-            var slotFree = null;
-
-            //console.log(distinctSlotsArray);
-
-            for (let i = 0; i <= 89; i++) {
-                if (!distinctSlotsArray.includes(i)) {
-                    slotFree = i;
-                    break;
-                }
-            }
-            //console.log(slotFree);
-            //Si no hay, volver a enviar el mensaje de slot no disponible
-            if(slotFree === null){
-                await t.rollback(); // Revertir la transacción en caso de error
-                return { success: false, code: '200', message: 'No tiene slots disponbiles para jugar' };
-            }
-
-            const days = 2;
-            const limit = await calculatePowerUse(0,days);
-            const responseAmount = await getAmountItem(prize.prize,t);
-
-            if(responseAmount.success === false && responseAmount.code === '402'){
-                return responseAmount;
-            }
-            //console.log(limit);
-
-            //Si tiene, guardar el premio temporal en useriteminfo
-            await UserItemInfo.create(
-                {
-                    userid: userGame.id,
-                    itemid: prize.prize,
-                    slot: slotFree,
-                    limittime: limit, //calculo como power use
-                    exp: responseAmount,
-                },
-                {
-                    transaction: t, // Asociar la transacción con esta operación
-                }
+            const distinctSlotsArray = distinctSlots.map((item) =>
+            Number(item.slot)
             );
 
-            return { message:`Has obtenido un(a) ${prize.name} temporal (${String(days)} días)`, success: true };
+            let slotFree = null;
+
+            const bagCount = Number(userGame.bag || 1);
+            const maxSlotIndex = bagCount * 30 - 1;
+
+            for (let i = 0; i <= maxSlotIndex; i++) {
+            if (!distinctSlotsArray.includes(i)) {
+                slotFree = i;
+                break;
+            }
+            }
+
+            if (slotFree === null) {
+            await t.rollback();
+            return {
+                success: false,
+                code: '200',
+                message: 'No tiene slots disponibles para jugar'
+            };
+            }
+
+            const days = prizeParams?.days ?? 2;
+            const level = prizeParams?.level ?? 1;
+
+            const limit = await calculatePowerUse(0, days);
+            const responseAmount = await getAmountItem(prize.prize, t);
+
+            if (
+            responseAmount.success === false &&
+            responseAmount.code === '402'
+            ) {
+            return responseAmount;
+            }
+
+            await UserItemInfo.create(
+            {
+                userid: userGame.id,
+                itemid: prize.prize,
+                slot: slotFree,
+                characterid: 0,
+                limittime: limit,
+                exp: responseAmount,
+                level: level,
+            },
+            {
+                transaction: t,
+            }
+            );
+
+            return {
+            message: `Has obtenido un(a) ${prize.name} temporal (${String(days)} días)`,
+            success: true
+            };
         } catch (error) {
-            await t.rollback(); // Revertir la transacción en caso de error
-            console.error('Error al guardar item temporal:', error);
+            await t.rollback();
+            console.error(error);
             throw new Error('Error interno del servidor');
         }
-    }
+        }
 
     /**
      * Guarda poweruser para el usuario.
@@ -1406,7 +1645,7 @@ class GamesService {
         }
     }
 
-    async setWinPrizes(game,typePrize,prize,userId,t){
+    async setWinPrizes(game, typePrize, prize, userId, t, prizeParams = null) {
         try {
             // Agregar el premio según el tipo
             var response = null;
@@ -1419,7 +1658,7 @@ class GamesService {
 
             switch (typePrize) {
                 case 0:
-                    response = await this.saveItem(userId,prize,t);
+                    response = await this.saveItem(userId, prize, t, prizeParams);
                     break;
                 case 1:
                     response = await this.saveOro(userId,prize,t);
@@ -1434,7 +1673,7 @@ class GamesService {
                     response = await this.saveTicketsOro(userId,prize,t);
                     break;
                 case 5:
-                    response = await this.saveItemTemporal(userId,prize,t);
+                    response = await this.saveItemTemporal(userId, prize, t, prizeParams);
                     break;
                 case 6:
                     response = await this.savePowerUser(userId,prize,t);

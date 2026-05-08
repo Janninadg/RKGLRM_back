@@ -5,6 +5,8 @@ const router = express.Router();
 
 router.get('/all', EventController.obtenerTodos);
 
+router.get('/test-users', EventController.getAllTestUsers);
+
 // Rutas de apis de evento Ruleta
 router.get('/roulette/verfTcks/:id', EventController.verifyTickets);
 

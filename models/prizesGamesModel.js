@@ -41,6 +41,12 @@ const PrizesGame = sequelize.define('prizesgames', {
     type: DataTypes.FLOAT,
     allowNull: false
   },
+  mode: {
+    type: DataTypes.TINYINT(2),
+    allowNull: false,
+    defaultValue: 0,
+    comment: '0: normal, 1: new'
+  },
   type_game: {
     type: DataTypes.INTEGER,
     allowNull: false
