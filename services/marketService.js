@@ -632,6 +632,329 @@ class MarketService {
         }
     }
 
+    async cancelChatFromPanel(payload = {}) {
+        const {
+            chat_id,
+            user,
+            action,
+            token,
+            panelUser = user,
+            skipReturnPoints = false
+        } = payload;
+
+        const t = await sequelize.transaction();
+
+        try {
+            if (!['CANCEL_CHAT_RETURN', 'CANCEL_CHAT_REPOST'].includes(action)) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Accion de cancelacion no valida.' };
+            }
+
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: {
+                    token,
+                    id: panelUser,
+                },
+                transaction: t,
+            });
+
+            if (!sessionToken) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '002',
+                    message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+                };
+            }
+
+            const existGM = await UsersPanel.findOne({
+                attributes: ['id'],
+                where: {
+                    user,
+                    [Op.or]: [{ type: 0 }, { type: 9 }, { type: 4 }],
+                },
+                transaction: t,
+            });
+
+            if (!existGM) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Usted no puede cancelar chats porque ya no es GM.'
+                };
+            }
+
+            const chat = await TradeChats.findOne({
+                where: { id: chat_id },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (!chat) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Chat no encontrado.' };
+            }
+
+            const allActions = await TradeActions.findAll({
+                where: { chat_id },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            const closedActions = ['END_CHAT', 'CANCEL_CHAT_RETURN', 'CANCEL_CHAT_REPOST'];
+            const alreadyClosed = allActions.some((item) => closedActions.includes(item.action));
+
+            if (alreadyClosed || chat.status === 'CANCELLED' || chat.status === 'COMPLETED') {
+                await t.rollback();
+                return { success: false, code: '200', message: 'El chat ya esta finalizado o cancelado.' };
+            }
+
+            const releasedChat = allActions.some((item) => item.action === 'RELEASE_ITEM');
+
+            if (releasedChat) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'El chat no puede ser cancelado porque ya se libero el item.' };
+            }
+
+            const paymentMeth = await PaymentMethods.findOne({
+                where: { id: chat.payment_method_id },
+                transaction: t,
+            });
+
+            if (!paymentMeth) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Metodo de pago no encontrado.' };
+            }
+
+            if (paymentMeth.type === 'EXTERNAL') {
+                const confirmed = allActions.some((item) => item.action === 'CONFIRM_PAYMENT');
+
+                if (confirmed) {
+                    await TradeMessage.create({
+                        chat_id: chat.id,
+                        sender: null,
+                        message: 'El chat ha sido cancelado luego de confirmarse un pago. En caso exista un reclamo o queja, se usara el chat como prueba para tomar las medidas del caso.',
+                        message_type: 'SYSTEM',
+                        content_type: 'TEXT',
+                        visible_to: 'SELLER',
+                        created_at: new Date()
+                    }, { transaction: t });
+                }
+            }
+
+            await LogPanelGM.create({
+                userAction: panelUser,
+                action: skipReturnPoints ? 'Cancelar chat sin retorno de puntos' : 'Cancelar chat de usuario',
+                user: chat.id,
+                amount: 0,
+                type: 21,
+                date: new Date(),
+            }, { transaction: t });
+
+            const effectiveUser = chat.seller;
+
+            if (action === 'CANCEL_CHAT_RETURN') {
+                const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true);
+
+                if (!returned.success) {
+                    return {
+                        success: false,
+                        code: returned.code || '200',
+                        message: returned.code === '201'
+                            ? 'El vendedor no tiene espacio disponible en su inventario.'
+                            : returned.message || 'No se pudo retornar el item.'
+                    };
+                }
+
+                await TradeActions.create({
+                    chat_id: chat.id,
+                    user: effectiveUser,
+                    action: 'CANCEL_CHAT_RETURN',
+                }, { transaction: t });
+
+                await TradeMessage.create({
+                    chat_id: chat.id,
+                    sender: null,
+                    message: 'El chat ha sido cancelado por un administrador',
+                    message_type: 'SYSTEM',
+                    content_type: 'TEXT',
+                    visible_to: 'BOTH',
+                    created_at: new Date()
+                }, { transaction: t });
+
+                await TradeMessage.create({
+                    chat_id: chat.id,
+                    sender: null,
+                    message: 'Tu item ha sido regresado a tu inventario',
+                    message_type: 'SYSTEM',
+                    content_type: 'TEXT',
+                    visible_to: 'SELLER',
+                    created_at: new Date()
+                }, { transaction: t });
+
+                chat.status = 'CANCELLED';
+                await chat.save({ transaction: t });
+            }
+
+            if (action === 'CANCEL_CHAT_REPOST') {
+                await TradeActions.create({
+                    chat_id: chat.id,
+                    user: effectiveUser,
+                    action: 'CANCEL_CHAT_REPOST',
+                }, { transaction: t });
+
+                await TradeMessage.create({
+                    chat_id: chat.id,
+                    sender: null,
+                    message: 'El chat ha sido cancelado por un administrador',
+                    message_type: 'SYSTEM',
+                    content_type: 'TEXT',
+                    visible_to: 'BOTH',
+                    created_at: new Date()
+                }, { transaction: t });
+
+                const item = await Marketplace.findOne({
+                    where: { id: chat.trade_id },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE,
+                });
+
+                if (!item) {
+                    await t.rollback();
+                    return { success: false, code: '200', message: 'Item de marketplace no encontrado.' };
+                }
+
+                item.estado = 1;
+                await item.save({ transaction: t });
+
+                chat.status = 'CANCELLED';
+                await chat.save({ transaction: t });
+            }
+
+            if (paymentMeth.type === 'INTERNAL') {
+                const userHold = await UserInternalHolds.findOne({
+                    where: {
+                        trade_id: chat.trade_id,
+                        chat_id: chat.id,
+                        status: 'HELD'
+                    },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE,
+                });
+
+                if (!userHold) {
+                    await t.rollback();
+                    return { success: false, code: '200', message: 'No se encontro la retencion interna del comprador.' };
+                }
+
+                const method = Number(userHold.method_id);
+                const price = Number(userHold.amount);
+                const skipEventPointReturn = method === 2 && skipReturnPoints === true;
+
+                if (!skipEventPointReturn) {
+                    let typeRew = null;
+                    let befCurr = 0;
+                    let aftCurr = 0;
+
+                    if (method === 1) {
+                        const userCash = await Cash.findOne({
+                            where: { id: userHold.user },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
+                        });
+
+                        if (!userCash) {
+                            await t.rollback();
+                            return { success: false, code: '200', message: 'No se encontro el cash del comprador.' };
+                        }
+
+                        befCurr = Number(userCash.cash);
+                        userCash.cash = Number(userCash.cash) + price;
+                        aftCurr = userCash.cash;
+                        await userCash.save({ transaction: t });
+                        typeRew = 2;
+                    } else if (method === 2) {
+                        const userGame = await UserGameInfo.findOne({
+                            where: { name: userHold.user },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
+                        });
+
+                        if (!userGame) {
+                            await t.rollback();
+                            return { success: false, code: '200', message: 'No se encontro la informacion del comprador.' };
+                        }
+
+                        befCurr = Number(userGame.clanpoint);
+                        userGame.clanpoint = Number(userGame.clanpoint) + price;
+                        aftCurr = userGame.clanpoint;
+                        await userGame.save({ transaction: t });
+                        typeRew = 13;
+                    }
+
+                    if (typeRew !== null) {
+                        await LogRewardsUser.create({
+                            user: userHold.user,
+                            origen: 17,
+                            recompensa: price,
+                            tipo_recompensa: typeRew,
+                            last_pr: befCurr,
+                            curr_pr: aftCurr,
+                            fecha: new Date(),
+                        }, { transaction: t });
+                    }
+
+                    await TradeMessage.create({
+                        chat_id: chat.id,
+                        sender: null,
+                        message: 'Se te ha retornado el monto retenido de esta transaccion',
+                        message_type: 'SYSTEM',
+                        content_type: 'TEXT',
+                        visible_to: 'BUYER',
+                        created_at: new Date()
+                    }, { transaction: t });
+                } else {
+                    await TradeMessage.create({
+                        chat_id: chat.id,
+                        sender: null,
+                        message: 'El chat fue cancelado por un administrador y los puntos de evento retenidos no fueron retornados.',
+                        message_type: 'SYSTEM',
+                        content_type: 'TEXT',
+                        visible_to: 'BUYER',
+                        created_at: new Date()
+                    }, { transaction: t });
+                }
+
+                await UserInternalHolds.create({
+                    user: userHold.user,
+                    trade_id: chat.trade_id,
+                    chat_id: chat.id,
+                    method_id: method,
+                    amount: price,
+                    status: 'CANCELLED',
+                    created_at: new Date()
+                }, { transaction: t });
+            }
+
+            await t.commit();
+
+            return {
+                success: true,
+                code: '000',
+                message: 'El chat #' + String(chat.id) + ' ha sido cancelado'
+            };
+        } catch (error) {
+            try {
+                await t.rollback();
+            } catch (_) {}
+
+            console.error('Error al cancelar chat desde panel:', error);
+            return { success: false, code: '500', message: 'Error interno al cancelar el chat.' };
+        }
+    }
+
     async pushAction(payload) {
         const { chat_id, user, action, token, ismodifiedbypanel, panelUser } = payload;
         const t = await sequelize.transaction();
@@ -906,7 +1229,7 @@ class MarketService {
                     break;
                 case 'CANCEL_CHAT_RETURN':
                 case 'CANCEL_CHAT_REPOST':
-                    // return { success: false, code: "200", message: "Suspendido temporalmente" };
+                    return { success: false, code: "200", message: "Suspendido temporalmente" };
 
                     //Verificar si es GM otra vez:
                     if (isPanel) {
@@ -1215,7 +1538,7 @@ class MarketService {
     try {
         // 1️⃣ Validar token
         const username = await User.findOne({where:{ apodo: sender}});
-   return { success: false, code: "200", message: "Suspendido temporalmente" };
+//    return { success: false, code: "200", message: "Suspendido temporalmente" };
         const session = await TokenSession.findOne({
         where: { token, id: username['id'] },
         transaction: t,

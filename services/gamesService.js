@@ -550,7 +550,7 @@ class GamesService {
                             type_game: game
                         },
                         transaction,
-                        lock: transaction.LOCK.UPDATE
+                        // lock: transaction.LOCK.UPDATE
                     });
 
                     if (!prize) {

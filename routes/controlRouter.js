@@ -73,6 +73,7 @@ router.post('/upFiles', upload.array('fs'), GMPanelController.uploadFiles);
 
 // router.post('/setLinkStm', GMPanelController.changeLinkStreamer);
 router.post('/cancelChat', GMPanelController.cancelChat);
+router.post('/cancelChats', GMPanelController.cancelChats);
 router.post('/getAllChats', GMPanelController.getAllChats);
 
 //Activate users:

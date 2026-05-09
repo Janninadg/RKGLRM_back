@@ -503,17 +503,18 @@ class GMPanelController {
 
       async cancelChat(req, res, next) {
       try {
-        const { user, token, chat_id, action } = req.body;
+        const { user, token, chat_id, action, skip_return_points } = req.body;
 
         console.log("[GM Panel]".green, ' Cancelar chat'.white, (' - Admin: ' + user).white);
 
-        const response = await marketService.pushAction({
+        const response = await marketService.cancelChatFromPanel({
           chat_id,
           user,
           action,
           token,
           ismodifiedbypanel: true,
-          panelUser: user
+          panelUser: user,
+          skipReturnPoints: skip_return_points === true
         });
 
         if (response.success || response.code) {
@@ -524,6 +525,42 @@ class GMPanelController {
 
       } catch (error) {
         console.error('Error al cancelar chat:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
+
+      async cancelChats(req, res, next) {
+      try {
+        const {
+          user,
+          token,
+          chat_ids,
+          action,
+          filters,
+          cancel_filtered,
+          skip_return_points
+        } = req.body;
+
+        console.log("[GM Panel]".green, ' Cancelar chats en lote'.white, (' - Admin: ' + user).white);
+
+        const response = await GMPanelService.cancelChats(
+          user,
+          token,
+          action,
+          chat_ids,
+          filters,
+          cancel_filtered === true,
+          skip_return_points === true
+        );
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+
+      } catch (error) {
+        console.error('Error al cancelar chats:', error);
         return res.status(500).json({ error: 'Error interno del servidor' });
       }
     }

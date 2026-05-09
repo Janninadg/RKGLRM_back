@@ -44,6 +44,7 @@ import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import WebUser from '../models/webUsersModel.js';
+import marketService from './marketService.js';
 
 
 class GMPanelService {
@@ -944,6 +945,236 @@ class GMPanelService {
         }
       }
 
+     async cancelChats(user, token, action, chatIds = [], filters = {}, cancelFiltered = false, skipReturnPoints = false) {
+        const t = await sequelize.transaction();
+
+        try {
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: {
+                    token,
+                    id: user,
+                },
+                transaction: t,
+            });
+
+            if (!sessionToken) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '002',
+                    message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+                };
+            }
+
+            const existGM = await UsersPanel.findOne({
+                attributes: ['id'],
+                where: {
+                    user,
+                    [Op.or]: [{ type: 0 }, { type: 9 }, { type: 4 }],
+                },
+                transaction: t,
+            });
+
+            if (!existGM) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '001',
+                    message: 'Usted no puede cancelar chats porque ya no es GM.'
+                };
+            }
+
+            let idsToCancel = [];
+
+            if (cancelFiltered) {
+                const safeFilters = filters || {};
+                const filterChatId = safeFilters.chat_id ? Number(safeFilters.chat_id) : null;
+                const filterLastAction = safeFilters.last_action ? String(safeFilters.last_action).trim() : null;
+                const filterPaymentMethodId = safeFilters.payment_method_id ? Number(safeFilters.payment_method_id) : null;
+                const filterPaymentMethodType = safeFilters.payment_method_type
+                    ? String(safeFilters.payment_method_type).trim()
+                    : null;
+                const filterRealNameSeller = safeFilters.real_name_seller
+                    ? String(safeFilters.real_name_seller).trim().toLowerCase()
+                    : null;
+                const filterRealNameBuyer = safeFilters.real_name_buyer
+                    ? String(safeFilters.real_name_buyer).trim().toLowerCase()
+                    : null;
+
+                const tradeChatsWhere = {};
+
+                if (filterChatId) {
+                    tradeChatsWhere.id = filterChatId;
+                }
+
+                if (filterPaymentMethodId) {
+                    tradeChatsWhere.payment_method_id = filterPaymentMethodId;
+                }
+
+                const chats = await TradeChats.findAll({
+                    where: tradeChatsWhere,
+                    order: [['id', 'DESC']],
+                    transaction: t
+                });
+
+                if (chats.length) {
+                    const chatIdsForLookup = chats.map((chat) => chat.id);
+                    const paymentMethodIds = [...new Set(chats.map((chat) => chat.payment_method_id).filter(Boolean))];
+                    const nicknames = [...new Set([
+                        ...chats.map((chat) => chat.buyer).filter(Boolean),
+                        ...chats.map((chat) => chat.seller).filter(Boolean)
+                    ])];
+
+                    const allActions = await TradeActions.findAll({
+                        where: { chat_id: chatIdsForLookup },
+                        order: [['created_at', 'DESC'], ['id', 'DESC']],
+                        transaction: t
+                    });
+
+                    const lastActionMap = {};
+                    for (const item of allActions) {
+                        if (!lastActionMap[item.chat_id]) {
+                            lastActionMap[item.chat_id] = item;
+                        }
+                    }
+
+                    const users = await User.findAll({
+                        where: {
+                            apodo: {
+                                [Op.in]: nicknames
+                            }
+                        },
+                        attributes: ['id', 'apodo'],
+                        transaction: t
+                    });
+
+                    const userMap = users.reduce((acc, item) => {
+                        acc[item.apodo] = {
+                            id: item.id,
+                            real_name: item.id
+                        };
+                        return acc;
+                    }, {});
+
+                    const paymentMethods = await PaymentMethods.findAll({
+                        where: {
+                            id: {
+                                [Op.in]: paymentMethodIds
+                            }
+                        },
+                        attributes: ['id', 'name', 'color', 'type', 'icon'],
+                        transaction: t
+                    });
+
+                    const paymentMap = paymentMethods.reduce((acc, item) => {
+                        acc[item.id] = item;
+                        return acc;
+                    }, {});
+
+                    let formatted = chats.map((chat) => {
+                        const lastActionObj = lastActionMap[chat.id] || null;
+                        const lastAction = lastActionObj ? lastActionObj.action : 'CREATE_TRADE';
+                        const sellerInfo = userMap[chat.seller] || null;
+                        const buyerInfo = userMap[chat.buyer] || null;
+                        const paymentInfo = paymentMap[chat.payment_method_id] || null;
+
+                        return {
+                            chat_id: chat.id,
+                            last_action: lastAction,
+                            real_name_seller: sellerInfo?.real_name || chat.seller,
+                            real_name_buyer: buyerInfo?.real_name || chat.buyer,
+                            payment_method: paymentInfo ? {
+                                id: paymentInfo.id,
+                                type: paymentInfo.type
+                            } : null
+                        };
+                    });
+
+                    if (filterLastAction) {
+                        formatted = formatted.filter((chat) => chat.last_action === filterLastAction);
+                    }
+
+                    if (filterPaymentMethodType) {
+                        formatted = formatted.filter((chat) => chat.payment_method?.type === filterPaymentMethodType);
+                    }
+
+                    if (filterRealNameSeller) {
+                        formatted = formatted.filter((chat) =>
+                            (chat.real_name_seller || '').toLowerCase().includes(filterRealNameSeller)
+                        );
+                    }
+
+                    if (filterRealNameBuyer) {
+                        formatted = formatted.filter((chat) =>
+                            (chat.real_name_buyer || '').toLowerCase().includes(filterRealNameBuyer)
+                        );
+                    }
+
+                    idsToCancel = formatted.map((chat) => chat.chat_id);
+                }
+            } else {
+                idsToCancel = Array.isArray(chatIds)
+                    ? chatIds
+                        .map((id) => Number(id))
+                        .filter((id) => Number.isInteger(id) && id > 0)
+                    : [];
+            }
+
+            idsToCancel = [...new Set(idsToCancel)];
+
+            await t.commit();
+
+            if (!idsToCancel.length) {
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'No hay chats para cancelar con los filtros indicados.',
+                    chats_success: [],
+                    chats_werror: []
+                };
+            }
+
+            const chatsSuccess = [];
+            const chatsWithError = [];
+
+            for (const chatId of idsToCancel) {
+                const response = await marketService.cancelChatFromPanel({
+                    chat_id: chatId,
+                    user,
+                    action,
+                    token,
+                    panelUser: user,
+                    skipReturnPoints
+                });
+
+                if (response?.code === '000') {
+                    chatsSuccess.push(chatId);
+                } else {
+                    chatsWithError.push({
+                        chat_id: chatId,
+                        message: response?.message || 'No se pudo cancelar el chat.'
+                    });
+                }
+            }
+
+            return {
+                success: true,
+                code: '000',
+                message: 'Proceso de cancelacion finalizado.',
+                chats_success: chatsSuccess,
+                chats_werror: chatsWithError
+            };
+        } catch (error) {
+            try {
+                await t.rollback();
+            } catch (_) {}
+
+            console.error('Error en cancelChats:', error);
+            return { success: false, code: '999', message: 'Error interno del servidor.' };
+        }
+     }
+
      async getAllChats(user, token, page = 1, pageSize = 20, filters = {}) {
         const t = await sequelize.transaction();
 
@@ -991,6 +1222,10 @@ class GMPanelService {
             const safeFilters = filters || {};
             const filterChatId = safeFilters.chat_id ? Number(safeFilters.chat_id) : null;
             const filterLastAction = safeFilters.last_action ? String(safeFilters.last_action).trim() : null;
+            const filterPaymentMethodId = safeFilters.payment_method_id ? Number(safeFilters.payment_method_id) : null;
+            const filterPaymentMethodType = safeFilters.payment_method_type
+                ? String(safeFilters.payment_method_type).trim()
+                : null;
             const filterRealNameSeller = safeFilters.real_name_seller
                 ? String(safeFilters.real_name_seller).trim().toLowerCase()
                 : null;
@@ -1001,6 +1236,9 @@ class GMPanelService {
             const tradeChatsWhere = {};
             if (filterChatId) {
                 tradeChatsWhere.id = filterChatId;
+            }
+            if (filterPaymentMethodId) {
+                tradeChatsWhere.payment_method_id = filterPaymentMethodId;
             }
 
             const chats = await TradeChats.findAll({
@@ -1176,6 +1414,10 @@ class GMPanelService {
                 formatted = formatted.filter(x => x.last_action === filterLastAction);
             }
 
+            if (filterPaymentMethodType) {
+                formatted = formatted.filter(x => x.payment_method?.type === filterPaymentMethodType);
+            }
+
             if (filterRealNameSeller) {
                 formatted = formatted.filter(x =>
                     (x.real_name_seller || '').toLowerCase().includes(filterRealNameSeller)
@@ -1221,6 +1463,8 @@ class GMPanelService {
                 filters_applied: {
                     chat_id: filterChatId,
                     last_action: filterLastAction,
+                    payment_method_id: filterPaymentMethodId,
+                    payment_method_type: filterPaymentMethodType,
                     real_name_seller: filterRealNameSeller,
                     real_name_buyer: filterRealNameBuyer
                 }
