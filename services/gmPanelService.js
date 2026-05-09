@@ -1271,7 +1271,7 @@ class GMPanelService {
 
             const allActions = await TradeActions.findAll({
                 where: { chat_id: chatIds },
-                order: [['created_at', 'DESC'], ['id', 'DESC']],
+                order: [['id', 'DESC']],
                 transaction: t
             });
 
