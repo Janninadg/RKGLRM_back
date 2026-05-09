@@ -1672,6 +1672,7 @@ async getRanking() {
       return { success: true, code: '000', message: 'Se ha realizado tu compra de manera exitosa'};
     } catch (error) {
       await t.rollback();
+      console.log(error)
       throw new Error('Error al realizar la compra');
     }
   }
