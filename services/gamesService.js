@@ -667,7 +667,7 @@ class GamesService {
 
                     params.prize = {
                         id: prize.id,
-                        level: prizeData.lvl || 1,
+                        level: (prizeData.lvl > 30 ? 30 : prizeData.lvl) || 1,
                         tipo: prizeData.tipo,
                         temporal: isTemporary,
                         days: 15,
