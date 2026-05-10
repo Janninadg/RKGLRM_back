@@ -1429,6 +1429,7 @@ class EventService {
       const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,przId,t);
 
       if(GameRes.code){
+        await t.rollback();
         console.log('Win:'.magenta,'false'.red);
         return GameRes;
       }
