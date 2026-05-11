@@ -2765,7 +2765,7 @@ class EventService {
 
   async obtenerTodos() {
     try {
-      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.EVENTS, PUBLIC_CACHE_TTL.MEDIUM, async () => {
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.EVENTS, PUBLIC_CACHE_TTL.LONG, async () => {
 
       const eventos = await Evento.findAll({
         where:{

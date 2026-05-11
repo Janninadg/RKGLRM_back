@@ -151,6 +151,7 @@ export const PUBLIC_CACHE_TTL = {
   RANKING: 2 * 60 * 1000,
   MEDIUM: 5 * 60 * 1000,
   LONG: 30 * 60 * 1000,
+  VLONG: 720 * 60 * 1000,
 };
 
 const publicDataCache = new PublicDataCache();

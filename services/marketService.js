@@ -1646,7 +1646,7 @@ class MarketService {
 
    async getPayments() {
     try {
-      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.MARKET_PAYMENTS, PUBLIC_CACHE_TTL.LONG, async () => {
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.MARKET_PAYMENTS, PUBLIC_CACHE_TTL.VLONG, async () => {
         const payments = await PaymentMethods.findAll({where:{active:1}, raw: true});
 
         return payments ? payments : [];

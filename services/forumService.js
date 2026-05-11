@@ -32,7 +32,7 @@ class ForumService {
     try {
       return await publicDataCache.getOrLoad(
         `${PUBLIC_CACHE_KEYS.FORUM_LATEST_POSTS}:${limit}`,
-        PUBLIC_CACHE_TTL.RANKING,
+        PUBLIC_CACHE_TTL.LONG,
         async () => {
       // 1. Obtener posts
      const posts = await ForumPost.findAll({
@@ -530,7 +530,7 @@ class ForumService {
    // 🔹 Obtener todas las categorías
  async getAllCategories() {
    try {
-    return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.FORUM_CATEGORIES, PUBLIC_CACHE_TTL.RANKING, async () => {
+    return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.FORUM_CATEGORIES, PUBLIC_CACHE_TTL.LONG, async () => {
     const categories = await ForumCategory.findAll({
       order: [["id", "ASC"]],
       raw: true,
@@ -1140,7 +1140,7 @@ async incrementView(post_id) {
     try {
       return await publicDataCache.getOrLoad(
         `${PUBLIC_CACHE_KEYS.FORUM_POSTS_BY_CATEGORY}:${JSON.stringify(categories)}:${limit}`,
-        PUBLIC_CACHE_TTL.RANKING,
+        PUBLIC_CACHE_TTL.LONG,
         async () => {
       // 1. Determinar categorías a consultar
       let categoriesToFetch;

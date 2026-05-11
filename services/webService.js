@@ -33,7 +33,7 @@ class WebService {
   
     async getLinks() {
         try {
-          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.LINKS, PUBLIC_CACHE_TTL.LONG, async () => {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.LINKS, PUBLIC_CACHE_TTL.VLONG, async () => {
             const links = await Linksgame.findAll({
                 attributes: ['type','link','ref'],
                 raw: true,
@@ -78,7 +78,7 @@ class WebService {
 
       async getAnuncios() {
         try {
-          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS, PUBLIC_CACHE_TTL.MEDIUM, async () => {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS, PUBLIC_CACHE_TTL.LONG, async () => {
             const anuncios = await Anuncio.findAll({
                 where:{
                   estado:1,
@@ -173,7 +173,7 @@ class WebService {
 
       async getStreamers() {
         try {
-          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.STREAMERS, PUBLIC_CACHE_TTL.SHORT, async () => {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.STREAMERS, PUBLIC_CACHE_TTL.LONG, async () => {
              // Obtener todos los streamers
             const streamers = await Streamer.findAll({
               where:{
