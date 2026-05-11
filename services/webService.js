@@ -22,6 +22,10 @@ import StreamPlatform from '../models/streamsPlatformsModel.js';
 import puppeteer from 'puppeteer'; // Importa Puppeteer
 import axios from 'axios';
 import StagesReset from '../models/stagesResetModel.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
+} from '../modules/public/publicData.cache.js';
 
 const IMG_OFF = "https://res.cloudinary.com/dgh0ctded/image/upload/f_auto,q_auto/afbhaox5bxrydq17t8ik";
 
@@ -29,9 +33,10 @@ class WebService {
   
     async getLinks() {
         try {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.LINKS, PUBLIC_CACHE_TTL.LONG, async () => {
             const links = await Linksgame.findAll({
                 attributes: ['type','link','ref'],
-                //raw: true,
+                raw: true,
                 //transaction: t,
               });
       
@@ -40,7 +45,8 @@ class WebService {
               WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
               WHEN ci.lose > 0 THEN ci.win / ci.lose
             END AS winrate*/
-          return links;
+            return links;
+          });
         } catch (error) {
           console.error('Error al obtener los links:', error);
           throw new Error('Error interno del servidor');
@@ -49,10 +55,12 @@ class WebService {
 
       async getStages() {
         try {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.STAGES, PUBLIC_CACHE_TTL.LONG, async () => {
             const stages = await StagesReset.findAll({
               where:{
                 visible:1,
-              }
+              },
+              raw: true,
             });
       
           /**   CASE
@@ -60,7 +68,8 @@ class WebService {
               WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
               WHEN ci.lose > 0 THEN ci.win / ci.lose
             END AS winrate*/
-          return stages;
+            return stages;
+          });
         } catch (error) {
           console.error('Error al obtener los links:', error);
           throw new Error('Error interno del servidor');
@@ -69,6 +78,7 @@ class WebService {
 
       async getAnuncios() {
         try {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS, PUBLIC_CACHE_TTL.MEDIUM, async () => {
             const anuncios = await Anuncio.findAll({
                 where:{
                   estado:1,
@@ -118,6 +128,7 @@ class WebService {
                 WHEN ci.lose > 0 THEN ci.win / ci.lose
               END AS winrate*/
             return anunciosConComentarios;
+          });
         } catch (error) {
           console.error('Error al obtener los anuncios:', error);
           throw new Error('Error interno del servidor');
@@ -126,6 +137,7 @@ class WebService {
 
       async getBuyAssets() {
         try {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.ASSETS, PUBLIC_CACHE_TTL.LONG, async () => {
             const assetsPrices = await AssetPrice.findAll({
               attributes:['id','asset','multiple','price','currency','img'],
               where:{
@@ -150,7 +162,8 @@ class WebService {
               })
             );
 
-          return assetsWithTypes;
+            return assetsWithTypes;
+          });
         } catch (error) {
           console.error('Error al obtener los assets y precios:', error);
           throw new Error('Error interno del servidor');
@@ -160,6 +173,7 @@ class WebService {
 
       async getStreamers() {
         try {
+          return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.STREAMERS, PUBLIC_CACHE_TTL.SHORT, async () => {
              // Obtener todos los streamers
             const streamers = await Streamer.findAll({
               where:{
@@ -175,7 +189,10 @@ class WebService {
                         attributes: ['name'],
                     });
 
-                    let resTumb = '';
+                    let resTumb = {
+                      thumbnail: IMG_OFF,
+                      live: false,
+                    };
     
                     // Obtener el thumbnail según la plataforma
                     if (streamer.name) {
@@ -185,13 +202,14 @@ class WebService {
                     return {
                         ...streamer.toJSON(),
                         platformName: platform ? platform.name : 'Plataforma desconocida',
-                        thumbnail:resTumb.thumbnail,
-                        live:resTumb.live,
+                        thumbnail: resTumb?.thumbnail || IMG_OFF,
+                        live: Boolean(resTumb?.live),
                     };
                 })
             );
 
-          return streamersWithPlatformNames;
+            return streamersWithPlatformNames;
+          });
         } catch (error) {
           console.error('Error al obtener los streamers:', error);
           throw new Error('Error interno del servidor');

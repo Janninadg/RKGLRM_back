@@ -17,6 +17,10 @@ import User from '../models/userModel.js';
 import CharacterInfo from '../models/characterInfo.js';
 import { setClassName, setTypeName } from '../utils/prizesUtils.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
+} from '../modules/public/publicData.cache.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import UserInternalHolds from '../models/Trades/userHoldsModel.js';
 import TradeChats from '../models/Trades/tradeChatsModel.js';
@@ -1642,9 +1646,11 @@ class MarketService {
 
    async getPayments() {
     try {
-      const payments = await PaymentMethods.findAll({where:{active:1}});
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.MARKET_PAYMENTS, PUBLIC_CACHE_TTL.LONG, async () => {
+        const payments = await PaymentMethods.findAll({where:{active:1}, raw: true});
 
-      return payments ? payments : [];
+        return payments ? payments : [];
+      });
     } catch (error) {
       console.error('Error getHistory service:', error);
       return { success: false, code: '500', message: 'Error interno al obtener historial' };

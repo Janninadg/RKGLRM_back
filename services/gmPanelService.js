@@ -45,6 +45,9 @@ import CharacterInfoLog from '../models/characterInfoLogModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import WebUser from '../models/webUsersModel.js';
 import marketService from './marketService.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+} from '../modules/public/publicData.cache.js';
 
 
 class GMPanelService {
@@ -885,6 +888,7 @@ class GMPanelService {
             await anuncio.save({ transaction: t });
 
           await t.commit();
+          publicDataCache.invalidate(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS);
           
           return {
             success: true,
@@ -1540,6 +1544,7 @@ class GMPanelService {
             await streamer.save({ transaction: t });
 
           await t.commit();
+          publicDataCache.invalidate(PUBLIC_CACHE_KEYS.STREAMERS);
           
           return {
             success: true,
@@ -1615,6 +1620,7 @@ class GMPanelService {
           await streamer.save({ transaction: t });
 
         await t.commit();
+        publicDataCache.invalidate(PUBLIC_CACHE_KEYS.STREAMERS);
         
         return {
           success: true,
@@ -2911,6 +2917,7 @@ class GMPanelService {
       );
 
       await t.commit();
+      publicDataCache.invalidate(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS);
       
       console.log("[GM Panel]".green,' Exito'.green);
       

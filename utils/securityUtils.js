@@ -26,7 +26,6 @@ const EncryptFunction = async (str) => {
 const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t, req) => {
   let transaction;
     try {
-        transaction = await sequelize.transaction();
         var userId;
 
         if(user === user2){
@@ -64,6 +63,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
           });
       
           if (existingPacket || !verifyPacketEqual) {
+            transaction = await sequelize.transaction();
             const userBan = (existingPacket ? existingPacket.user : userId); // Guardar el usuario asociado al paquete existente
             const clientIp = req.clientIp; 
             const reason = ((!verifyPacketEqual) ? "Modify an API data package" : "Repeated use of an API data package");
@@ -98,7 +98,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
       
           return null; // Devolver null si el paquete no existe
       } catch (error) {
-          if (transaction) {
+          if (transaction && !transaction.finished) {
               await transaction.rollback();
           }
           console.error(`Error al verificar y banear a usuario ${userId}:`, error);

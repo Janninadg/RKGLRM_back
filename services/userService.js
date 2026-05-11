@@ -45,6 +45,10 @@ import ClanLog from '../models/clanLogModel.js';
 import ClanRequest from '../models/clanRequestModel.js';
 import PasswordLogs from '../models/passwordLogsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
+} from '../modules/public/publicData.cache.js';
 
 class UserService {
 
@@ -414,7 +418,7 @@ class UserService {
         // const claim = hasUserClaimed(user.id);
   
         // Devolver el objeto con toda la información del usuario, el token y el código 2
-        await t.commit();
+	      await t.commit();
         return { _u: completeUserInfo, auth:token, tx:expired, success:true, message:'Ha iniciado sesión correctamente', code: '000' };
       } else {
         // Si las credenciales son incorrectas, retornar 3 (credenciales incorrectas)
@@ -1129,6 +1133,7 @@ class UserService {
 
 async getRanking() {
   try {
+    return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.RANKING_CHARACTERS, PUBLIC_CACHE_TTL.RANKING, async () => {
     const rankingData = await sequelize.query(
       `
       SELECT 
@@ -1161,7 +1166,8 @@ async getRanking() {
       { type: sequelize.QueryTypes.SELECT }
     );
 
-    return rankingData;
+      return rankingData;
+    });
   } catch (error) {
     console.error('Error al obtener el ranking desde autoranking:', error);
     throw new Error('Error interno del servidor');
@@ -1172,6 +1178,7 @@ async getRanking() {
 
   async getRankingClanes() {
     try {
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.RANKING_CLANS, PUBLIC_CACHE_TTL.RANKING, async () => {
       const rankingData = await sequelize.query(
         `
         SELECT 
@@ -1199,7 +1206,8 @@ async getRanking() {
           WHEN ci.lose = 0 AND ci.win > 0 THEN ci.win / 1
           WHEN ci.lose > 0 THEN ci.win / ci.lose
         END AS winrate*/
-      return rankingData;
+        return rankingData;
+      });
     } catch (error) {
       console.error('Error al obtener el ranking:', error);
       throw new Error('Error interno del servidor');
@@ -1799,7 +1807,8 @@ async getRanking() {
       // Confirmar la transacción
       await t.commit();
      
-      return { success: true, code: '000', message: 'Se ha guardado tu comentario'};
+      publicDataCache.invalidate(PUBLIC_CACHE_KEYS.ANNOUNCEMENTS);
+	      return { success: true, code: '000', message: 'Se ha guardado tu comentario'};
     } catch (error) {
       await t.rollback();
       console.log(error);

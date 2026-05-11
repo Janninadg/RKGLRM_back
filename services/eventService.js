@@ -40,6 +40,10 @@ import ValentinCards from '../models/Events/valentinCardsModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import tempCouponCache from '../modules/coupons/tempCoupon.cache.js';
 import EventTestUser from '../models/eventTestUserModel.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
+} from '../modules/public/publicData.cache.js';
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -2640,6 +2644,9 @@ class EventService {
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {
+      if (!t.finished) {
+        await t.rollback();
+      }
       console.error('Error al obtener la pieza:', error);
       throw new Error('Error en el servidor');
     }
@@ -2748,6 +2755,9 @@ class EventService {
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {
+      if (!t.finished) {
+        await t.rollback();
+      }
       console.error('Error al obtener la pieza:', error);
       throw new Error('Error en el servidor');
     }
@@ -2755,6 +2765,7 @@ class EventService {
 
   async obtenerTodos() {
     try {
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.EVENTS, PUBLIC_CACHE_TTL.MEDIUM, async () => {
 
       const eventos = await Evento.findAll({
         where:{
@@ -2810,7 +2821,8 @@ class EventService {
         })
       );
 
-      return eventosConPuntuacionYReviews;
+        return eventosConPuntuacionYReviews;
+      });
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {
@@ -2946,6 +2958,9 @@ class EventService {
 
       //return userTicket && userTicketOro ? {userTicket,userTicketOro} : null;
     } catch (error) {
+      if (!t.finished) {
+        await t.rollback();
+      }
       console.error('Error al setear personaje:', error);
       throw new Error('Error en el servidor');
     }

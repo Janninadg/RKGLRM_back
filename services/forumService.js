@@ -12,10 +12,28 @@ import ForumReplyLike from '../models/Forum/ForumReplyLike.js';
 import ForumUserRole from '../models/Forum/ForumRole.js';
 import Role from '../models/Forum/Role.js';
 import ForumPoints from '../models/Forum/ForumPoints.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
+} from '../modules/public/publicData.cache.js';
+
+const FORUM_PUBLIC_CACHE_KEYS = [
+  PUBLIC_CACHE_KEYS.FORUM_CATEGORIES,
+  PUBLIC_CACHE_KEYS.FORUM_LATEST_POSTS,
+  PUBLIC_CACHE_KEYS.FORUM_POSTS_BY_CATEGORY,
+];
 
 class ForumService {
+  invalidatePublicForumCache(keys = FORUM_PUBLIC_CACHE_KEYS) {
+    publicDataCache.invalidatePrefixes(keys);
+  }
+
   async getLatestPosts(limit = 10) {
     try {
+      return await publicDataCache.getOrLoad(
+        `${PUBLIC_CACHE_KEYS.FORUM_LATEST_POSTS}:${limit}`,
+        PUBLIC_CACHE_TTL.RANKING,
+        async () => {
       // 1. Obtener posts
      const posts = await ForumPost.findAll({
         where:{ enable:1 },
@@ -117,7 +135,9 @@ class ForumService {
         });
       }
 
-      return result;
+          return result;
+        }
+      );
     } catch (error) {
       console.error('Error en ForumService.getLatestPosts:', error);
       throw new Error('Error al obtener los posts del foro');
@@ -182,6 +202,7 @@ class ForumService {
       await post.save({ transaction: t });
 
       await t.commit();
+      this.invalidatePublicForumCache();
 
       return {
         success: true,
@@ -262,6 +283,7 @@ class ForumService {
       await post.save({ transaction: t });
 
       await t.commit();
+      this.invalidatePublicForumCache();
 
       return {
         success: true,
@@ -483,6 +505,7 @@ class ForumService {
       }
 
       await t.commit();
+      this.invalidatePublicForumCache();
 
       return {
         success: true,
@@ -507,6 +530,7 @@ class ForumService {
    // 🔹 Obtener todas las categorías
  async getAllCategories() {
    try {
+    return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.FORUM_CATEGORIES, PUBLIC_CACHE_TTL.RANKING, async () => {
     const categories = await ForumCategory.findAll({
       order: [["id", "ASC"]],
       raw: true,
@@ -648,7 +672,8 @@ class ForumService {
       });
     }
 
-    return result;
+      return result;
+    });
   } catch (error) {
     console.error("Error en ForumService.getAllCategories:", error);
     return {
@@ -735,6 +760,7 @@ class ForumService {
       }
 
       await t.commit();
+      this.invalidatePublicForumCache();
 
       return {
         success: true,
@@ -831,6 +857,7 @@ class ForumService {
       );
 
       await t.commit();
+      this.invalidatePublicForumCache([PUBLIC_CACHE_KEYS.FORUM_CATEGORIES]);
 
       return {
         success: true,
@@ -1111,6 +1138,10 @@ async incrementView(post_id) {
 
    async getLatestPostsByCategory(categories=2,limit = 5) {
     try {
+      return await publicDataCache.getOrLoad(
+        `${PUBLIC_CACHE_KEYS.FORUM_POSTS_BY_CATEGORY}:${JSON.stringify(categories)}:${limit}`,
+        PUBLIC_CACHE_TTL.RANKING,
+        async () => {
       // 1. Determinar categorías a consultar
       let categoriesToFetch;
       if (categories === 'all') {
@@ -1235,7 +1266,9 @@ async incrementView(post_id) {
         });
       }
 
-      return results;
+          return results;
+        }
+      );
     } catch (error) {
       console.error('Error en ForumService.getLatestPostsByCategory:', error);
       return {

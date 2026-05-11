@@ -3,6 +3,9 @@ import { verifyToken } from '../utils/authUtils.js';
 import { encrypt, decrypt, generateKey } from '../helpers/encryption.js';
 import colors from "colors";
 import { calculateDataHash } from '../helpers/signedData.js';
+import publicDataCache, {
+  PUBLIC_CACHE_KEYS,
+} from '../modules/public/publicData.cache.js';
 
 //hola
 
@@ -387,7 +390,11 @@ class UserController {
       const { user,token,evento,comentario,estrellas } = req.body;
 
       const result = await UserService.calificarEvento(user,token,evento,comentario,estrellas ,req);
-  
+
+      if (result.success) {
+        publicDataCache.invalidate(PUBLIC_CACHE_KEYS.EVENTS);
+      }
+
       if (result.success || result.code) {
         return res.status(200).json(result);
       } else {
