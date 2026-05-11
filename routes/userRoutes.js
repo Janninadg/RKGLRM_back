@@ -64,6 +64,8 @@ router.post('/clans/leave', UserController.leaveClan);
 
 
 router.post('/chngPss', UserController.changePassword);
+router.post('/security-question/status', UserController.getSecurityQuestionStatus);
+router.post('/security-question', UserController.createSecurityQuestionAnswer);
 
 router.post('/character/reset-stats', UserController.resetCharacterStats);
 

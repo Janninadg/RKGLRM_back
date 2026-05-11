@@ -22,6 +22,7 @@ class PublicDataCache {
     if (key.startsWith(PUBLIC_CACHE_KEYS.ASSETS)) return 'assets';
     if (key.startsWith(PUBLIC_CACHE_KEYS.STREAMERS)) return 'streamers';
     if (key.startsWith(PUBLIC_CACHE_KEYS.STAGES)) return 'stages';
+    if (key.startsWith(PUBLIC_CACHE_KEYS.SECURITY_QUESTIONS)) return 'preguntas de seguridad';
     if (key.startsWith(PUBLIC_CACHE_KEYS.RANKING_CHARACTERS)) return 'ranking personajes';
     if (key.startsWith(PUBLIC_CACHE_KEYS.RANKING_CLANS)) return 'ranking clanes';
     if (key.startsWith(PUBLIC_CACHE_KEYS.MARKET_PAYMENTS)) return 'metodos de pago';
@@ -138,6 +139,7 @@ export const PUBLIC_CACHE_KEYS = {
   ASSETS: 'web:assets',
   STREAMERS: 'web:streamers',
   STAGES: 'web:stages',
+  SECURITY_QUESTIONS: 'users:security-questions',
   RANKING_CHARACTERS: 'users:ranking:characters',
   RANKING_CLANS: 'users:ranking:clans',
   MARKET_PAYMENTS: 'market:payments',

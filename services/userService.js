@@ -45,6 +45,13 @@ import ClanLog from '../models/clanLogModel.js';
 import ClanRequest from '../models/clanRequestModel.js';
 import PasswordLogs from '../models/passwordLogsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
+import SecurityQuestion from '../models/securityQuestionModel.js';
+import UserSecurityAnswer from '../models/userSecurityAnswerModel.js';
+import {
+  hashSecurityAnswer,
+  validateSecurityAnswerFormat,
+  validateUserSecurityAnswer,
+} from '../utils/securityQuestionUtils.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
   PUBLIC_CACHE_TTL,
@@ -59,6 +66,145 @@ class UserService {
     } catch (error) {
       console.error('Error al obtener la lista de usuarios:', error);
       throw new Error('Error en el servidor');
+    }
+  }
+
+  async getSecurityQuestions() {
+    try {
+      return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.SECURITY_QUESTIONS, PUBLIC_CACHE_TTL.VLONG, async () => {
+        return await SecurityQuestion.findAll({
+          attributes: ['id', 'question'],
+          where: {
+            active: 1,
+          },
+          order: [['id', 'ASC']],
+          raw: true,
+        });
+      });
+    } catch (error) {
+      console.error('Error al obtener preguntas de seguridad:', error);
+      throw new Error('Error interno del servidor');
+    }
+  }
+
+  async getSecurityQuestionStatus(user, token) {
+    const t = await sequelize.transaction();
+
+    try {
+      const invalidSession = await validateUserSession(user, token, t);
+      if (invalidSession) {
+        await t.rollback();
+        return invalidSession;
+      }
+
+      const questions = await this.getSecurityQuestions();
+      const securityAnswer = await UserSecurityAnswer.findOne({
+        attributes: ['question_id'],
+        where: { user },
+        transaction: t,
+        raw: true,
+      });
+
+      const currentQuestion = securityAnswer
+        ? questions.find((question) => Number(question.id) === Number(securityAnswer.question_id)) || null
+        : null;
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        hasSecurityQuestion: Boolean(securityAnswer),
+        securityQuestion: currentQuestion,
+        questions,
+      };
+    } catch (error) {
+      await t.rollback();
+      console.error('Error al obtener estado de pregunta de seguridad:', error);
+
+      return {
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      };
+    }
+  }
+
+  async createSecurityQuestionAnswer(user, token, questionId, answer, ip) {
+    const t = await sequelize.transaction();
+
+    try {
+      const invalidSession = await validateUserSession(user, token, t);
+      if (invalidSession) {
+        await t.rollback();
+        return invalidSession;
+      }
+
+      const existingAnswer = await UserSecurityAnswer.findOne({
+        where: { user },
+        transaction: t,
+      });
+
+      if (existingAnswer) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '409',
+          message: 'Ya tienes tu pregunta de seguridad creada',
+        };
+      }
+
+      const answerValidation = validateSecurityAnswerFormat(answer);
+      if (!answerValidation.valid) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '407',
+          message: answerValidation.message,
+        };
+      }
+
+      const question = await SecurityQuestion.findOne({
+        where: {
+          id: questionId,
+          active: 1,
+        },
+        transaction: t,
+      });
+
+      if (!question) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '404',
+          message: 'La pregunta de seguridad seleccionada no existe',
+        };
+      }
+
+      await UserSecurityAnswer.create({
+        user,
+        question_id: question.id,
+        answer_raw: answerValidation.normalized,
+        answer_hash: hashSecurityAnswer(answerValidation.normalized),
+        created_ip: ip,
+      }, { transaction: t });
+
+      await t.commit();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Pregunta de seguridad creada correctamente',
+      };
+    } catch (error) {
+      await t.rollback();
+      console.error('Error al crear pregunta de seguridad:', error);
+
+      return {
+        success: false,
+        code: '500',
+        message: 'Error interno del servidor',
+      };
     }
   }
 
@@ -2918,7 +3064,7 @@ async deleteClanMember(user, token, clanId, memberId, req) {
   }
 }
 
-  async changePassword(user, token, currentPassword, newPassword,ip, req) {
+  async changePassword(user, token, currentPassword, newPassword, securityAnswer, ip, req) {
     const t = await sequelize.transaction();
 
     try {
@@ -2947,8 +3093,22 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         };
       }
 
-      // 3. VALIDAR PASSWORD ACTUAL
-      if (webUser.password.toLowerCase() !== currentPassword.toLowerCase()) {
+      const currentPasswordValue = String(currentPassword || '');
+      const newPasswordValue = String(newPassword || '');
+
+      // 3. VALIDAR RESPUESTA DE SEGURIDAD
+      const securityValidation = await validateUserSecurityAnswer(user, securityAnswer, t);
+      if (!securityValidation.ok) {
+        await t.rollback();
+        return {
+          success: false,
+          code: securityValidation.code,
+          message: securityValidation.message,
+        };
+      }
+
+      // 4. VALIDAR PASSWORD ACTUAL
+      if (webUser.password.toLowerCase() !== currentPasswordValue.toLowerCase()) {
         await t.rollback();
         return {
           success: false,
@@ -2957,8 +3117,8 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         };
       }
 
-      // 4. VALIDAR QUE NO SEA IGUAL
-      if (currentPassword.toLowerCase() === newPassword.toLowerCase()) {
+      // 5. VALIDAR QUE NO SEA IGUAL
+      if (currentPasswordValue.toLowerCase() === newPasswordValue.toLowerCase()) {
         await t.rollback();
         return {
           success: false,
@@ -2967,9 +3127,9 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         };
       }
 
-      // 5. VALIDAR FORMATO
+      // 6. VALIDAR FORMATO
       const regex = /^[a-z0-9]{3,8}$/;
-      if (!regex.test(newPassword)) {
+      if (!regex.test(newPasswordValue)) {
         await t.rollback();
         return {
           success: false,
@@ -2978,13 +3138,13 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         };
       }
 
-      // 6. ENCRIPTAR PASSWORD USER
-      const passwordEncrypt = await EncryptFunction(newPassword.toLowerCase());
+      // 7. ENCRIPTAR PASSWORD USER
+      const passwordEncrypt = await EncryptFunction(newPasswordValue.toLowerCase());
 
-      // 7. ACTUALIZAR WEBUSER
+      // 8. ACTUALIZAR WEBUSER
       await WebUser.update(
         {
-          password: newPassword.toLowerCase(),
+          password: newPasswordValue.toLowerCase(),
         },
         {
           where: { user: user },
@@ -2992,7 +3152,7 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         }
       );
 
-      // 8. ACTUALIZAR USER
+      // 9. ACTUALIZAR USER
       await User.update(
         {
           password: passwordEncrypt,
@@ -3003,11 +3163,11 @@ async deleteClanMember(user, token, clanId, memberId, req) {
         }
       );
 
-      // 9. LOG
+      // 10. LOG
       await PasswordLogs.create({
         user: user,
-        old_password: currentPassword.toLowerCase(),
-        new_password: newPassword.toLowerCase(),
+        old_password: currentPasswordValue.toLowerCase(),
+        new_password: newPasswordValue.toLowerCase(),
         ip,
       }, { transaction: t });
 

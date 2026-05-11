@@ -11,6 +11,7 @@ const PUBLIC_DATA_LOADERS = [
   ['assets', () => WebService.getBuyAssets()],
   ['streamers', () => WebService.getStreamers()],
   ['eventos', () => EventService.obtenerTodos()],
+  ['preguntas de seguridad', () => UserService.getSecurityQuestions()],
   ['ranking personajes', () => UserService.getRanking()],
   ['ranking clanes', () => UserService.getRankingClanes()],
   ['metodos de pago', () => MarketService.getPayments()],
