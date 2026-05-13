@@ -15,7 +15,7 @@ import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
 //import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
-import { setClassName, setTypeName } from '../utils/prizesUtils.js';
+import { getRemainingPowerTime, setClassName, setTypeName } from '../utils/prizesUtils.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
@@ -3080,7 +3080,7 @@ async getChat(user, token, chatId) {
             }, {});
 
             // // Combinar los resultados
-            const mergedItemsFinal = mergedItems.map(item => {
+            const mergedItemsFinal = await Promise.all(mergedItems.map(async item => {
                 // Buscar la información de useriteminfo correspondiente al itemid
                 // console.log(item)
                 const iiRaw = itemInfoMap[item.uii.itemid];
@@ -3102,10 +3102,16 @@ async getChat(user, token, chatId) {
                 : { name: 'Desconocido', color: '#999', icon: null };
 
                   // ⭐ Rating del vendedor
-                    const sellerRating = sellerRatingMap[item.vendedor] || {
+                const sellerRating = sellerRatingMap[item.vendedor] || {
                         avg_rating: "0.00",
                         total_reviews: 0
                     };
+
+                const limitTime = Number(item?.uii?.limittime ?? 0);
+                const isTemporal = limitTime > 0;
+                const remainingPowerTime = isTemporal
+                    ? await getRemainingPowerTime(limitTime)
+                    : { days: 0 };
 
                 // Fusionar la información del item original con la información adicional
                 return {
@@ -3117,8 +3123,10 @@ async getChat(user, token, chatId) {
                     url: imageUrl, // Añade la propiedad .url
                     payment: paymentInfo, // ✅ Añadido aquí
                     seller_rating: sellerRating,
+                    isTemporal,
+                    remainingDays: Math.max(0, Number(remainingPowerTime.days) || 0),
                 };
-            });
+            }));
 
             mergedItemsFinal.sort((a, b) => {
                 const ratingA = parseFloat(Number(a.seller_rating.avg_rating)) || 0;
