@@ -246,7 +246,7 @@ class MarketService {
                 await userHold.save({ transaction: t });
 
                 await LogRewardsUser.create({  
-                    user:user,
+                    user:sellerInfo.id,
                     origen:18,
                     recompensa:item.precio,
                     tipo_recompensa: typeCr,
