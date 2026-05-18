@@ -16,7 +16,6 @@ import LogStream from '../models/logStreamsModel.js';
 import Linksgame from '../models/linksGameModel.js';
 import Anuncio from '../models/anunciosModel.js';
 import CharacterInfo from '../models/characterInfo.js';
-import PrizesGame from '../models/prizesGamesModel.js';
 import Matches from '../models/matchesModel.js';
 import EventLevelCharacter from '../models/eventLevelChModel.js';
 import UserPoisons from '../models/userPoisonsModel.js';
@@ -32,10 +31,24 @@ import UnclassifiedPrizes from '../models/unclassifiedPrizesModel.js';
 import EventPoint from '../models/eventPointsModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
-import ConfigParameters from '../models/configParametersModel.js';
 import TicketsMode from '../models/ticketsModeModel.js';
 import TempPrize from '../models/tempPrizes.js';
 import UserPrizeTracker from '../models/userPrizeTrackerModel.js';
+import prizeGameCache from '../modules/events/prizeGame.cache.js';
+import configParameterCache from '../modules/events/configParameter.cache.js';
+
+const sortByOrderPrize = (a, b) => Number(a.orderPrize) - Number(b.orderPrize);
+
+const sortByClassAndOrderPrize = (a, b) => {
+    const classA = a.clase === null ? 0 : Number(a.clase);
+    const classB = b.clase === null ? 0 : Number(b.clase);
+
+    if (classA !== classB) {
+        return classA - classB;
+    }
+
+    return sortByOrderPrize(a, b);
+};
 
 class GamesService {
 
@@ -50,26 +63,13 @@ class GamesService {
             switch (game) {
                 case 1:
 
-                    const ctnProbabiliy = await ConfigParameters.findOne({
-                        where: { name: 'countdown_prob' },
-                        transaction,
-                    });
-
-                    const prob1 = ctnProbabiliy ? parseFloat(ctnProbabiliy.value) : 0;
+                    const prob1 = configParameterCache.getNumber('countdown_prob', 0);
 
                     if(Math.random() < (1-prob1)) {
                         return {all: null, win:false,params,ms:'Mejor suerte la próxima vez. No has recibido nada esta vez.'};
                     }
 
-                    allP = await PrizesGame.findAll({
-                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users'],
-                        where: {
-                        //orderPrize: orderPrize,
-                        type_game: game,
-                        },
-                        order: [['orderPrize', 'ASC']],
-                        transaction, // Asociar la transacción con esta consulta
-                    })
+                    allP = prizeGameCache.getByGame(game).sort(sortByOrderPrize);
 
                     // Realizar el calculo de probabilidad:
                     rP = Math.random();
@@ -93,48 +93,23 @@ class GamesService {
 
                     return {all: allP[sI], win:true,params};
                 case 3:
-                    const prizeCard = await PrizesGame.findOne({
-                        attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
-                        where: {
-                        orderPrize: clase,
-                        // clase: clase,
-                        type_game: game,
-                        },
-                        order: [['orderPrize', 'ASC']],
-                        transaction, // Asociar la transacción con esta consulta
-                    });
+                    const prizeCard = prizeGameCache.getByGameAndOrder(game, clase)[0] || null;
 
                     return {all: prizeCard, win:true};
                 case 2:
-                    const allPrizes = await PrizesGame.findAll({
-                        attributes: ['id','orderPrize','type', 'prize', 'name','clase', 'probability','limite','users','url'],
-                        where: {
-                        //orderPrize: orderPrize,
-                        type_game: game,
-                        },
-                        order: [['clase','ASC'],['orderPrize', 'ASC']],
-                        transaction, // Asociar la transacción con esta consulta
-                    })
+                    const allPrizes = prizeGameCache.getByGame(game).sort(sortByClassAndOrderPrize);
 
-                    const rouletteProbabiliy = await ConfigParameters.findOne({
-                        where: { name: 'roulette_prob' },
-                        transaction,
-                    });
+                    const rouletteProbabiliy = configParameterCache.getNumber('roulette_prob', 0);
 
-                    const rouletteProbabiliy2 = await ConfigParameters.findOne({
-                        where: { name: 'roulette_prob2' },
-                        transaction,
-                    });
+                    const rouletteProbabiliy2 = configParameterCache.getNumber('roulette_prob2', 0);
 
-                     const incProb = await ConfigParameters.findOne({
-                        where: { name: 'inc_roul_prob' },
-                        transaction,
-                    });
+                    // Lectura reservada para futuro ajuste incremental de probabilidades.
+                    // const incProb = configParameterCache.getNumber('inc_roul_prob', 0);
 
                     // console.log(rouletteProbabiliy);
         
                     //Modalidad 1: cash, 2 : oro
-                   const prob = modalidad === 1 ? rouletteProbabiliy.value : rouletteProbabiliy2.value;
+                   const prob = modalidad === 1 ? rouletteProbabiliy : rouletteProbabiliy2;
 
                    console.log("Prob: ",prob);
 
@@ -344,15 +319,7 @@ class GamesService {
                     return {all: allPrizes[selectedItem], win:true,params};
                 case 6:
 
-                   const prizeChests = await PrizesGame.findAll({
-                        attributes: ['id','orderPrize','type', 'prize', 'name','clase','url', 'probability','limite','users'],
-                        where: {
-                        // clase: clase,
-                        type_game: game,
-                        },
-                        order: [['orderPrize', 'ASC']],
-                        transaction, // Asociar la transacción con esta consulta
-                    });
+                   const prizeChests = prizeGameCache.getByGame(game).sort(sortByOrderPrize);
 
                     const alreadyWon8004 = await TempPrize.findOne({
                         where: {
@@ -544,16 +511,9 @@ class GamesService {
                         };
                     }
 
-                    const prize = await PrizesGame.findOne({
-                        where: {
-                            id: prizeData.id,
-                            type_game: game
-                        },
-                        transaction,
-                        // lock: transaction.LOCK.UPDATE
-                    });
+                    const prize = prizeGameCache.getById(prizeData.id);
 
-                    if (!prize) {
+                    if (!prize || prize.type_game !== Number(game)) {
                         return {
                             success: false,
                             code: '404',
@@ -587,27 +547,9 @@ class GamesService {
                         transaction
                     });
 
-                    const maxSpentConfig = await ConfigParameters.findOne({
-                        where: {
-                            name: 'max_spent'
-                        },
-                        transaction
-                    });
+                    const maxSpent = configParameterCache.getNumber('max_spent', 50);
 
-                    const tempConfig = await ConfigParameters.findOne({
-                        where: {
-                            name: 'prob_temporal'
-                        },
-                        transaction
-                    });
-
-                    const maxSpent = Number(
-                        maxSpentConfig?.value || 50
-                    );
-
-                    const probTemporal = Number(
-                        tempConfig?.value || 0.5
-                    );
+                    const probTemporal = configParameterCache.getNumber('prob_temporal', 0.5);
 
                     let tracker = await UserPrizeTracker.findOne({
                         where: {

@@ -36,10 +36,17 @@ import LogPanelGM from '../models/logPanelGMModel.js';
 class MarketService {
 
     async buyItems(apodo,token,idmarket,chatid,retries = 1, transaction) {
-        const t = await sequelize.transaction(); // Iniciar una transacción
+        const ownTransaction = !transaction;
+        const t = transaction || await sequelize.transaction();
         try {
+            const rollbackOwn = async (response) => {
+                if (ownTransaction) {
+                    await t.rollback();
+                }
+                return response;
+            };
 
-            const user = (await User.findOne({where:{ apodo: apodo}}))['id'];
+            const user = (await User.findOne({where:{ apodo: apodo}, transaction: t}))['id'];
 
             // const res = await this.socketSend(user);
 
@@ -57,31 +64,31 @@ class MarketService {
             // Bloquear market place
             const item = await Marketplace.findOne({
                 where: { id: idmarket },
-                transaction,
-                lock: transaction.LOCK.UPDATE,
+                transaction: t,
+                lock: t.LOCK.UPDATE,
             });
     
             if (!item) {
                 console.log('[Error] El market id del item no existe'.red);
-                return { success: false, code: '200', message: 'El item no existe' };
+                return await rollbackOwn({ success: false, code: '200', message: 'El item no existe' });
             }
 
             if (item.vendedor === apodo) {
                 console.log('[Error] Está intentando autocomprar items'.red);
-                return { success: false, code: '200', message: 'No puedes comprar tus propios items' };
+                return await rollbackOwn({ success: false, code: '200', message: 'No puedes comprar tus propios items' });
             }
 
             // Item estado 3 not porque se valida con el chat... Solo validar cuando init chat
 
             if (item.estado === 0 || item.estado === 2){
                 console.log('[Error] El item ya no se encuentra disponible en la tienda'.red);
-                return { success: false, code: '200', message: 'El item ya no se encuentra disponible. Actualiza la tienda.' };
+                return await rollbackOwn({ success: false, code: '200', message: 'El item ya no se encuentra disponible. Actualiza la tienda.' });
             }
 
             const sellerInfo = await User.findOne({
                 where: { apodo: item.vendedor },
                 attributes: ['id'],
-                transaction,
+                transaction: t,
             });
 
 
@@ -92,17 +99,17 @@ class MarketService {
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
-                // transaction: t, // Asociar la transacción con esta consulta
+                transaction: t,
             });
     
             if (!userGame) {
                 console.log('[Error] Usuario no encontrado'.red);
-                return { success: false, code: '200', message: 'ID de Usuario no encontrado' };
+                return await rollbackOwn({ success: false, code: '200', message: 'ID de Usuario no encontrado' });
             }
 
             const medioPago = await PaymentMethods.findOne({
                 where: {id: item.medio_pago},
-                transaction
+                transaction: t
             })
 
             if(medioPago.type == 'INTERNAL'){
@@ -110,21 +117,22 @@ class MarketService {
                     case 1: //cash 
                         sCoin = await Cash.findOne({
                             where: {id:sellerInfo.id},
-                            transaction,
-                            lock: transaction.LOCK.UPDATE,
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
                         });
+                        break;
                     case 2: // puntos
 
                         sCoin = await UserGameInfo.findOne({
                             where: {name:sellerInfo.id},
-                            transaction,
-                            lock: transaction.LOCK.UPDATE,
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
                         });
 
                         break;
                     default:
                         console.log('[ERROR] Payment method: Not exists this internal payment'.red);
-                        return { success: false, code: '200', message: 'Método de pago interno no existe' };
+                        return await rollbackOwn({ success: false, code: '200', message: 'Método de pago interno no existe' });
                 }
 
             }
@@ -140,7 +148,7 @@ class MarketService {
                 characterid:0,
                 },
                 raw: true,
-                transaction,
+                transaction: t,
             });
 
             // Mapear los resultados a un array de números
@@ -164,29 +172,29 @@ class MarketService {
             //Si no hay, volver a enviar el mensaje de slot no disponible
             if(slotFree === null){
                 console.log('[Error] No tiene slots disponibles en su inventario'.red);
-                return { success: false, code: '201', message: 'No tiene slots disponbiles en tu inventario para comprar este item' };
+                return await rollbackOwn({ success: false, code: '201', message: 'No tiene slots disponbiles en tu inventario para comprar este item' });
             }
 
             // 4. Verificar si el usuario tiene créditos disponibles
             const userCredits = await UserCredits.findOne({
                 where: { user: sellerInfo.id },
-                transaction,
-                lock: transaction.LOCK.UPDATE, // Evita race conditions
+                transaction: t,
+                lock: t.LOCK.UPDATE, // Evita race conditions
             });
 
             // !userCredits || (userItem.level >= 27 && userCredits.credits <= 1)||
             if ( !userCredits || userCredits.credits <= 0) {
                 // await transaction.rollback();
                 console.log('[Error] No tiene créditos suficientes para publicar en trades'.red);
-                return {
+                return await rollbackOwn({
                     success: false,
                     code: '202',
                     message: 'No tienes créditos disponibles para publicar tu item en trades.',
-                };
+                });
             }
             var bfCr = userCredits.credits;
             userCredits.credits -= 1;
-            await userCredits.save({ transaction });
+            await userCredits.save({ transaction: t });
 
              var afCred = userCredits.credits;
 
@@ -198,7 +206,7 @@ class MarketService {
                 last_pr: bfCr,
                 curr_pr: afCred,
                 fecha: new Date(), 
-            }, { transaction });
+            }, { transaction: t });
 
             if(medioPago.type == 'INTERNAL'){
                 const totalCost = item.precio;
@@ -210,24 +218,32 @@ class MarketService {
                     bfCr = sCoin.cash;
                     sCoin.cash += totalCost;
                     aftCr = sCoin.cash;
-                    await sCoin.save({ transaction });
+                    await sCoin.save({ transaction: t });
                 } else if(item.medio_pago === 2){
                     typeCr = 13;
                      bfCr = sCoin.clanpoint;
                     sCoin.clanpoint += totalCost;
                     aftCr = sCoin.clanpoint;
-                    await sCoin.save({ transaction });
+                    await sCoin.save({ transaction: t });
                 }
 
-                  await UserInternalHolds.create({
-                    user,
-                    trade_id: idmarket,
-                    chat_id: chatid,
-                    method_id: item.medio_pago,
-                    amount: item.precio,
-                    status: 'RELEASED',
-                    created_at: new Date()
-                }, { transaction: t });
+                const userHold = await UserInternalHolds.findOne({
+                    where: {
+                        trade_id: idmarket,
+                        chat_id: chatid,
+                        status: 'HELD'
+                    },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE,
+                });
+
+                if (!userHold) {
+                    return await rollbackOwn({ success: false, code: '200', message: 'No se encontro la retencion interna del comprador.' });
+                }
+
+                userHold.status = 'RELEASED';
+                userHold.released_at = new Date();
+                await userHold.save({ transaction: t });
 
                 await LogRewardsUser.create({  
                     user:user,
@@ -237,13 +253,13 @@ class MarketService {
                     last_pr: bfCr,
                     curr_pr: aftCr,
                     fecha: new Date(), 
-                }, { transaction});
+                }, { transaction: t });
             }
 
             // Obtener info del item con item.itemid
             const itemUserSeller = await TempUserItemInfo.findOne({
                 where: { id: item.itemid },
-                transaction,
+                transaction: t,
             });
 
             // Añadir el item a useriteminfo :)
@@ -258,7 +274,7 @@ class MarketService {
                 slot: slotFree,               // Slot que te proporcionarán
                 exp: itemUserSeller.exp,
             }, {
-                transaction, // Asociar la transacción con la inserción
+                transaction: t, // Asociar la transacción con la inserción
             });
 
             await LogRewardsUser.create({  
@@ -267,30 +283,37 @@ class MarketService {
                 recompensa:itemUserSeller.itemid,
                 tipo_recompensa: 0,
                 fecha: new Date(), 
-              }, { transaction});
+              }, { transaction: t });
     
             // Registrar la compra en sellsRecord
             await SellsRecord.create({
                 id_market: idmarket,
                 buyer: apodo,
                 date: new Date(),
-            }, { transaction});
+            }, { transaction: t });
 
             // Actualizar estado a 0 (vendido)
             item.estado = 0;
-            await item.save({ transaction });
+            await item.save({ transaction: t });
 
-            // await transaction.commit();
+            if (ownTransaction) {
+                await t.commit();
+            }
             console.log('[Success] Liberación y registro de item a comprador exitoso'.green);
             return { success: true, code: '000' };
     
         } catch (error) {
+            if (ownTransaction) {
+                try {
+                    await t.rollback();
+                } catch (_) {}
+            }
             console.error('Error al comprar items:', error);
     
             if (error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
                 // Reintentar la transacción
                 console.log('Reintentando transacción...');
-                return await this.buyItems(apodo, token, idmarket, retries - 1, transaction);
+                return await this.buyItems(apodo, token, idmarket, chatid, retries - 1, transaction);
             }
             return { success: false, code: '200', message: 'Error interno del servidor'};
             // throw new Error('Error interno del servidor');
@@ -298,7 +321,8 @@ class MarketService {
     }
 
     async returnItem(apodo,token,idmarket,retries = 1,transaction,byCancel = false) {
-        const t = transaction; // Iniciar una transacción
+        const ownTransaction = !transaction;
+        const t = transaction || await sequelize.transaction();
         try {
 
             // return { success: false, code: '999', message: 'Not available' };
@@ -347,8 +371,6 @@ class MarketService {
                 transaction: t,
             });
 
-            const user = userInfo.id;
-
             if (!userInfo) {
                 await t.rollback();
                 console.log('[Error] No se encontró el apodo del usuario'.red);
@@ -358,6 +380,8 @@ class MarketService {
                     message: 'No se encontró el apodo del usuario',
                 };
             }
+
+            const user = userInfo.id;
 
             if (item.vendedor !== apodo) {
                 await t.rollback();
@@ -392,7 +416,7 @@ class MarketService {
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
-                // transaction: t, // Asociar la transacción con esta consulta
+                transaction: t,
             });
     
             if (!userGame) {
@@ -483,21 +507,25 @@ class MarketService {
             item.estado = 2;
             await item.save({ transaction: t });
 
-            // const itms = await this.getItems();
+            if (ownTransaction) {
+                await t.commit();
+            }
             console.log('[Success] Retono exitoso'.green);
             return { success: true, code: '000'};
     
         } catch (error) {
-            await t.rollback();
+            try {
+                await t.rollback();
+            } catch (_) {}
             console.error('Error al comprar items:', error);
     
-            if (error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
+            if (ownTransaction && error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
                 // Reintentar la transacción
                 console.log('Reintentando transacción...');
-                return await this.buyItems(user, token, idstore, amount, retries - 1);
+                return await this.returnItem(apodo, token, idmarket, retries - 1, undefined, byCancel);
             }
     
-            throw new Error('Error interno del servidor');
+            return { success: false, code: '200', message: 'Error interno al retornar el item.' };
         }
     }
 
@@ -732,6 +760,110 @@ class MarketService {
                 return { success: false, code: '200', message: 'Metodo de pago no encontrado.' };
             }
 
+            let userHold = null;
+            let holdMethod = null;
+            let holdPrice = 0;
+
+            if (paymentMeth.type === 'INTERNAL') {
+                userHold = await UserInternalHolds.findOne({
+                    where: {
+                        trade_id: chat.trade_id,
+                        chat_id: chat.id,
+                        status: 'HELD'
+                    },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE,
+                });
+
+                if (!userHold) {
+                    await t.rollback();
+                    return { success: false, code: '200', message: 'No se encontro la retencion interna del comprador.' };
+                }
+
+                holdMethod = Number(userHold.method_id);
+                holdPrice = Number(userHold.amount);
+                const skipEventPointReturn = holdMethod === 2 && skipReturnPoints === true;
+
+                if (!skipEventPointReturn) {
+                    let typeRew = null;
+                    let befCurr = 0;
+                    let aftCurr = 0;
+
+                    if (holdMethod === 1) {
+                        const userCash = await Cash.findOne({
+                            where: { id: userHold.user },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
+                        });
+
+                        if (!userCash) {
+                            await t.rollback();
+                            return { success: false, code: '200', message: 'No se encontro el cash del comprador.' };
+                        }
+
+                        befCurr = Number(userCash.cash);
+                        userCash.cash = Number(userCash.cash) + holdPrice;
+                        aftCurr = userCash.cash;
+                        await userCash.save({ transaction: t });
+                        typeRew = 2;
+                    } else if (holdMethod === 2) {
+                        const userGame = await UserGameInfo.findOne({
+                            where: { name: userHold.user },
+                            transaction: t,
+                            lock: t.LOCK.UPDATE,
+                        });
+
+                        if (!userGame) {
+                            await t.rollback();
+                            return { success: false, code: '200', message: 'No se encontro la informacion del comprador.' };
+                        }
+
+                        befCurr = Number(userGame.clanpoint);
+                        userGame.clanpoint = Number(userGame.clanpoint) + holdPrice;
+                        aftCurr = userGame.clanpoint;
+                        await userGame.save({ transaction: t });
+                        typeRew = 13;
+                    } else {
+                        await t.rollback();
+                        return { success: false, code: '200', message: 'Metodo de pago interno no soportado.' };
+                    }
+
+                    await LogRewardsUser.create({
+                        user: userHold.user,
+                        origen: 17,
+                        recompensa: holdPrice,
+                        tipo_recompensa: typeRew,
+                        last_pr: befCurr,
+                        curr_pr: aftCurr,
+                        fecha: new Date(),
+                    }, { transaction: t });
+
+                    await TradeMessage.create({
+                        chat_id: chat.id,
+                        sender: null,
+                        message: 'Se te ha retornado el monto retenido de esta transaccion',
+                        message_type: 'SYSTEM',
+                        content_type: 'TEXT',
+                        visible_to: 'BUYER',
+                        created_at: new Date()
+                    }, { transaction: t });
+                } else {
+                    await TradeMessage.create({
+                        chat_id: chat.id,
+                        sender: null,
+                        message: 'El chat fue cancelado por un administrador y los puntos de evento retenidos no fueron retornados.',
+                        message_type: 'SYSTEM',
+                        content_type: 'TEXT',
+                        visible_to: 'BUYER',
+                        created_at: new Date()
+                    }, { transaction: t });
+                }
+
+                userHold.status = 'CANCELLED';
+                userHold.released_at = new Date();
+                await userHold.save({ transaction: t });
+            }
+
             if (paymentMeth.type === 'EXTERNAL') {
                 const confirmed = allActions.some((item) => item.action === 'CONFIRM_PAYMENT');
 
@@ -763,6 +895,10 @@ class MarketService {
                 const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true);
 
                 if (!returned.success) {
+                    try {
+                        await t.rollback();
+                    } catch (_) {}
+
                     return {
                         success: false,
                         code: returned.code || '200',
@@ -835,111 +971,6 @@ class MarketService {
 
                 chat.status = 'CANCELLED';
                 await chat.save({ transaction: t });
-            }
-
-            if (paymentMeth.type === 'INTERNAL') {
-                const userHold = await UserInternalHolds.findOne({
-                    where: {
-                        trade_id: chat.trade_id,
-                        chat_id: chat.id,
-                        status: 'HELD'
-                    },
-                    transaction: t,
-                    lock: t.LOCK.UPDATE,
-                });
-
-                if (!userHold) {
-                    await t.rollback();
-                    return { success: false, code: '200', message: 'No se encontro la retencion interna del comprador.' };
-                }
-
-                const method = Number(userHold.method_id);
-                const price = Number(userHold.amount);
-                const skipEventPointReturn = method === 2 && skipReturnPoints === true;
-
-                if (!skipEventPointReturn) {
-                    let typeRew = null;
-                    let befCurr = 0;
-                    let aftCurr = 0;
-
-                    if (method === 1) {
-                        const userCash = await Cash.findOne({
-                            where: { id: userHold.user },
-                            transaction: t,
-                            lock: t.LOCK.UPDATE,
-                        });
-
-                        if (!userCash) {
-                            await t.rollback();
-                            return { success: false, code: '200', message: 'No se encontro el cash del comprador.' };
-                        }
-
-                        befCurr = Number(userCash.cash);
-                        userCash.cash = Number(userCash.cash) + price;
-                        aftCurr = userCash.cash;
-                        await userCash.save({ transaction: t });
-                        typeRew = 2;
-                    } else if (method === 2) {
-                        const userGame = await UserGameInfo.findOne({
-                            where: { name: userHold.user },
-                            transaction: t,
-                            lock: t.LOCK.UPDATE,
-                        });
-
-                        if (!userGame) {
-                            await t.rollback();
-                            return { success: false, code: '200', message: 'No se encontro la informacion del comprador.' };
-                        }
-
-                        befCurr = Number(userGame.clanpoint);
-                        userGame.clanpoint = Number(userGame.clanpoint) + price;
-                        aftCurr = userGame.clanpoint;
-                        await userGame.save({ transaction: t });
-                        typeRew = 13;
-                    }
-
-                    if (typeRew !== null) {
-                        await LogRewardsUser.create({
-                            user: userHold.user,
-                            origen: 17,
-                            recompensa: price,
-                            tipo_recompensa: typeRew,
-                            last_pr: befCurr,
-                            curr_pr: aftCurr,
-                            fecha: new Date(),
-                        }, { transaction: t });
-                    }
-
-                    await TradeMessage.create({
-                        chat_id: chat.id,
-                        sender: null,
-                        message: 'Se te ha retornado el monto retenido de esta transaccion',
-                        message_type: 'SYSTEM',
-                        content_type: 'TEXT',
-                        visible_to: 'BUYER',
-                        created_at: new Date()
-                    }, { transaction: t });
-                } else {
-                    await TradeMessage.create({
-                        chat_id: chat.id,
-                        sender: null,
-                        message: 'El chat fue cancelado por un administrador y los puntos de evento retenidos no fueron retornados.',
-                        message_type: 'SYSTEM',
-                        content_type: 'TEXT',
-                        visible_to: 'BUYER',
-                        created_at: new Date()
-                    }, { transaction: t });
-                }
-
-                await UserInternalHolds.create({
-                    user: userHold.user,
-                    trade_id: chat.trade_id,
-                    chat_id: chat.id,
-                    method_id: method,
-                    amount: price,
-                    status: 'CANCELLED',
-                    created_at: new Date()
-                }, { transaction: t });
             }
 
             await t.commit();
@@ -1284,7 +1315,10 @@ class MarketService {
                         );
                     }
 
-                    if(!isPanel) return { success: false, code: "200", message: "Suspendido temporalmente" };
+                    if(!isPanel) {
+                        await t.rollback();
+                        return { success: false, code: "200", message: "Suspendido temporalmente" };
+                    }
 
                      if(chat.seller !== effectiveUser && !isPanel) {
                         await t.rollback();

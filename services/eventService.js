@@ -1,4 +1,4 @@
-import Ticket from '../models/ticketsModel.js';
+﻿import Ticket from '../models/ticketsModel.js';
 import Cash from '../models/cashModel.js';
 import UserGameInfo from '../models/userGameInfoModel.js';
 import PendingPresents from '../models/pendingPresentsModel.js';
@@ -44,6 +44,126 @@ import publicDataCache, {
   PUBLIC_CACHE_KEYS,
   PUBLIC_CACHE_TTL,
 } from '../modules/public/publicData.cache.js';
+import prizeGameCache from '../modules/events/prizeGame.cache.js';
+import eventTestUserCache from '../modules/events/eventTestUser.cache.js';
+
+const getDatabaseErrorCode = (error) => (
+  error?.parent?.code ||
+  error?.original?.code ||
+  error?.code ||
+  null
+);
+
+const isDatabaseConnectionError = (error) => {
+  const name = error?.name || '';
+  const code = getDatabaseErrorCode(error);
+
+  return [
+    'SequelizeConnectionError',
+    'SequelizeConnectionRefusedError',
+    'SequelizeHostNotFoundError',
+    'SequelizeHostNotReachableError',
+    'SequelizeAccessDeniedError',
+    'SequelizeConnectionTimedOutError',
+  ].includes(name) || [
+    'ECONNREFUSED',
+    'ENOTFOUND',
+    'EHOSTUNREACH',
+    'ETIMEDOUT',
+    'PROTOCOL_CONNECTION_LOST',
+  ].includes(code);
+};
+
+const classifyCouponRedeemError = (error) => {
+  const name = error?.name || '';
+  const code = getDatabaseErrorCode(error);
+  const message = String(error?.message || '').toLowerCase();
+
+  if (isDatabaseConnectionError(error)) {
+    return {
+      success: false,
+      code: '503',
+      errorType: 'DATABASE_CONNECTION_ERROR',
+      retryable: true,
+      message: 'No se pudo conectar con la base de datos para canjear el cupon. Intenta nuevamente en unos minutos.',
+      detail: code,
+    };
+  }
+
+  if (name === 'SequelizeTimeoutError' || message.includes('timeout')) {
+    return {
+      success: false,
+      code: '504',
+      errorType: 'DATABASE_TIMEOUT',
+      retryable: true,
+      message: 'La base de datos tardo demasiado en responder al canje. Intenta nuevamente.',
+      detail: code,
+    };
+  }
+
+  if (code === 'ER_LOCK_DEADLOCK' || code === 'ER_LOCK_WAIT_TIMEOUT') {
+    return {
+      success: false,
+      code: '409',
+      errorType: 'DATABASE_LOCK',
+      retryable: true,
+      message: 'El canje se cruzo con otra solicitud simultanea. Intenta nuevamente en unos segundos.',
+      detail: code,
+    };
+  }
+
+  if (name === 'SequelizeUniqueConstraintError') {
+    return {
+      success: false,
+      code: '409',
+      errorType: 'DUPLICATE_REDEEM',
+      retryable: false,
+      message: 'El canje ya aparece registrado. Actualiza tu cuenta y revisa si el premio fue entregado.',
+      detail: code,
+    };
+  }
+
+  if (name === 'SequelizeForeignKeyConstraintError') {
+    return {
+      success: false,
+      code: '500',
+      errorType: 'DATABASE_REFERENCE_ERROR',
+      retryable: false,
+      message: 'No se pudo registrar el premio por una referencia interna invalida. Contacta a soporte.',
+      detail: code,
+    };
+  }
+
+  if (name.startsWith('Sequelize')) {
+    return {
+      success: false,
+      code: '500',
+      errorType: 'DATABASE_ERROR',
+      retryable: true,
+      message: 'La base de datos no pudo completar el canje. Intenta nuevamente o contacta a soporte.',
+      detail: code,
+    };
+  }
+
+  return {
+    success: false,
+    code: '500',
+    errorType: 'COUPON_REDEEM_ERROR',
+    retryable: true,
+    message: 'El servidor no pudo completar el canje del cupon. Intenta nuevamente o contacta a soporte.',
+    detail: code,
+  };
+};
+
+const rollbackCouponTransaction = async (transaction) => {
+  if (!transaction || transaction.finished) return;
+
+  try {
+    await transaction.rollback();
+  } catch (rollbackError) {
+    console.error('Error al revertir la transaccion del cupon:', rollbackError);
+  }
+};
 
 class EventService {
   async verifyUserTickets(userId) {
@@ -1316,7 +1436,13 @@ class EventService {
   
 
   async playGameSelector(tknGame,opcion,token,modalidad,type,isDataIntegrityValid,paramsString,userId,user2,key1,key2,przId, req) {
-    const t = await sequelize.transaction(); // Iniciar una transacción
+    let t;
+
+    const rollbackTransaction = async () => {
+      if (t && !t.finished) {
+        await t.rollback();
+      }
+    };
 
     try {
       // Concatenar los parámetros en una cadena
@@ -1329,40 +1455,51 @@ class EventService {
       console.log(orderPrize);
       console.log(idRoulette2);*/
       console.log("Re-verificación:".magenta, verifyPacketEqual ? String(verifyPacketEqual).green :  String(verifyPacketEqual).red);
-      const banInfo = await verifyPacketAndBan(userId, user2, paramsString, verifyPacketEqual, t, req);
+      const banInfo = await verifyPacketAndBan(userId, user2, paramsString, verifyPacketEqual, null, req);
   
       if (banInfo) {
-        await t.rollback(); // Revertir la transacción en caso de error
         return banInfo;
       }
   
-      const trx = await sequelize.transaction(); 
       // Si la cadena de parámetros no existe, insertarla en trackingpacket
       await TrackingPacket.create(
         {
           packet: paramsString,
           user: userId,
           fecha_uso: new Date(),
-        },
-        {
-          transaction: trx, // Asociar la transacción con esta operación
         }
       );
 
-      await trx.commit(); 
-
-      // Verificar token:
-      const sessionToken = await TokenSession.findOne({
-        attributes: ['token'],
-        where: {
-          token: token,
-          id: userId,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
+      const [sessionToken, gameActive, tokenCount] = await Promise.all([
+        TokenSession.findOne({
+          attributes: ['token'],
+          where: {
+            token: token,
+            id: userId,
+          },
+          raw: true,
+        }),
+        Evento.findOne({
+          attributes: ['id', 'mode'],
+          where: {
+            id: type,
+            show: 1,
+            estado: 1
+          },
+          raw: true,
+        }),
+        GameAuth.findOne({
+          attributes: ['token'],
+          where: {
+            token: tknGame,
+            user: userId,
+            type_game: type,
+          },
+          raw: true,
+        }),
+      ]);
 
       if(!sessionToken){
-        await t.rollback(); // Revertir la transacción en caso de error
         console.log('Win:'.magenta,'false'.red);
         return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para jugar' };
       }
@@ -1374,34 +1511,17 @@ class EventService {
       }*/
 
       //Primero verificar si el juego esta en modo show :)
-      const gameActive = await Evento.findOne({
-            where: {
-                id: type,
-                show: 1,
-                estado: 1
-            },
-            transaction: t
-        });
-
-      // Revertir la transacción en caso de error
       if(!gameActive){
-        await t.rollback();
         console.log('Win:'.magenta,'false'.red);
         return { success: false, code: '999', message:`Este evento ya ha concluido. ¡Por favor, actualice la página!` };
       }
 
       if (Number(gameActive.mode) === 0) {
-        const testUser = await EventTestUser.findOne({
-          attributes: ['id'],
-          where: {
-            user: userId,
-            event: type,
-          },
-          transaction: t,
-        });
+        if (!eventTestUserCache.loaded) {
+          await eventTestUserCache.loadFromDatabase();
+        }
 
-        if (!testUser) {
-          await t.rollback();
+        if (!eventTestUserCache.has(type, userId)) {
           console.log('Win:'.magenta, 'false'.red);
 
           return {
@@ -1413,32 +1533,29 @@ class EventService {
       }
 
       // Verificar token (todos los juegos sin partida):
-      const tokenCount = await GameAuth.findOne({
-        attributes: ['token'],
-        where: {
-          token: tknGame,
-          user: userId,
-          type_game: type,
-        },
-        transaction: t, // Asociar la transacción con esta consulta
-      });
-
       if(!tokenCount){
-        await t.rollback(); // Revertir la transacción en caso de error
          console.log('Win:'.magenta,'false'.red);
         return { success: false, code: '999', message: 'Has abierto el juego en otra pestaña...' };
       }
 
+      t = await sequelize.transaction();
+
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
       const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,przId,t);
 
+      if (!GameRes) {
+        await rollbackTransaction();
+        console.log('Win:'.magenta,'false'.red);
+        return { success: false, code: '200', message: 'No existe este tipo de juego' };
+      }
+
       if(GameRes.code){
-        await t.rollback();
+        await rollbackTransaction();
         console.log('Win:'.magenta,'false'.red);
         return GameRes;
       }
 
-      const prizesGame = GameRes.all;
+      let prizesGame = GameRes.all;
 
       if(!GameRes.win){
         console.log('Win:'.magenta,'false'.red);
@@ -1450,6 +1567,25 @@ class EventService {
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '200', message: 'No se encontró premios para este juego' };
       }
+
+      const livePrizeUsage = await PrizesGame.findOne({
+        attributes: ['limite', 'users'],
+        where: {
+          id: prizesGame.id,
+        },
+        transaction: t,
+      });
+
+      if (!livePrizeUsage) {
+        await t.rollback();
+        return { success: false, code: '200', message: 'No se encontró premios para este juego' };
+      }
+
+      prizesGame = {
+        ...prizesGame,
+        limite: Number(livePrizeUsage.limite || 0),
+        users: Number(livePrizeUsage.users || 0),
+      };
 
       // const prizesGame = allPrizes[selectedItem];
       //console.log(prizesGame);
@@ -1510,7 +1646,7 @@ class EventService {
             //Cash, oro, puntos
             case 1:
             case 2:
-            case 3:
+            // case 3:
 
               typename = 'giros';
 
@@ -1518,7 +1654,7 @@ class EventService {
                 // attributes: ['tickets'],
                 where: {
                   user: userId,
-                  asset: modalidad === 1 ? 3 : 5
+                  asset: 3
                 },
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
@@ -1530,7 +1666,7 @@ class EventService {
                   by: 1,
                   where: {
                     user: userId,
-                    asset: modalidad === 1 ? 3 : 5
+                    asset: 3
                   },
                   transaction: t, // Asociar la transacción con esta operación
                 });
@@ -1551,7 +1687,6 @@ class EventService {
 
           // Combina los valores de params con los nuevos datos
           Object.assign(params, GameRes.params);
-          
           break;
         //Countdown
         case 1:
@@ -1655,15 +1790,13 @@ class EventService {
             },
           );
 
-           const allPrizesFinal = await PrizesGame.findAll({
-            attributes: ['name', 'url'],
-            where: {
-              //idRoulette: idRoulette,
-              type_game: type,
-            },
-            order: [['orderPrize', 'ASC']],
-            transaction: t, // Asociar la transacción con esta consulta
-          });
+           const allPrizesFinal = prizeGameCache
+            .getByGame(type)
+            .sort((a, b) => Number(a.orderPrize) - Number(b.orderPrize))
+            .map((prize) => ({
+              name: prize.name,
+              url: prize.url,
+            }));
 
            Object.assign(params, {
               allpz:allPrizesFinal,_cf:cofres
@@ -1712,7 +1845,7 @@ class EventService {
       await t.commit();
       return { success: true, code: '000', message:resWin.message,params};
     } catch (error) {
-      await t.rollback(); // Revertir la transacción en caso de error
+      await rollbackTransaction(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);
       throw new Error('Error en el servidor');
     }
@@ -1935,24 +2068,32 @@ class EventService {
           message: localTempCouponCheck.message,
         };
       }
+
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token: token,
+          id: user,
+        },
+      });
+
+      if (!sessionToken) {
+        return { success: false, code: '300', message: 'Token invalido o tienes una sesion iniciada en otro navegador...' };
+      }
+
+      const verifyPacketEqual = isDataIntegrityValid;
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, null, req);
+
+      if (banInfo) {
+        return banInfo;
+      }
   
-      const t = await sequelize.transaction();
+      let t = null;
     
       try {
+        t = await sequelize.transaction();
   
-        // Verificar el paquete utilizando la clase PacketVerifier
-        const verifyPacketEqual = (isDataIntegrityValid);
-        const banInfo = await verifyPacketAndBan(user,user, paramsString, verifyPacketEqual, t, req);
-  
-        console.log(banInfo);
-  
-        if (banInfo) {
-          await t.rollback();
-          return banInfo;
-        }
-  
-        // Antes tenías otra transacción trx aquí. Eso aumenta conexiones y puede generar inconsistencias.
-        // Lo metemos en la misma transacción principal.
+        // Usa una sola transaccion principal para evitar conexiones extra.
         await TrackingPacket.create(
           {
             packet: paramsString,
@@ -1964,22 +2105,8 @@ class EventService {
           }
         );
   
-        // Verificar token:
-        const sessionToken = await TokenSession.findOne({
-          attributes: ['token'],
-          where: {
-            token: token,
-            id: user,
-          },
-          transaction: t,
-        });
   
-        if(!sessionToken){
-          await t.rollback();
-          return { success: false, code: '300', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
-        }
-  
-        // Verificación final en BD con lock.
+        // Verificacion final en BD con lock.
         const cuponPrize = await Cupon.findOne({
           where: {
             ticket: cupon,
@@ -2239,9 +2366,17 @@ class EventService {
         return { success: true, code: '000', message };
       }
       catch (error) {
-          await t.rollback();
-          console.log(error);
-          throw new Error('Error al canjear cupón');
+          await rollbackCouponTransaction(t);
+          const couponError = classifyCouponRedeemError(error);
+
+          console.error(
+            '[CouponRedeem]',
+            couponError.errorType,
+            couponError.detail || '',
+            error
+          );
+
+          return couponError;
       }
     } 
 

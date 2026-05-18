@@ -27,6 +27,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
   let transaction;
     try {
         var userId;
+        const transactionOption = t ? { transaction: t } : {};
 
         if(user === user2){
           userId = user;
@@ -35,13 +36,13 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
             where: {
               name: user,
             },
-            transaction: t,
+            ...transactionOption,
           });
           const existUser2 = await UserGameInfo.findOne({
             where: {
               name: user2,
             },
-            transaction: t,
+            ...transactionOption,
           });
 
           if(existUser){
@@ -59,7 +60,7 @@ const verifyPacketAndBan = async (user, user2, paramsString,verifyPacketEqual, t
               packet: paramsString,
               user: userId,
             },
-            transaction: t, // Asociar la transacción con esta consulta
+            ...transactionOption,
           });
       
           if (existingPacket || !verifyPacketEqual) {

@@ -3,6 +3,55 @@ import { encrypt,decrypt,generateKey } from '../helpers/encryption.js';
 import { verifySignature,calculateDataHash } from '../helpers/signedData.js';
 import colors from "colors";
 
+const normalizeCouponControllerError = (error) => {
+  const name = error?.name || '';
+  const message = String(error?.message || '').toLowerCase();
+  const isBadPayload =
+    name === 'SyntaxError' ||
+    name === 'TypeError' ||
+    message.includes('decrypt') ||
+    message.includes('hash');
+
+  if (isBadPayload) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        code: '400',
+        errorType: 'INVALID_COUPON_REQUEST',
+        message: 'No se pudo leer la solicitud de canje. Recarga la pagina e intenta nuevamente.',
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      success: false,
+      code: '500',
+      errorType: 'COUPON_CONTROLLER_ERROR',
+      message: 'El servidor no pudo preparar el canje del cupon. Intenta nuevamente.',
+    },
+  };
+};
+
+const getCouponResponseStatus = (result) => {
+  if (!result || result.success) return 200;
+
+  if (result.httpStatus) return Number(result.httpStatus);
+
+  const code = String(result.code || '');
+  const errorType = result.errorType || '';
+
+  if (code === '300' || errorType === 'AUTH_ERROR') return 401;
+  if (['001', '002', '004'].includes(code)) return 409;
+  if (code === '429' || errorType === 'TOO_MANY_REQUESTS') return 429;
+  if (code === '503' || errorType === 'DATABASE_CONNECTION_ERROR') return 503;
+  if (code === '504' || errorType === 'DATABASE_TIMEOUT') return 504;
+
+  return 400;
+};
+
 class EventController {
   async verifyTickets(req, res) {
     try {
@@ -385,14 +434,17 @@ class EventController {
 
       const result = await EventService.redeemCupon(paramsString,token,user,cupon,isDataIntegrityValid,ip, req);
 
-      if (result.success || result.code) {
-        return res.status(200).json(result);
-      } else {
-        return res.status(400).json(result);
-      }
+      return res.status(getCouponResponseStatus(result)).json(result);
     } catch (error) {
-      console.error('Error al realizar la operación:', error);
-      return res.status(500).json({ message: 'Error interno del servidor' });
+      const couponError = normalizeCouponControllerError(error);
+
+      console.error(
+        'Error al realizar el canje de cupon:',
+        couponError.body.errorType,
+        error
+      );
+
+      return res.status(couponError.status).json(couponError.body);
     }
   }
 
