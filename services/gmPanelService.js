@@ -2264,7 +2264,7 @@ class GMPanelService {
                 attributes: ['id', 'clanpoint'],
                 where: {
                   name: u.name, // Cambia esto para usar el nombre de usuario correcto
-                  gold: {
+                  clanpoint: {
                     [Op.lte]: (eventPoints-1), // Verifica que gold sea menor o igual a 4999
                   },
                 },
