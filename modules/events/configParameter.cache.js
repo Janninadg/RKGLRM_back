@@ -5,6 +5,7 @@ class ConfigParameterCache {
     this.parameters = new Map(); // name -> parameter
     this.loaded = false;
     this.loadedAt = null;
+    this.loadingPromise = null;
   }
 
   normalize(parameter) {
@@ -14,7 +15,11 @@ class ConfigParameterCache {
 
     return {
       name: String(plain.name || '').trim(),
+      description: plain.description || '',
       value: plain.value,
+      isparameter: Number(plain.isparameter ?? 0),
+      tipo: Number(plain.tipo ?? 0),
+      clase: Number(plain.clase ?? 2),
     };
   }
 
@@ -23,20 +28,43 @@ class ConfigParameterCache {
   }
 
   async loadFromDatabase() {
-    const rows = await ConfigParameters.findAll({
-      raw: true,
-      order: [['name', 'ASC']],
-    });
-
-    this.parameters.clear();
-
-    for (const row of rows) {
-      this.addOrUpdate(row);
+    if (this.loadingPromise) {
+      return this.loadingPromise;
     }
 
-    this.loaded = true;
-    this.loadedAt = new Date();
-    console.log(`[ConfigParameterCache] ${this.parameters.size} parametros cargados en memoria`);
+    this.loadingPromise = (async () => {
+      const rows = await ConfigParameters.findAll({
+        raw: true,
+        order: [['name', 'ASC']],
+      });
+
+      this.parameters.clear();
+
+      for (const row of rows) {
+        this.addOrUpdate(row);
+      }
+
+      this.loaded = true;
+      this.loadedAt = new Date();
+      console.log(`[ConfigParameterCache] ${this.parameters.size} parametros cargados en memoria`);
+    })();
+
+    try {
+      await this.loadingPromise;
+    } finally {
+      this.loadingPromise = null;
+    }
+  }
+
+  async ensureLoaded({ maxAgeMs = 30000 } = {}) {
+    const loadedAtTime = this.loadedAt instanceof Date ? this.loadedAt.getTime() : 0;
+    const isFresh = this.loaded && loadedAtTime > 0 && (Date.now() - loadedAtTime) < maxAgeMs;
+
+    if (isFresh) {
+      return;
+    }
+
+    await this.loadFromDatabase();
   }
 
   get(name) {
@@ -90,6 +118,10 @@ class ConfigParameterCache {
 
   getAll() {
     return [...this.parameters.values()].map((parameter) => this.clone(parameter));
+  }
+
+  getParameters() {
+    return this.getAll().filter((parameter) => Number(parameter.isparameter) === 1);
   }
 
   getStats() {

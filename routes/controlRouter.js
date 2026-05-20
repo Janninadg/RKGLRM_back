@@ -36,6 +36,11 @@ router.post('/gfPowUs', GMPanelController.giftPowerUser);
 router.post('/actionList', GMPanelController.banUsers);
 
 router.post('/loadExch', GMPanelController.recargaCash);
+router.post('/recargasPack', GMPanelController.getRecargasPack);
+router.post('/loadExchPack', GMPanelController.recargaPack);
+router.post('/parameters', GMPanelController.getConfigParameters);
+router.post('/parameter', GMPanelController.updateConfigParameter);
+router.post('/parameters/save', GMPanelController.updateConfigParameters);
 
 router.post('/getChrcUsr', GMPanelController.getPersonajeUser);
 router.post('/setChrUsr', GMPanelController.setLevelChUser);

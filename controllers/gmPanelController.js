@@ -120,6 +120,136 @@ class GMPanelController {
         }
       }
 
+      async getRecargasPack(req, res) {
+        try {
+          const { user, token } = req.body;
+
+          const result = await GMPanelService.getRecargasPack(user, token);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al obtener paquetes de recarga:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async recargaPack(req, res) {
+        try {
+          const { IDODUI, jMdiOl } = req.body;
+
+          const receivedDataHash = calculateDataHash(IDODUI);
+          const isDataIntegrityValid = receivedDataHash === jMdiOl;
+
+          const { SIDMCS, O0gDPD, cMDIfe, MUDKFF } = IDODUI;
+
+          const key = SIDMCS;
+          const data = JSON.parse(decrypt(O0gDPD, key));
+
+          const user = decrypt(cMDIfe, key);
+          const token = decrypt(MUDKFF, key);
+
+          const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green, ' Recarga Pack'.white, (' - Admin: ' + user).white);
+
+          const result = await GMPanelService.recargaPack(token, data, user, isDataIntegrityValid, paramsString, req);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al realizar recarga por paquete:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async getConfigParameters(req, res) {
+        try {
+          const { user, token } = req.body;
+
+          const result = await GMPanelService.getConfigParameters(user, token);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al obtener parametros:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async updateConfigParameter(req, res) {
+        try {
+          const { IDODUI, jMdiOl } = req.body;
+
+          const receivedDataHash = calculateDataHash(IDODUI);
+          const isDataIntegrityValid = receivedDataHash === jMdiOl;
+
+          const { SIDMCS, O0gDPD, cMDIfe, MUDKFF } = IDODUI;
+
+          const key = SIDMCS;
+          const data = JSON.parse(decrypt(O0gDPD, key));
+
+          const user = decrypt(cMDIfe, key);
+          const token = decrypt(MUDKFF, key);
+
+          const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green, ' Parametro'.white, (' - Admin: ' + user).white);
+
+          const result = await GMPanelService.updateConfigParameter(token, data, user, isDataIntegrityValid, paramsString, req);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al modificar parametro:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async updateConfigParameters(req, res) {
+        try {
+          const { IDODUI, jMdiOl } = req.body;
+
+          const receivedDataHash = calculateDataHash(IDODUI);
+          const isDataIntegrityValid = receivedDataHash === jMdiOl;
+
+          const { SIDMCS, O0gDPD, cMDIfe, MUDKFF } = IDODUI;
+
+          const key = SIDMCS;
+          const data = JSON.parse(decrypt(O0gDPD, key));
+
+          const user = decrypt(cMDIfe, key);
+          const token = decrypt(MUDKFF, key);
+
+          const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green, ' Parametros'.white, (' - Admin: ' + user).white);
+
+          const result = await GMPanelService.updateConfigParameters(token, data, user, isDataIntegrityValid, paramsString, req);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al modificar parametros:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
       async setCupon(req, res) {
         try {
     

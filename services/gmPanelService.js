@@ -48,7 +48,14 @@ import marketService from './marketService.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
 } from '../modules/public/publicData.cache.js';
+import RecargasPack from '../models/recargasPackModel.js';
+import ConfigParameters from '../models/configParametersModel.js';
+import TipoParametro from '../models/tipoParametroModel.js';
+import ClaseParametro from '../models/claseParametroModel.js';
+import configParameterCache from '../modules/events/configParameter.cache.js';
 
+const SUPER_GM_TYPE = 9;
+const PACK_RECHARGE_GM_TYPES = [0, 2, 4, SUPER_GM_TYPE];
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -1581,7 +1588,7 @@ class GMPanelService {
 
         //Verificar si es GM otra vez:
         const existGM = await UsersPanel.findOne({
-          attributes:['id'],
+          attributes:['id', 'type'],
           where:{
             user: user,
             [Op.or]: [{ type: 0 }, { type: 9 },{type:4}],
@@ -2038,18 +2045,18 @@ class GMPanelService {
           attributes:['id'],
           where:{
             user: user,
-            [Op.or]: [{ type: 0 }, { type: 9 },{type:4},{type:2}],
+            type: SUPER_GM_TYPE,
           },
           transaction: t,
         });
 
         if(!existGM){
           await t.rollback();
-          console.log("!![GM Panel]".red,' Ya no es GM'.red);
+          console.log("!![GM Panel]".red,' Recarga manual no autorizada'.red);
           return {
             success: false,
-            code: '001',
-            message: 'Usted no puede realizar ninguna acción porque ya no es GM, esta sesión será cerrada...'
+            code: '403',
+            message: 'Solo un GM tipo 9 puede usar recargas manuales o descuentos. Usa recarga por paquete.'
           };
         
         }
@@ -2456,6 +2463,786 @@ class GMPanelService {
           console.log(error);
           throw new Error('Error al recargar');
       }
+  }
+
+  async getRecargasPack(user, token) {
+    try {
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token,
+          id: user,
+        },
+      });
+
+      if (!sessionToken) {
+        return {
+          success: false,
+          code: '002',
+          message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+        };
+      }
+
+      const existGM = await UsersPanel.findOne({
+        attributes: ['id', 'type'],
+        where: {
+          user,
+          type: {
+            [Op.in]: PACK_RECHARGE_GM_TYPES,
+          },
+        },
+      });
+
+      if (!existGM) {
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede consultar paquetes de recarga porque ya no es GM.'
+        };
+      }
+
+      const packs = await RecargasPack.findAll({
+        attributes: ['id', 'cash', 'oro', 'puntos'],
+        order: [['id', 'ASC']],
+        raw: true,
+      });
+      const doublePackActive = await this.isConfigParameterEnabled('flag_double_pack');
+
+      return {
+        success: true,
+        code: '000',
+        packs,
+        doublePackActive,
+      };
+    } catch (error) {
+      console.error('Error al obtener paquetes de recarga:', error);
+      return {
+        success: false,
+        code: '500',
+        message: 'Error al obtener paquetes de recarga.'
+      };
+    }
+  }
+
+  async getConfigParameters(user, token) {
+    try {
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token,
+          id: user,
+        },
+      });
+
+      if (!sessionToken) {
+        return {
+          success: false,
+          code: '002',
+          message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+        };
+      }
+
+      const existGM = await UsersPanel.findOne({
+        attributes: ['id', 'type'],
+        where: {
+          user,
+          type: SUPER_GM_TYPE,
+        },
+      });
+
+      if (!existGM) {
+        return {
+          success: false,
+          code: '403',
+          message: 'Solo un GM tipo 9 puede administrar parametros.'
+        };
+      }
+
+      await configParameterCache.ensureLoaded({ maxAgeMs: 30000 });
+
+      const [parameterTypes, parameterClasses] = await Promise.all([
+        TipoParametro.findAll({
+          attributes: ['id', 'nombre', 'description'],
+          order: [['id', 'ASC']],
+          raw: true,
+        }),
+        ClaseParametro.findAll({
+          attributes: ['id', 'nombre', 'description'],
+          order: [['id', 'ASC']],
+          raw: true,
+        }),
+      ]);
+
+      return {
+        success: true,
+        code: '000',
+        parameters: configParameterCache.getParameters(),
+        parameterTypes,
+        parameterClasses,
+      };
+    } catch (error) {
+      console.error('Error al obtener parametros:', error);
+      return {
+        success: false,
+        code: '500',
+        message: 'Error al obtener parametros.'
+      };
+    }
+  }
+
+  normalizeParameterValue(value, clase) {
+    const classType = Number(clase);
+
+    if (classType === 0) {
+      const normalized = value === true || value === 1 || value === '1' || value === 'true';
+      return normalized ? '1' : '0';
+    }
+
+    if (classType === 1) {
+      const numberValue = Number(value);
+
+      if (!Number.isFinite(numberValue)) {
+        return null;
+      }
+
+      return String(numberValue);
+    }
+
+    if (classType === 3) {
+      try {
+        const parsedValue = typeof value === 'string' ? JSON.parse(value) : value;
+        return JSON.stringify(parsedValue);
+      } catch (error) {
+        return null;
+      }
+    }
+
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    return String(value);
+  }
+
+  serializeConfigParameter(parameter) {
+    return {
+      name: parameter.name,
+      description: parameter.description || '',
+      value: parameter.value,
+      isparameter: Number(parameter.isparameter ?? 0),
+      tipo: Number(parameter.tipo ?? 0),
+      clase: Number(parameter.clase ?? 2),
+    };
+  }
+
+  async isConfigParameterEnabled(name) {
+    await configParameterCache.ensureLoaded({ maxAgeMs: 30000 });
+
+    const value = configParameterCache.getValue(name, '0');
+    return value === true ||
+      value === 1 ||
+      value === '1' ||
+      String(value).toLowerCase() === 'true';
+  }
+
+  async updateConfigParameter(token, data, user, isDataIntegrityValid, paramsString, req) {
+    const t = await sequelize.transaction();
+    let committed = false;
+
+    try {
+      const verifyPacketEqual = (isDataIntegrityValid);
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
+
+      if (banInfo) {
+        await t.rollback();
+        return banInfo;
+      }
+
+      await TrackingPacket.create(
+        {
+          packet: paramsString,
+          user,
+          fecha_uso: new Date(),
+        },
+        { transaction: t }
+      );
+
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token,
+          id: user,
+        },
+        transaction: t,
+      });
+
+      if (!sessionToken) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '002',
+          message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+        };
+      }
+
+      const existGM = await UsersPanel.findOne({
+        attributes: ['id', 'type'],
+        where: {
+          user,
+          type: SUPER_GM_TYPE,
+        },
+        transaction: t,
+      });
+
+      if (!existGM) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '403',
+          message: 'No estas autorizado para modificar parametros.'
+        };
+      }
+
+      const name = String(data?.name || '').trim();
+
+      if (!name) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe indicar un parametro valido.'
+        };
+      }
+
+      const parameter = await ConfigParameters.findOne({
+        where: {
+          name,
+          isparameter: 1,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!parameter) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '004',
+          message: 'El parametro no existe o no esta habilitado para edicion.'
+        };
+      }
+
+      const previousValue = parameter.value;
+      const nextValue = this.normalizeParameterValue(data?.value, parameter.clase);
+
+      if (nextValue === null) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'El valor ingresado no coincide con la clase del parametro.'
+        };
+      }
+
+      parameter.value = nextValue;
+      await parameter.save({ transaction: t });
+
+      await LogPanelGM.create({
+        userAction: user,
+        action: 'Modificar parametro',
+        user: name,
+        amount: 0,
+        type: 24,
+        date: new Date(),
+      }, { transaction: t });
+
+      await t.commit();
+      committed = true;
+
+      await configParameterCache.loadFromDatabase();
+
+      return {
+        success: true,
+        code: '000',
+        message: 'Parametro actualizado correctamente.',
+        parameter: {
+          ...this.serializeConfigParameter(parameter),
+        },
+        previousValue,
+      };
+    } catch (error) {
+      if (!committed) {
+        await t.rollback();
+      }
+      console.error('Error al modificar parametro:', error);
+      throw new Error('Error al modificar parametro');
+    }
+  }
+
+  async updateConfigParameters(token, data, user, isDataIntegrityValid, paramsString, req) {
+    const t = await sequelize.transaction();
+    let committed = false;
+
+    try {
+      const verifyPacketEqual = (isDataIntegrityValid);
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
+
+      if (banInfo) {
+        await t.rollback();
+        return banInfo;
+      }
+
+      await TrackingPacket.create(
+        {
+          packet: paramsString,
+          user,
+          fecha_uso: new Date(),
+        },
+        { transaction: t }
+      );
+
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token,
+          id: user,
+        },
+        transaction: t,
+      });
+
+      if (!sessionToken) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '002',
+          message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+        };
+      }
+
+      const existGM = await UsersPanel.findOne({
+        attributes: ['id', 'type'],
+        where: {
+          user,
+          type: SUPER_GM_TYPE,
+        },
+        transaction: t,
+      });
+
+      if (!existGM) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '403',
+          message: 'Solo un GM tipo 9 puede modificar parametros.'
+        };
+      }
+
+      const requestedUpdates = Array.isArray(data?.parameters) ? data.parameters : [];
+      const updatesByName = new Map();
+
+      for (const item of requestedUpdates) {
+        const name = String(item?.name || '').trim();
+
+        if (name) {
+          updatesByName.set(name, {
+            name,
+            value: item?.value,
+          });
+        }
+      }
+
+      const updates = [...updatesByName.values()];
+      const names = updates.map((item) => item.name);
+
+      if (updates.length === 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'No hay parametros validos para guardar.'
+        };
+      }
+
+      const parameters = await ConfigParameters.findAll({
+        where: {
+          name: {
+            [Op.in]: names,
+          },
+          isparameter: 1,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      const parametersByName = new Map(parameters.map((parameter) => [parameter.name, parameter]));
+      const missingNames = names.filter((name) => !parametersByName.has(name));
+
+      if (missingNames.length > 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '004',
+          message: `No se encontraron parametros habilitados: ${missingNames.join(', ')}.`
+        };
+      }
+
+      const savedParameters = [];
+      const changedParameters = [];
+      const logRows = [];
+
+      for (const update of updates) {
+        const parameter = parametersByName.get(update.name);
+        const nextValue = this.normalizeParameterValue(update.value, parameter.clase);
+
+        if (nextValue === null) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '003',
+            message: `El valor ingresado para ${parameter.description || parameter.name} no coincide con la clase del parametro.`
+          };
+        }
+
+        if (String(nextValue ?? '') === String(parameter.value ?? '')) {
+          savedParameters.push(parameter);
+          continue;
+        }
+
+        parameter.value = nextValue;
+        await parameter.save({ transaction: t });
+        savedParameters.push(parameter);
+        changedParameters.push(parameter);
+
+        logRows.push({
+          userAction: user,
+          action: 'Modificar parametro',
+          user: parameter.name,
+          amount: 0,
+          type: 24,
+          date: new Date(),
+        });
+      }
+
+      if (logRows.length > 0) {
+        await LogPanelGM.bulkCreate(logRows, { transaction: t });
+      }
+
+      await t.commit();
+      committed = true;
+
+      await configParameterCache.loadFromDatabase();
+
+      return {
+        success: true,
+        code: '000',
+        message: changedParameters.length > 0
+          ? `${changedParameters.length} parametro${changedParameters.length === 1 ? '' : 's'} actualizado${changedParameters.length === 1 ? '' : 's'} correctamente.`
+          : 'No habia cambios pendientes para guardar.',
+        parameters: savedParameters.map((parameter) => this.serializeConfigParameter(parameter)),
+      };
+    } catch (error) {
+      if (!committed) {
+        await t.rollback();
+      }
+      console.error('Error al modificar parametros:', error);
+      throw new Error('Error al modificar parametros');
+    }
+  }
+
+  async recargaPack(token, data, user, isDataIntegrityValid, paramsString, req) {
+    const t = await sequelize.transaction();
+
+    try {
+      const verifyPacketEqual = (isDataIntegrityValid);
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
+
+      if (banInfo) {
+        await t.rollback();
+        return banInfo;
+      }
+
+      await TrackingPacket.create(
+        {
+          packet: paramsString,
+          user,
+          fecha_uso: new Date(),
+        },
+        { transaction: t }
+      );
+
+      const sessionToken = await TokenSession.findOne({
+        attributes: ['token'],
+        where: {
+          token,
+          id: user,
+        },
+        transaction: t,
+      });
+
+      if (!sessionToken) {
+        await t.rollback();
+        console.log("!![GM Panel]".red, ' Sesion antigua'.red);
+        return {
+          success: false,
+          code: '002',
+          message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+        };
+      }
+
+      const existGM = await UsersPanel.findOne({
+        attributes: ['id', 'type'],
+        where: {
+          user,
+          type: {
+            [Op.in]: PACK_RECHARGE_GM_TYPES,
+          },
+        },
+        transaction: t,
+      });
+
+      if (!existGM) {
+        await t.rollback();
+        console.log("!![GM Panel]".red, ' Recarga por paquete no autorizada'.red);
+        return {
+          success: false,
+          code: '001',
+          message: 'Usted no puede realizar recargas porque ya no es GM, esta sesion sera cerrada...'
+        };
+      }
+
+      const packId = Number(data.pid || data.packId || data.id);
+      const users = Array.isArray(data._lu) ? data._lu : [];
+
+      if (!Number.isInteger(packId) || packId <= 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe seleccionar un paquete de recarga valido.'
+        };
+      }
+
+      if (users.length === 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe seleccionar al menos un usuario para recargar.'
+        };
+      }
+
+      const pack = await RecargasPack.findOne({
+        attributes: ['id', 'cash', 'oro', 'puntos'],
+        where: { id: packId },
+        transaction: t,
+        raw: true,
+      });
+
+      if (!pack) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '004',
+          message: 'El paquete de recarga seleccionado no existe.'
+        };
+      }
+
+      const doublePackActive = await this.isConfigParameterEnabled('flag_double_pack');
+      const packMultiplier = doublePackActive ? 2 : 1;
+      const baseCash = Number(pack.cash || 0);
+      const baseOro = Number(pack.oro || 0);
+      const baseEventPoints = Number(pack.puntos || 0);
+      const cash = baseCash * packMultiplier;
+      const oro = baseOro * packMultiplier;
+      const eventPoints = baseEventPoints * packMultiplier;
+      const packActionSuffix = doublePackActive ? ' x2' : '';
+
+      if (cash <= 0 && oro <= 0 && eventPoints <= 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'El paquete seleccionado no tiene montos configurados.'
+        };
+      }
+
+      const usersNoGold = [];
+      const usersNoCash = [];
+      const usersNoPoints = [];
+
+      for (const u of users) {
+        const targetUser = String(u?.name || '').trim();
+
+        if (!targetUser) {
+          continue;
+        }
+
+        const userGame = await UserGameInfo.findOne({
+          attributes: ['id', 'gold', 'clanpoint'],
+          where: { name: targetUser },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        const userCash = await Cash.findOne({
+          attributes: ['id', 'cash'],
+          where: { id: targetUser },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        if (cash > 0 && !userCash) {
+          usersNoCash.push(targetUser);
+        }
+
+        if (oro > 0 && !userGame) {
+          usersNoGold.push(targetUser);
+        }
+
+        if (eventPoints > 0 && !userGame) {
+          usersNoPoints.push(targetUser);
+        }
+
+        if ((cash > 0 && !userCash) || ((oro > 0 || eventPoints > 0) && !userGame)) {
+          continue;
+        }
+
+        if (cash > 0) {
+          const beforeCash = Number(userCash.cash || 0);
+
+          await Cash.increment(
+            'cash',
+            { by: cash, where: { id: targetUser }, transaction: t }
+          );
+
+          await LogRewardsUser.create({
+            user: targetUser,
+            origen: 2,
+            recompensa: cash,
+            tipo_recompensa: 2,
+            last_pr: beforeCash,
+            curr_pr: beforeCash + cash,
+            fecha: new Date(),
+          }, { transaction: t });
+
+          await LogPanelGM.create({
+            userAction: user,
+            action: `Recarga Pack #${pack.id}${packActionSuffix} Cash`,
+            user: targetUser,
+            amount: cash,
+            type: 2,
+            date: new Date(),
+          }, { transaction: t });
+        }
+
+        if (oro > 0) {
+          const beforeOro = Number(userGame.gold || 0);
+
+          await UserGameInfo.increment(
+            'gold',
+            { by: oro, where: { name: targetUser }, transaction: t }
+          );
+
+          await LogRewardsUser.create({
+            user: targetUser,
+            origen: 2,
+            recompensa: oro,
+            tipo_recompensa: 1,
+            last_pr: beforeOro,
+            curr_pr: beforeOro + oro,
+            fecha: new Date(),
+          }, { transaction: t });
+
+          await LogPanelGM.create({
+            userAction: user,
+            action: `Recarga Pack #${pack.id}${packActionSuffix} Gold`,
+            user: targetUser,
+            amount: oro,
+            type: 1,
+            date: new Date(),
+          }, { transaction: t });
+        }
+
+        if (eventPoints > 0) {
+          const beforePoints = Number(userGame.clanpoint || 0);
+
+          await UserGameInfo.increment(
+            'clanpoint',
+            { by: eventPoints, where: { name: targetUser }, transaction: t }
+          );
+
+          await LogRewardsUser.create({
+            user: targetUser,
+            origen: 2,
+            recompensa: eventPoints,
+            tipo_recompensa: 13,
+            last_pr: beforePoints,
+            curr_pr: beforePoints + eventPoints,
+            fecha: new Date(),
+          }, { transaction: t });
+
+          await LogPanelGM.create({
+            userAction: user,
+            action: `Recarga Pack #${pack.id}${packActionSuffix} Puntos de Evento`,
+            user: targetUser,
+            amount: eventPoints,
+            type: 11,
+            date: new Date(),
+          }, { transaction: t });
+        }
+      }
+
+      if (cash > 0 && usersNoCash.length > 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Usuario(s) ' + JSON.stringify(usersNoCash) + ' no encontrado [CASH]'
+        };
+      }
+
+      if (oro > 0 && usersNoGold.length > 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '002',
+          message: 'Usuario(s) ' + JSON.stringify(usersNoGold) + ' no encontrado [GOLD]'
+        };
+      }
+
+      if (eventPoints > 0 && usersNoPoints.length > 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Usuario(s) ' + JSON.stringify(usersNoPoints) + ' no encontrado [EVENT POINTS]'
+        };
+      }
+
+      await t.commit();
+
+      console.log("[GM Panel]".green, ' Recarga pack exitosa'.green);
+      return {
+        success: true,
+        code: '000',
+        message: `Pack #${pack.id} recargado correctamente`,
+        doublePackActive,
+        pack: {
+          ...pack,
+          cash,
+          oro,
+          puntos: eventPoints,
+          originalCash: baseCash,
+          originalOro: baseOro,
+          originalPuntos: baseEventPoints,
+          multiplier: packMultiplier,
+        },
+      };
+    } catch (error) {
+      await t.rollback();
+      console.error('Error al recargar paquete:', error);
+      throw new Error('Error al recargar paquete');
+    }
   }
 
   async setCupon(token, data, user, isDataIntegrityValid, paramsString, req) {
