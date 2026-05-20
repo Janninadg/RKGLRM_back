@@ -48,11 +48,11 @@ import marketService from './marketService.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
 } from '../modules/public/publicData.cache.js';
-import RecargasPack from '../models/recargasPackModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import TipoParametro from '../models/tipoParametroModel.js';
 import ClaseParametro from '../models/claseParametroModel.js';
 import configParameterCache from '../modules/events/configParameter.cache.js';
+import recargasPackCache from '../modules/gm/recargasPack.cache.js';
 
 const SUPER_GM_TYPE = 9;
 const PACK_RECHARGE_GM_TYPES = [0, 2, 4, SUPER_GM_TYPE];
@@ -2501,11 +2501,9 @@ class GMPanelService {
         };
       }
 
-      const packs = await RecargasPack.findAll({
-        attributes: ['id', 'cash', 'oro', 'puntos'],
-        order: [['id', 'ASC']],
-        raw: true,
-      });
+      await recargasPackCache.ensureLoaded();
+
+      const packs = recargasPackCache.getAll();
       const doublePackActive = await this.isConfigParameterEnabled('flag_double_pack');
 
       return {
@@ -2558,7 +2556,7 @@ class GMPanelService {
         };
       }
 
-      await configParameterCache.ensureLoaded({ maxAgeMs: 30000 });
+      await configParameterCache.ensureLoaded();
 
       const [parameterTypes, parameterClasses] = await Promise.all([
         TipoParametro.findAll({
@@ -2636,7 +2634,7 @@ class GMPanelService {
   }
 
   async isConfigParameterEnabled(name) {
-    await configParameterCache.ensureLoaded({ maxAgeMs: 30000 });
+    await configParameterCache.ensureLoaded();
 
     const value = configParameterCache.getValue(name, '0');
     return value === true ||
@@ -2759,7 +2757,7 @@ class GMPanelService {
       await t.commit();
       committed = true;
 
-      await configParameterCache.loadFromDatabase();
+      configParameterCache.addOrUpdate(parameter);
 
       return {
         success: true,
@@ -2930,7 +2928,9 @@ class GMPanelService {
       await t.commit();
       committed = true;
 
-      await configParameterCache.loadFromDatabase();
+      if (changedParameters.length > 0) {
+        await configParameterCache.loadFromDatabase();
+      }
 
       return {
         success: true,
@@ -3031,12 +3031,9 @@ class GMPanelService {
         };
       }
 
-      const pack = await RecargasPack.findOne({
-        attributes: ['id', 'cash', 'oro', 'puntos'],
-        where: { id: packId },
-        transaction: t,
-        raw: true,
-      });
+      await recargasPackCache.ensureLoaded();
+
+      const pack = recargasPackCache.getById(packId);
 
       if (!pack) {
         await t.rollback();

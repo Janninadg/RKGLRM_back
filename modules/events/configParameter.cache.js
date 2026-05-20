@@ -56,11 +56,8 @@ class ConfigParameterCache {
     }
   }
 
-  async ensureLoaded({ maxAgeMs = 30000 } = {}) {
-    const loadedAtTime = this.loadedAt instanceof Date ? this.loadedAt.getTime() : 0;
-    const isFresh = this.loaded && loadedAtTime > 0 && (Date.now() - loadedAtTime) < maxAgeMs;
-
-    if (isFresh) {
+  async ensureLoaded() {
+    if (this.loaded) {
       return;
     }
 
