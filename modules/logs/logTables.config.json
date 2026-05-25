@@ -1,0 +1,104 @@
+[
+  {
+    "key": "coupon-redemptions",
+    "label": "Log Cupones",
+    "visible": false,
+    "model": "TempCupon",
+    "defaultSort": { "field": "fecha", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Usuario", "field": "user", "filter": "text" },
+      { "key": "Cupon canjeado", "field": "ticket", "filter": "text" },
+      { "key": "Fecha", "field": "fecha", "filter": "date" }
+    ]
+  },
+  {
+    "key": "coupons-generated",
+    "label": "Cupones generados",
+    "model": "Cupon",
+    "defaultSort": { "field": "id", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      {
+        "key": "Usuario generador",
+        "field": "_generatedBy",
+        "computed": "couponGenerator",
+        "filter": "text",
+        "sortable": true
+      },
+      { "key": "Cupon", "field": "ticket", "filter": "text" },
+      { "key": "Limite de redenciones", "field": "limite", "filter": "number" },
+      { "key": "Cantidad canjeada", "field": "users", "filter": "number" },
+      { "key": "Tipo de recompensa", "field": "type", "filter": "type", "source": "typePrizes" },
+      { "key": "Recompensa", "field": "id_prize", "filter": "number" },
+      { "key": "Nombre", "field": "name_prize", "filter": "text" },
+      {
+        "key": "Acciones",
+        "field": "_actions",
+        "type": "actions",
+        "action": "couponRedemptions",
+        "filter": null,
+        "sortable": false,
+        "width": 96,
+        "align": "center"
+      }
+    ]
+  },
+  {
+    "key": "cash-gold",
+    "label": "Log Cash/Oro",
+    "model": "LogExchange",
+    "defaultSort": { "field": "date", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Usuario", "field": "user", "filter": "text" },
+      { "key": "Cash", "field": "cash", "filter": "number" },
+      { "key": "Oro", "field": "oro", "filter": "number" },
+      { "key": "Fecha", "field": "date", "filter": "date" }
+    ]
+  },
+  {
+    "key": "gm-actions",
+    "label": "Log GM",
+    "model": "LogPanelGM",
+    "defaultSort": { "field": "date", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Administrador", "field": "userAction", "filter": "text" },
+      { "key": "Accion", "field": "type", "filter": "type", "source": "typeLogsGM" },
+      { "key": "Usuario/Personaje", "field": "user", "filter": "text" },
+      { "key": "Cantidad/Numero", "field": "amount", "filter": "number" },
+      { "key": "Elemento generado", "field": "cupon", "filter": "text" },
+      { "key": "Fecha", "field": "date", "filter": "date" }
+    ]
+  },
+  {
+    "key": "rewards",
+    "label": "Log de Recompensas",
+    "model": "LogRewardsUser",
+    "defaultSort": { "field": "fecha", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Usuario", "field": "user", "filter": "text" },
+      { "key": "Obtenido en", "field": "origen", "filter": "type", "source": "typeOrigenReward" },
+      { "key": "Recompensa", "field": "recompensa", "filter": "number" },
+      { "key": "Tipo de recompensa", "field": "tipo_recompensa", "filter": "type", "source": "typePrizes" },
+      { "key": "Evento", "field": "origen_2", "filter": "type", "source": "typeEvents" },
+      { "key": "Fecha", "field": "fecha", "filter": "date" }
+    ]
+  },
+  {
+    "key": "streamers",
+    "label": "Log Streamers",
+    "model": "LogStream",
+    "defaultSort": { "field": "date", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Streamer", "field": "user", "filter": "text" },
+      { "key": "Accion", "field": "type", "filter": "type", "source": "typeLogsStreamers" },
+      { "key": "Cantidad", "field": "prize", "filter": "number" },
+      { "key": "Elemento generado", "field": "cupon", "filter": "text" },
+      { "key": "Fecha", "field": "date", "filter": "date" }
+    ]
+  }
+]

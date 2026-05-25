@@ -697,10 +697,26 @@ class GMPanelController {
 
       async getLogs(req, res, next) {
         try {
-          const { user,token, } = req.body;
+          const {
+            user,
+            token,
+            table,
+            page,
+            pageSize,
+            sortBy,
+            sortDirection,
+            filters,
+          } = req.body;
 
           console.log("[GM Panel]".green,' Obtener logs'.white,(' - Admin: '+user).white);
-          const response = await GMPanelService.getLogs(user,token);
+          const response = await GMPanelService.getLogs(user, token, {
+            table,
+            page,
+            pageSize,
+            sortBy,
+            sortDirection,
+            filters,
+          });
 
           
           //console.log(response);

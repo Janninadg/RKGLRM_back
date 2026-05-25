@@ -25,7 +25,6 @@ import LogStream from '../models/logStreamsModel.js';
 import LogExchange from '../models/logExchanges.js';
 import TempCupon from '../models/tempCupones.js';
 import Streamer from '../models/streamersModel.js';
-import { obtenerCuponesGenerados, obtenerLogsCupones, obtenerLogsExchanges, obtenerLogsGM, obtenerLogsRecompensas, obtenerLogsStreamers } from '../utils/panelUtils.js';
 import EventPoint from '../models/eventPointsModel.js';
 import StreamPlatform from '../models/streamsPlatformsModel.js';
 import Anuncio from '../models/anunciosModel.js';
@@ -53,9 +52,66 @@ import TipoParametro from '../models/tipoParametroModel.js';
 import ClaseParametro from '../models/claseParametroModel.js';
 import configParameterCache from '../modules/events/configParameter.cache.js';
 import recargasPackCache from '../modules/gm/recargasPack.cache.js';
+import logTablesCache from '../modules/logs/logTables.cache.js';
+import TypePrize from '../models/typePrizesModel.js';
+import TypeOrigenReward from '../models/typeOrigenRewardModel.js';
+import TypeEvents from '../models/typeEventsModel.js';
+import TypeLogsGM from '../models/typeLogsGMModel.js';
+import TypeLogsStreamers from '../models/typeLogsStreamersModel.js';
 
 const SUPER_GM_TYPE = 9;
 const PACK_RECHARGE_GM_TYPES = [0, 2, 4, SUPER_GM_TYPE];
+
+const LOG_MODEL_MAP = {
+  TempCupon,
+  Cupon,
+  LogExchange,
+  LogPanelGM,
+  LogRewardsUser,
+  LogStream,
+};
+
+const LOG_FILTER_SOURCE_MAP = {
+  typePrizes: TypePrize,
+  typeOrigenReward: TypeOrigenReward,
+  typeEvents: TypeEvents,
+  typeLogsGM: TypeLogsGM,
+  typeLogsStreamers: TypeLogsStreamers,
+};
+
+const normalizeLogFilters = (filters) => {
+  if (!filters) return [];
+  if (Array.isArray(filters)) return filters;
+
+  if (typeof filters === 'string') {
+    try {
+      const parsed = JSON.parse(filters);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  return [];
+};
+
+const normalizeLogPageSize = (pageSize) => {
+  const parsed = Number(pageSize);
+  if (!Number.isFinite(parsed)) return 25;
+  return Math.min(Math.max(parsed, 5), 100);
+};
+
+const normalizeLogPage = (page) => {
+  const parsed = Number(page);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(parsed, 0);
+};
+
+const parseValidDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 class GMPanelService {
     async verifyIsGM(user) {
@@ -1642,7 +1698,324 @@ class GMPanelService {
       }
   }
 
-      async getLogs(user,token) {
+      async getLogSourceOptions(source) {
+        const SourceModel = LOG_FILTER_SOURCE_MAP[source];
+
+        if (!SourceModel) {
+          return [];
+        }
+
+        const rows = await SourceModel.findAll({
+          attributes: ['id', 'tipo'],
+          order: [['id', 'ASC']],
+          raw: true,
+        });
+
+        return rows.map((row) => ({
+          value: Number(row.id),
+          label: row.tipo,
+        }));
+      }
+
+      async getLogTablesMetadata() {
+        const tables = await logTablesCache.getAll();
+        const sourceOptions = {};
+
+        for (const table of tables) {
+          for (const column of table.columns) {
+            if (column.source && !sourceOptions[column.source]) {
+              sourceOptions[column.source] = await this.getLogSourceOptions(column.source);
+            }
+          }
+        }
+
+        return tables.map((table) => ({
+          ...table,
+          columns: table.columns.map((column) => ({
+            ...column,
+            options: column.source ? sourceOptions[column.source] || [] : [],
+          })),
+        }));
+      }
+
+      async getCouponGeneratorMap(couponTickets) {
+        const cleanTickets = [...new Set(
+          (couponTickets || [])
+            .map((ticket) => String(ticket || '').trim())
+            .filter((ticket) => ticket)
+        )];
+
+        if (cleanTickets.length === 0) {
+          return {};
+        }
+
+        const gmRows = await LogPanelGM.findAll({
+          attributes: ['userAction', 'cupon', 'date'],
+          where: {
+            cupon: { [Op.in]: cleanTickets },
+            type: 3,
+          },
+          order: [['date', 'DESC']],
+          raw: true,
+        });
+
+        const streamerRows = await LogStream.findAll({
+          attributes: ['user', 'cupon', 'date'],
+          where: {
+            cupon: { [Op.in]: cleanTickets },
+          },
+          order: [['date', 'DESC']],
+          raw: true,
+        });
+
+        const generatorRows = [
+          ...gmRows.map((row) => ({
+            generator: row.userAction,
+            cupon: row.cupon,
+            date: row.date,
+          })),
+          ...streamerRows.map((row) => ({
+            generator: row.user,
+            cupon: row.cupon,
+            date: row.date,
+          })),
+        ].sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+
+        return generatorRows.reduce((map, row) => {
+          const coupon = String(row.cupon || '');
+
+          if (coupon && !map[coupon]) {
+            map[coupon] = row.generator || '-';
+          }
+
+          return map;
+        }, {});
+      }
+
+      getCouponGeneratorLiteral() {
+        return Sequelize.literal(`(
+          COALESCE(
+            (
+              SELECT lg.userAction
+              FROM logpanelgm AS lg
+              WHERE lg.cupon = \`cupon\`.\`ticket\` AND lg.type = 3
+              ORDER BY lg.date DESC
+              LIMIT 1
+            ),
+            (
+              SELECT ls.user
+              FROM logstreams AS ls
+              WHERE ls.cupon = \`cupon\`.\`ticket\`
+              ORDER BY ls.date DESC
+              LIMIT 1
+            )
+          )
+        )`);
+      }
+
+      findLogColumn(table, columnName) {
+        return table.columns.find((column) => (
+          column.key === columnName || column.field === columnName
+        ));
+      }
+
+      getFilterForColumn(table, filters, column) {
+        if (!column) return null;
+
+        return normalizeLogFilters(filters).find((filter) => (
+          filter.column === column.key
+          || filter.column === column.field
+          || filter.field === column.key
+          || filter.field === column.field
+        )) || null;
+      }
+
+      addCouponTicketConstraint(where, tickets) {
+        const cleanTickets = [...new Set(
+          (tickets || [])
+            .map((ticket) => String(ticket || '').trim())
+            .filter((ticket) => ticket)
+        )];
+        const ticketConstraint = { [Op.in]: cleanTickets.length > 0 ? cleanTickets : ['__NO_COUPON_MATCH__'] };
+
+        if (where.ticket) {
+          where[Op.and] = [
+            ...(where[Op.and] || []),
+            { ticket: where.ticket },
+            { ticket: ticketConstraint },
+          ];
+          delete where.ticket;
+          return;
+        }
+
+        where.ticket = ticketConstraint;
+      }
+
+      async applyComputedLogFilters(table, filters, where) {
+        if (table.key !== 'coupons-generated') return where;
+
+        const adminColumn = table.columns.find((column) => column.computed === 'couponGenerator');
+        const adminFilter = this.getFilterForColumn(table, filters, adminColumn);
+        const adminValue = String(adminFilter?.value || '').trim();
+
+        if (!adminValue) return where;
+
+        const gmRows = await LogPanelGM.findAll({
+          attributes: ['cupon'],
+          where: {
+            type: 3,
+            userAction: adminFilter.operator === 'equals' || adminFilter.exact === true
+              ? adminValue
+              : { [Op.like]: `%${adminValue}%` },
+          },
+          raw: true,
+        });
+
+        const streamerRows = await LogStream.findAll({
+          attributes: ['cupon'],
+          where: {
+            user: adminFilter.operator === 'equals' || adminFilter.exact === true
+              ? adminValue
+              : { [Op.like]: `%${adminValue}%` },
+          },
+          raw: true,
+        });
+
+        this.addCouponTicketConstraint(where, [
+          ...gmRows.map((row) => row.cupon),
+          ...streamerRows.map((row) => row.cupon),
+        ]);
+        return where;
+      }
+
+      buildLogOrder(table, sortColumn, sortField, sortDirection) {
+        if (table.key === 'coupons-generated' && sortColumn?.computed === 'couponGenerator') {
+          return [[this.getCouponGeneratorLiteral(), sortDirection], ['id', 'DESC']];
+        }
+
+        return [[sortField, sortDirection]];
+      }
+
+      buildLogWhere(table, filters) {
+        const where = {};
+        const columnsByKey = new Map();
+
+        table.columns.forEach((column) => {
+          columnsByKey.set(column.key, column);
+          if (column.field) {
+            columnsByKey.set(column.field, column);
+          }
+        });
+
+        normalizeLogFilters(filters).forEach((filter) => {
+          const column = columnsByKey.get(filter.column) || columnsByKey.get(filter.field);
+
+          if (!column || !column.filter || column.computed || column.type === 'actions') return;
+
+          const field = column.field;
+
+          switch (column.filter) {
+            case 'number': {
+              const min = filter.min !== '' && filter.min !== null && filter.min !== undefined ? Number(filter.min) : null;
+              const max = filter.max !== '' && filter.max !== null && filter.max !== undefined ? Number(filter.max) : null;
+              const value = filter.value !== '' && filter.value !== null && filter.value !== undefined ? Number(filter.value) : null;
+
+              if (Number.isFinite(min) && Number.isFinite(max)) {
+                where[field] = { [Op.between]: [min, max] };
+              } else if (Number.isFinite(min)) {
+                where[field] = { [Op.gte]: min };
+              } else if (Number.isFinite(max)) {
+                where[field] = { [Op.lte]: max };
+              } else if (Number.isFinite(value)) {
+                where[field] = value;
+              }
+              break;
+            }
+            case 'type': {
+              const values = Array.isArray(filter.values) ? filter.values : [];
+              const parsedValues = values
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value));
+
+              if (parsedValues.length > 0) {
+                where[field] = { [Op.in]: parsedValues };
+              }
+              break;
+            }
+            case 'date': {
+              const from = parseValidDate(filter.from);
+              const to = parseValidDate(filter.to);
+
+              if (from && to) {
+                where[field] = { [Op.between]: [from, to] };
+              } else if (from) {
+                where[field] = { [Op.gte]: from };
+              } else if (to) {
+                where[field] = { [Op.lte]: to };
+              }
+              break;
+            }
+            case 'text':
+            default: {
+              const value = String(filter.value || '').trim();
+
+              if (value) {
+                where[field] = filter.operator === 'equals' || filter.exact === true
+                  ? value
+                  : { [Op.like]: `%${value}%` };
+              }
+              break;
+            }
+          }
+        });
+
+        return where;
+      }
+
+      async formatLogRows(table, rows) {
+        const sourceOptions = {};
+        const needsCouponGenerator = table.columns.some((column) => column.computed === 'couponGenerator');
+        const couponGeneratorMap = needsCouponGenerator
+          ? await this.getCouponGeneratorMap(rows.map((row) => row.ticket))
+          : {};
+
+        for (const column of table.columns) {
+          if (column.source && !sourceOptions[column.source]) {
+            const options = await this.getLogSourceOptions(column.source);
+            sourceOptions[column.source] = options.reduce((map, option) => ({
+              ...map,
+              [String(option.value)]: option.label,
+            }), {});
+          }
+        }
+
+        return rows.map((row) => {
+          const formatted = {};
+
+          table.columns.forEach((column) => {
+            if (column.type === 'actions') {
+              formatted[column.key] = {
+                action: column.action,
+              };
+              return;
+            }
+
+            if (column.computed === 'couponGenerator') {
+              formatted[column.key] = couponGeneratorMap[String(row.ticket || '')] || '-';
+              return;
+            }
+
+            const value = row[column.field];
+            formatted[column.key] = column.source
+              ? sourceOptions[column.source]?.[String(value)] || '-'
+              : value ?? '-';
+          });
+
+          return formatted;
+        });
+      }
+
+      async getLogs(user, token, query = {}) {
         try {
 
            // Verificar token:
@@ -1681,31 +2054,59 @@ class GMPanelService {
           
           }
 
-          //Logs GMS:
-          // const _loggm = await LogPanelGM.findAll();
-          const _loggm = await obtenerLogsGM();
-          const _flgm = ['number','text','type','text','number','text','date'];
-          //Logs Streamers
-          const _logst = await obtenerLogsStreamers();//LogStream.findAll();
-          const _flst = ['number','text','type','number','text','date'];
-          //Logs Rewards
-          const _logrw = await obtenerLogsRecompensas(); //await LogRewardsUser.findAll();
-          const _flrw = ['number','text','type','number','type','type','date'];
-          //Logs Cambios
-          const _logex = await obtenerLogsExchanges();//LogExchange.findAll();
-          const _flex = ['number','text','number','number','date'];
-          //Logs Cupones
-          const _logcp = await obtenerLogsCupones();//TempCupon.findAll();
-          const _flcp = ['number','text','text','date'];
-          //Cupones generados:
-          const _cpg = await obtenerCuponesGenerados();//Cupon.findAll();
-          const _fcp = ['number','text','number','number','type','number','text'];
+          const tables = await this.getLogTablesMetadata();
+          const defaultTableKey = tables.find((table) => table.visible !== false)?.key || tables[0]?.key;
+          const selectedTable = await logTablesCache.getByKey(query.table || defaultTableKey);
 
-          const logsNames = ['Log Cupones','Cupones generados','Log Cash/Oro','Log GM','Log de Recompensas','Log Streamers'];
-              
-          return {success:true,code:'000',message:'ok',logs:[_logcp,_cpg,_logex,_loggm,_logrw,_logst],lgn:logsNames,
-          fltlogs:[_flcp,_fcp,_flex,_flgm,_flrw,_flst]  
-        };
+          if (!selectedTable) {
+            return { success: true, code: '000', message: 'ok', tables: [], rows: [], total: 0, page: 0, pageSize: 25 };
+          }
+
+          const Model = LOG_MODEL_MAP[selectedTable.model];
+
+          if (!Model) {
+            return { success: false, code: '003', message: 'La tabla de logs no esta configurada correctamente.' };
+          }
+
+          const page = normalizeLogPage(query.page);
+          const pageSize = normalizeLogPageSize(query.pageSize);
+          const filters = normalizeLogFilters(query.filters);
+          const where = this.buildLogWhere(selectedTable, filters);
+          await this.applyComputedLogFilters(selectedTable, filters, where);
+          const sortColumn = selectedTable.columns.find(
+            (column) => column.sortable !== false && (column.key === query.sortBy || column.field === query.sortBy)
+          );
+          const sortField = sortColumn?.field || selectedTable.defaultSort.field;
+          const sortDirection = String(query.sortDirection || selectedTable.defaultSort.direction).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+          const order = this.buildLogOrder(selectedTable, sortColumn, sortField, sortDirection);
+
+          const result = await Model.findAndCountAll({
+            where,
+            order,
+            limit: pageSize,
+            offset: page * pageSize,
+            raw: true,
+          });
+
+          const rows = await this.formatLogRows(selectedTable, result.rows);
+
+          return {
+            success: true,
+            code: '000',
+            message: 'ok',
+            tables,
+            table: selectedTable.key,
+            rows,
+            total: result.count,
+            page,
+            pageSize,
+            sortBy: sortColumn?.key || selectedTable.defaultSort.field,
+            sortDirection,
+            filters,
+            logs: [rows],
+            lgn: tables.map((table) => table.label),
+            fltlogs: tables.map((table) => table.columns.map((column) => column.filter)),
+          };
     
           //return users;
         } catch (error) {
