@@ -79,6 +79,11 @@ const LOG_FILTER_SOURCE_MAP = {
   typeLogsStreamers: TypeLogsStreamers,
 };
 
+const LOG_METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const logSourceOptionsCache = new Map();
+let logTablesMetadataCache = null;
+let logTablesMetadataCachedAt = 0;
+
 const normalizeLogFilters = (filters) => {
   if (!filters) return [];
   if (Array.isArray(filters)) return filters;
@@ -1705,35 +1710,67 @@ class GMPanelService {
           return [];
         }
 
+        const cachedOptions = logSourceOptionsCache.get(source);
+
+        if (cachedOptions && Date.now() - cachedOptions.cachedAt < LOG_METADATA_CACHE_TTL_MS) {
+          return cachedOptions.options.map((option) => ({ ...option }));
+        }
+
         const rows = await SourceModel.findAll({
           attributes: ['id', 'tipo'],
           order: [['id', 'ASC']],
           raw: true,
         });
 
-        return rows.map((row) => ({
+        const options = rows.map((row) => ({
           value: Number(row.id),
           label: row.tipo,
         }));
+
+        logSourceOptionsCache.set(source, {
+          options,
+          cachedAt: Date.now(),
+        });
+
+        return options.map((option) => ({ ...option }));
       }
 
       async getLogTablesMetadata() {
-        const tables = await logTablesCache.getAll();
-        const sourceOptions = {};
-
-        for (const table of tables) {
-          for (const column of table.columns) {
-            if (column.source && !sourceOptions[column.source]) {
-              sourceOptions[column.source] = await this.getLogSourceOptions(column.source);
-            }
-          }
+        if (logTablesMetadataCache && Date.now() - logTablesMetadataCachedAt < LOG_METADATA_CACHE_TTL_MS) {
+          return logTablesMetadataCache.map((table) => ({
+            ...table,
+            defaultSort: { ...table.defaultSort },
+            columns: table.columns.map((column) => ({
+              ...column,
+              options: [...(column.options || [])],
+            })),
+          }));
         }
 
-        return tables.map((table) => ({
+        const tables = await logTablesCache.getAll();
+        const sources = [...new Set(
+          tables.flatMap((table) => table.columns.map((column) => column.source).filter(Boolean))
+        )];
+        const sourceOptionEntries = await Promise.all(
+          sources.map(async (source) => [source, await this.getLogSourceOptions(source)])
+        );
+        const sourceOptions = Object.fromEntries(sourceOptionEntries);
+
+        logTablesMetadataCache = tables.map((table) => ({
           ...table,
           columns: table.columns.map((column) => ({
             ...column,
             options: column.source ? sourceOptions[column.source] || [] : [],
+          })),
+        }));
+        logTablesMetadataCachedAt = Date.now();
+
+        return logTablesMetadataCache.map((table) => ({
+          ...table,
+          defaultSort: { ...table.defaultSort },
+          columns: table.columns.map((column) => ({
+            ...column,
+            options: [...(column.options || [])],
           })),
         }));
       }
@@ -1749,24 +1786,25 @@ class GMPanelService {
           return {};
         }
 
-        const gmRows = await LogPanelGM.findAll({
-          attributes: ['userAction', 'cupon', 'date'],
-          where: {
-            cupon: { [Op.in]: cleanTickets },
-            type: 3,
-          },
-          order: [['date', 'DESC']],
-          raw: true,
-        });
-
-        const streamerRows = await LogStream.findAll({
-          attributes: ['user', 'cupon', 'date'],
-          where: {
-            cupon: { [Op.in]: cleanTickets },
-          },
-          order: [['date', 'DESC']],
-          raw: true,
-        });
+        const [gmRows, streamerRows] = await Promise.all([
+          LogPanelGM.findAll({
+            attributes: ['userAction', 'cupon', 'date'],
+            where: {
+              cupon: { [Op.in]: cleanTickets },
+              type: 3,
+            },
+            order: [['date', 'DESC']],
+            raw: true,
+          }),
+          LogStream.findAll({
+            attributes: ['user', 'cupon', 'date'],
+            where: {
+              cupon: { [Op.in]: cleanTickets },
+            },
+            order: [['date', 'DESC']],
+            raw: true,
+          }),
+        ]);
 
         const generatorRows = [
           ...gmRows.map((row) => ({
@@ -1860,26 +1898,26 @@ class GMPanelService {
 
         if (!adminValue) return where;
 
-        const gmRows = await LogPanelGM.findAll({
-          attributes: ['cupon'],
-          where: {
-            type: 3,
-            userAction: adminFilter.operator === 'equals' || adminFilter.exact === true
-              ? adminValue
-              : { [Op.like]: `%${adminValue}%` },
-          },
-          raw: true,
-        });
-
-        const streamerRows = await LogStream.findAll({
-          attributes: ['cupon'],
-          where: {
-            user: adminFilter.operator === 'equals' || adminFilter.exact === true
-              ? adminValue
-              : { [Op.like]: `%${adminValue}%` },
-          },
-          raw: true,
-        });
+        const generatorCondition = adminFilter.operator === 'equals' || adminFilter.exact === true
+          ? adminValue
+          : { [Op.like]: `%${adminValue}%` };
+        const [gmRows, streamerRows] = await Promise.all([
+          LogPanelGM.findAll({
+            attributes: ['cupon'],
+            where: {
+              type: 3,
+              userAction: generatorCondition,
+            },
+            raw: true,
+          }),
+          LogStream.findAll({
+            attributes: ['cupon'],
+            where: {
+              user: generatorCondition,
+            },
+            raw: true,
+          }),
+        ]);
 
         this.addCouponTicketConstraint(where, [
           ...gmRows.map((row) => row.cupon),
@@ -1973,21 +2011,19 @@ class GMPanelService {
       }
 
       async formatLogRows(table, rows) {
-        const sourceOptions = {};
         const needsCouponGenerator = table.columns.some((column) => column.computed === 'couponGenerator');
-        const couponGeneratorMap = needsCouponGenerator
-          ? await this.getCouponGeneratorMap(rows.map((row) => row.ticket))
-          : {};
-
-        for (const column of table.columns) {
-          if (column.source && !sourceOptions[column.source]) {
-            const options = await this.getLogSourceOptions(column.source);
-            sourceOptions[column.source] = options.reduce((map, option) => ({
-              ...map,
-              [String(option.value)]: option.label,
-            }), {});
-          }
-        }
+        const sources = [...new Set(table.columns.map((column) => column.source).filter(Boolean))];
+        const [couponGeneratorMap, sourceOptionEntries] = await Promise.all([
+          needsCouponGenerator ? this.getCouponGeneratorMap(rows.map((row) => row.ticket)) : Promise.resolve({}),
+          Promise.all(sources.map(async (source) => {
+            const options = await this.getLogSourceOptions(source);
+            return [
+              source,
+              Object.fromEntries(options.map((option) => [String(option.value), option.label])),
+            ];
+          })),
+        ]);
+        const sourceOptions = Object.fromEntries(sourceOptionEntries);
 
         return rows.map((row) => {
           const formatted = {};
@@ -2079,8 +2115,14 @@ class GMPanelService {
           const sortField = sortColumn?.field || selectedTable.defaultSort.field;
           const sortDirection = String(query.sortDirection || selectedTable.defaultSort.direction).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
           const order = this.buildLogOrder(selectedTable, sortColumn, sortField, sortDirection);
+          const attributes = [...new Set(
+            selectedTable.columns
+              .filter((column) => !column.computed && column.type !== 'actions')
+              .map((column) => column.field)
+          )];
 
           const result = await Model.findAndCountAll({
+            attributes,
             where,
             order,
             limit: pageSize,

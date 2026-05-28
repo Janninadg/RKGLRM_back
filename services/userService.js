@@ -3069,6 +3069,15 @@ async deleteClanMember(user, token, clanId, memberId, req) {
 
     try {
 
+      if (true) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '402',
+          message: 'El servicio de cambio de contraseña ya no se encuentra disponible.',
+        };
+      }
+
       // 1. VALIDAR SESIÓN
       const invalidSession = await validateUserSession(user, token, t);
       if (invalidSession) {
