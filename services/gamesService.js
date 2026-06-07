@@ -486,6 +486,27 @@ class GamesService {
                         await this.userOwnsPrizeItem(userId, 8009, transaction) ||
                         await this.userAlreadyWonPrize(game, user, 8009, transaction);
 
+                    const completedTrackedPrizeIds = [];
+
+                    if (userAlreadyHas8004 && rouletteMinimumSpentByPrize.has(8004)) {
+                        completedTrackedPrizeIds.push(8004);
+                    }
+
+                    if (userAlreadyHas8009 && rouletteMinimumSpentByPrize.has(8009)) {
+                        completedTrackedPrizeIds.push(8009);
+                    }
+
+                    if (completedTrackedPrizeIds.length > 0) {
+                        await UserPrizeTracker.destroy({
+                            where: {
+                                user,
+                                game,
+                                prize: completedTrackedPrizeIds
+                            },
+                            transaction
+                        });
+                    }
+
                     const total8004Game = await TempPrize.count({
                         where: {
                             game: game,
