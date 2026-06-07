@@ -12,6 +12,11 @@ const UserPrizeTracker = sequelize.define('user_prize_tracker', {
     type: DataTypes.STRING(11),
     allowNull: false,
   },
+  game: {
+    type: DataTypes.INTEGER(11),
+    allowNull: false,
+    defaultValue: 0,
+  },
   prize: {
     type: DataTypes.INTEGER(11),
     allowNull: false,

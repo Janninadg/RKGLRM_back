@@ -1736,8 +1736,11 @@ class MarketService {
       lock: t.LOCK.UPDATE,
     });
 
-    // Solo validar si el item es 8004
-    if (tempitem.itemid === 8004) {
+    const uniqueAccountItems = [8004, 8009];
+    const marketItemId = Number(tempitem.itemid);
+
+    // Solo validar items limitados a uno por cuenta.
+    if (uniqueAccountItems.includes(marketItemId)) {
 
         // 1️⃣ Obtener id real del usuario desde usergameinfo
         const userInfo = await UserGameInfo.findOne({
@@ -1751,30 +1754,30 @@ class MarketService {
             return { success: false, code: '200', message: 'Usuario no encontrado' };
         }
 
-        // 2️⃣ Verificar si ya tiene 8004 en pendingpresents
-        const hasPending8004 = await PendingPresents.findOne({
+        // 2️⃣ Verificar si ya tiene el item en pendingpresents
+        const hasPendingUniqueItem = await PendingPresents.findOne({
             where: {
             user_id: userId,
-            present_id: 8004
+            present_id: marketItemId
             },
             transaction: t
         });
 
-        // 3️⃣ Verificar si ya tiene 8004 en inventario
-        const hasItem8004 = await UserItemInfo.findOne({
+        // 3️⃣ Verificar si ya tiene el item en inventario
+        const hasUniqueItem = await UserItemInfo.findOne({
             where: {
             userid: userId,
-            itemid: 8004
+            itemid: marketItemId
             },
             transaction: t
         });
 
-        if (hasPending8004 || hasItem8004) {
+        if (hasPendingUniqueItem || hasUniqueItem) {
              await t.rollback();
             return {
             success: false,
             code: '200',
-            message: 'Ya tienes un Golem en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
+            message: 'Ya tienes este premio en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
             };
         }
     }

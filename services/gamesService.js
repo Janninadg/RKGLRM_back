@@ -50,7 +50,253 @@ const sortByClassAndOrderPrize = (a, b) => {
     return sortByOrderPrize(a, b);
 };
 
+const DEFAULT_ROULETTE_HARD_PRIZES = [8009, 6046, 7035];
+const DEFAULT_ROULETTE_MIN_SPENT = [90000, 90000, 90000];
+const ROULETTE_8009_TOTAL_LIMIT = 12;
+const ROULETTE_8009_EARLY_LIMIT = 2;
+const ROULETTE_8009_EARLY_PROBABILITY = 0.05;
+
+const getNumberArrayParameter = (name, fallback = []) => {
+    const value = configParameterCache.getJson(name, null);
+    const source = Array.isArray(value) ? value : fallback;
+
+    return source
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
+};
+
+const getPrizeId = (prize) => Number(prize?.prize || 0);
+
+const blockPrizeProbability = (prizes, prizeId) => {
+    const blockedIndex = prizes.findIndex((prize) => getPrizeId(prize) === Number(prizeId));
+
+    if (blockedIndex === -1) {
+        return false;
+    }
+
+    const blockedProb = Number(prizes[blockedIndex].probability || 0);
+    prizes[blockedIndex].probability = 0;
+
+    if (blockedProb <= 0) {
+        return true;
+    }
+
+    const totalRemaining = prizes.reduce((sum, prize, index) => {
+        if (index !== blockedIndex) {
+            return sum + Number(prize.probability || 0);
+        }
+
+        return sum;
+    }, 0);
+
+    if (totalRemaining <= 0) {
+        return true;
+    }
+
+    prizes.forEach((prize, index) => {
+        if (index !== blockedIndex) {
+            const original = Number(prize.probability || 0);
+            const proportion = original / totalRemaining;
+            prize.probability = original + (blockedProb * proportion);
+        }
+    });
+
+    return true;
+};
+
+const setPrizeProbability = (prizes, prizeId, probability) => {
+    const targetIndex = prizes.findIndex((prize) => getPrizeId(prize) === Number(prizeId));
+
+    if (targetIndex === -1) {
+        return false;
+    }
+
+    const targetProb = Math.max(0, Math.min(1, Number(probability || 0)));
+    prizes[targetIndex].probability = targetProb;
+
+    const remainingProb = 1 - targetProb;
+    const otherIndexes = prizes
+        .map((_, index) => index)
+        .filter((index) => index !== targetIndex);
+
+    if (otherIndexes.length === 0) {
+        return true;
+    }
+
+    const totalOriginalOthers = otherIndexes.reduce((sum, index) => {
+        return sum + Number(prizes[index].probability || 0);
+    }, 0);
+
+    otherIndexes.forEach((index) => {
+        if (totalOriginalOthers <= 0) {
+            prizes[index].probability = remainingProb / otherIndexes.length;
+            return;
+        }
+
+        const original = Number(prizes[index].probability || 0);
+        const proportion = original / totalOriginalOthers;
+        prizes[index].probability = remainingProb * proportion;
+    });
+
+    return true;
+};
+
+const buildMinimumSpentByPrize = (prizes, trackedPrizeIds, minimumSpentValues) => {
+    const minimumSpentByPrize = new Map();
+
+    if (minimumSpentValues.length === prizes.length) {
+        prizes.forEach((prize, index) => {
+            const minimumSpent = Number(minimumSpentValues[index] || 0);
+
+            if (Number.isFinite(minimumSpent) && minimumSpent > 0) {
+                minimumSpentByPrize.set(getPrizeId(prize), minimumSpent);
+            }
+        });
+    }
+
+    trackedPrizeIds.forEach((prizeId, index) => {
+        const minimumSpent = Number(minimumSpentValues[index] || 0);
+        const currentMinimum = Number(minimumSpentByPrize.get(Number(prizeId)) || 0);
+
+        if (Number.isFinite(minimumSpent) && minimumSpent > currentMinimum) {
+            minimumSpentByPrize.set(Number(prizeId), minimumSpent);
+        }
+    });
+
+    return minimumSpentByPrize;
+};
+
 class GamesService {
+
+    async getRouletteSpentPerTry(modalidad, transaction) {
+        const fallbackSpent = configParameterCache.getNumber('roulette_spent_per_try', 1000);
+        const asset = modalidad === 1 ? 3 : 5;
+
+        const priceRecord = await AssetPrice.findOne({
+            attributes: ['price'],
+            where: { asset },
+            transaction,
+        });
+
+        const price = Number(priceRecord?.price);
+        return Number.isFinite(price) && price > 0 ? price : fallbackSpent;
+    }
+
+    async trackPrizeAttempt({ game, user, prizes, minimumSpentByPrize, spentAmount, transaction }) {
+        const trackerState = new Map();
+        const prizesInGame = new Set(prizes.map((prize) => getPrizeId(prize)));
+
+        for (const [prizeId, minimumSpent] of minimumSpentByPrize.entries()) {
+            if (!prizesInGame.has(Number(prizeId)) || Number(minimumSpent) <= 0) {
+                continue;
+            }
+
+            let tracker = await UserPrizeTracker.findOne({
+                where: {
+                    user,
+                    game,
+                    prize: Number(prizeId)
+                },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+
+            if (!tracker) {
+                tracker = await UserPrizeTracker.create(
+                    {
+                        user,
+                        game,
+                        prize: Number(prizeId),
+                        tries: 0,
+                        spent: 0
+                    },
+                    {
+                        transaction
+                    }
+                );
+            }
+
+            tracker.tries = Number(tracker.tries || 0) + 1;
+            tracker.spent = Number(tracker.spent || 0) + Number(spentAmount || 0);
+
+            await tracker.save({
+                transaction
+            });
+
+            trackerState.set(Number(prizeId), {
+                spent: Number(tracker.spent || 0),
+                minimumSpent: Number(minimumSpent)
+            });
+        }
+
+        return trackerState;
+    }
+
+    async userOwnsPrizeItem(userId, prizeId, transaction) {
+        if (!userId) {
+            return false;
+        }
+
+        const pendingPrize = await PendingPresents.findOne({
+            where: {
+                user_id: userId,
+                present_id: prizeId
+            },
+            transaction
+        });
+
+        if (pendingPrize) {
+            return true;
+        }
+
+        const inventoryPrize = await UserItemInfo.findOne({
+            where: {
+                userid: userId,
+                itemid: prizeId
+            },
+            transaction
+        });
+
+        return Boolean(inventoryPrize);
+    }
+
+    async userAlreadyWonPrize(game, user, prizeId, transaction) {
+        const tempPrize = await TempPrize.findOne({
+            where: {
+                user,
+                game,
+                prize: prizeId
+            },
+            transaction
+        });
+
+        if (tempPrize) {
+            return true;
+        }
+
+        const rewardLog = await LogRewardsUser.findOne({
+            where: {
+                user,
+                origen: 1,
+                origen_2: game,
+                recompensa: prizeId
+            },
+            transaction
+        });
+
+        return Boolean(rewardLog);
+    }
+
+    async countPrizeRewards(game, prizeId, transaction) {
+        return LogRewardsUser.count({
+            where: {
+                origen: 1,
+                origen_2: game,
+                recompensa: prizeId
+            },
+            transaction
+        });
+    }
 
     async getPrizeByGame(game,clase,user,modalidad,prizeData,transaction) {
         try {
@@ -98,6 +344,26 @@ class GamesService {
                     return {all: prizeCard, win:true};
                 case 2:
                     const allPrizes = prizeGameCache.getByGame(game).sort(sortByClassAndOrderPrize);
+                    const rouletteHardPrizes = getNumberArrayParameter('roulette_hard_prizes', DEFAULT_ROULETTE_HARD_PRIZES);
+                    const rouletteMinimumSpent = getNumberArrayParameter('max_spent_roulette', DEFAULT_ROULETTE_MIN_SPENT);
+                    const rouletteMinimumSpentByPrize = buildMinimumSpentByPrize(
+                        allPrizes,
+                        rouletteHardPrizes,
+                        rouletteMinimumSpent
+                    );
+                    const rouletteSpentPerTry = rouletteMinimumSpentByPrize.size > 0
+                        ? await this.getRouletteSpentPerTry(modalidad, transaction)
+                        : 0;
+                    const rouletteTrackerState = rouletteMinimumSpentByPrize.size > 0
+                        ? await this.trackPrizeAttempt({
+                            game,
+                            user,
+                            prizes: allPrizes,
+                            minimumSpentByPrize: rouletteMinimumSpentByPrize,
+                            spentAmount: rouletteSpentPerTry,
+                            transaction
+                        })
+                        : new Map();
 
                     const rouletteProbabiliy = configParameterCache.getNumber('roulette_prob', 0);
 
@@ -108,7 +374,7 @@ class GamesService {
 
                     // console.log(rouletteProbabiliy);
         
-                    //Modalidad 1: cash, 2 : oro
+                    //Modalidad 1: cash, 2 : oro o puntos
                    const prob = modalidad === 1 ? rouletteProbabiliy : rouletteProbabiliy2;
 
                    console.log("Prob: ",prob);
@@ -158,10 +424,12 @@ class GamesService {
                             throw new Error("No se encontró registro de precio");
                             }
 
+                            const isFatalLose = Math.random() < 0.5;
+
                             // Calcular 30%
                             const refundAmount = Math.floor(Number(priceRecord.price) * 0.30);
 
-                            if (modalidad === 1) {
+                            if (!isFatalLose && modalidad === 1) {
 
                             // 🔹 Devolver en CASH
                             await Cash.increment(
@@ -173,7 +441,7 @@ class GamesService {
                                 }
                             );
 
-                            } else {
+                            } else if (!isFatalLose) {
 
                             // 🔹 Devolver en PUNTOS DE EVENTO (clanpoint)
                             await UserGameInfo.increment(
@@ -188,10 +456,18 @@ class GamesService {
                             }
 
                         Object.assign(params, {
-                            _pwb:lastClass +1,
+                            _pwb:lastClass + (isFatalLose ? 2 : 1),
+                            loseType: isFatalLose ? 'fatal' : 'refund',
                         });
 
-                        return {all: null, win:false,params,ms: '¡Perdiste! Pero se te devolvió el 30% del costo del ticket gastado. Suerte para la próxima :)'};
+                        return {
+                            all: null,
+                            win:false,
+                            params,
+                            ms: isFatalLose
+                                ? '¡Fatal! Perdiste todo. Esta vez no hubo devolución.'
+                                : '¡Perdiste! Pero se te devolvió el 30% del costo del ticket gastado. Suerte para la próxima :)'
+                        };
                     }
 
                     // 1️⃣ Obtener id real del usuario desde usergameinfo
@@ -202,25 +478,14 @@ class GamesService {
 
                     const userId = userInfo?.id;
 
-                    // 2️⃣ Verificar si ya tiene 8004 en pendingpresents
-                    const hasPending8004 = await PendingPresents.findOne({
-                        where: {
-                            user_id: userId,
-                            present_id: 8004
-                        },
-                        transaction
-                    });
+                    const userAlreadyHas8004 =
+                        await this.userOwnsPrizeItem(userId, 8004, transaction) ||
+                        await this.userAlreadyWonPrize(game, user, 8004, transaction);
 
-                    // 3️⃣ Verificar si ya tiene 8004 en inventario
-                    const hasItem8004 = await UserItemInfo.findOne({
-                        where: {
-                            userid: userId,
-                            itemid: 8004
-                        },
-                        transaction
-                    });
+                    const userAlreadyHas8009 =
+                        await this.userOwnsPrizeItem(userId, 8009, transaction) ||
+                        await this.userAlreadyWonPrize(game, user, 8009, transaction);
 
-                    // 4️⃣ Verificar si alguien ya ganó 8004 en este juego
                     const total8004Game = await TempPrize.count({
                         where: {
                             game: game,
@@ -229,43 +494,42 @@ class GamesService {
                         transaction
                     });
 
-                    const userAlreadyHas8004 = hasPending8004 || hasItem8004;
+                    const total8009Game = await this.countPrizeRewards(game, 8009, transaction);
 
                     // 🔥 AJUSTE DE PROBABILIDADES
                     const prizeafter = allPrizes;
 
-                    const targetIndex = allPrizes.findIndex(p => p.prize === 8004);
+                    const blockedPrizeIds = new Set();
 
-                    if (targetIndex !== -1) {
+                    if (userAlreadyHas8004) {
+                        blockedPrizeIds.add(8004);
+                    }
 
-                        // 🎯 CASO 1: Usuario ya tiene 8004 → bloquear
-                        if (userAlreadyHas8004) {
+                    if (userAlreadyHas8009 || total8009Game >= ROULETTE_8009_TOTAL_LIMIT) {
+                        blockedPrizeIds.add(8009);
+                    }
 
-                            // console.log(allPrizes)
-                            const blockedProb = Number(allPrizes[targetIndex].probability);
-                            allPrizes[targetIndex].probability = 0;
+                    for (const [prizeId, minimumSpent] of rouletteMinimumSpentByPrize.entries()) {
+                        const trackerState = rouletteTrackerState.get(Number(prizeId));
+                        const currentSpent = Number(trackerState?.spent || 0);
 
-                            // console.log(allPrizes)
-
-                            const totalRemaining = allPrizes.reduce((sum, p, i) => {
-                                if (i !== targetIndex) return sum + Number(p.probability);
-                                return sum;
-                            }, 0);
-
-                            // console.log(totalRemaining)
-
-                            allPrizes.forEach((p, i) => {
-                                if (i !== targetIndex) {
-                                    const proportion = Number(p.probability) / totalRemaining;
-                                    p.probability += blockedProb * proportion;
-                                }
-                            });
-
-                            // console.log(allPrizes)
-
-
+                        if (Number(minimumSpent) > 0 && currentSpent < Number(minimumSpent)) {
+                            blockedPrizeIds.add(Number(prizeId));
                         }
                     }
+
+                    blockedPrizeIds.forEach((prizeId) => {
+                        blockPrizeProbability(allPrizes, prizeId);
+                    });
+
+                    if (
+                        !blockedPrizeIds.has(8009) &&
+                        !userAlreadyHas8009 &&
+                        total8009Game <= ROULETTE_8009_EARLY_LIMIT
+                    ) {
+                        setPrizeProbability(allPrizes, 8009, ROULETTE_8009_EARLY_PROBABILITY);
+                    }
+
                     //     // 🎯 CASO 2: Nadie ha ganado 8004 en este juego y usuario no lo tiene
                     //     else if (total8004Game <= 3 && !userAlreadyHas8004) {
 
@@ -316,7 +580,21 @@ class GamesService {
 
                     // console.log(allPrizes[selectedItem])
 
-                    return {all: allPrizes[selectedItem], win:true,params};
+                    const selectedPrize = allPrizes[selectedItem];
+                    const selectedPrizeId = getPrizeId(selectedPrize);
+
+                    if (rouletteMinimumSpentByPrize.has(selectedPrizeId)) {
+                        await UserPrizeTracker.destroy({
+                            where: {
+                                user,
+                                game,
+                                prize: selectedPrizeId
+                            },
+                            transaction
+                        });
+                    }
+
+                    return {all: selectedPrize, win:true,params};
                 case 6:
 
                    const prizeChests = prizeGameCache.getByGame(game).sort(sortByOrderPrize);
@@ -330,6 +608,8 @@ class GamesService {
                         transaction
                     });
 
+                    const alreadyWon8009 = await this.userAlreadyWonPrize(game, user, 8009, transaction);
+
                     const allUserTempPrizes = await TempPrize.findAll({
                         where: {
                             user: user,
@@ -339,6 +619,7 @@ class GamesService {
                     });
 
                     const has8004 = allUserTempPrizes.some(p => p.prize === 8004);
+                    const has8009 = allUserTempPrizes.some(p => p.prize === 8009);
                     const moreThanTwo = allUserTempPrizes.length > 2;
 
                     const total8004 = await TempPrize.count({
@@ -348,6 +629,8 @@ class GamesService {
                         },
                         transaction
                     });
+
+                    const total8009 = await this.countPrizeRewards(game, 8009, transaction);
 
                     // 2️⃣ Si ya lo ganó, reajustar probabilidades
 
@@ -437,6 +720,13 @@ class GamesService {
                                 prizeChests[i].probability = remainingProb * proportion;
                             });
                         }
+                    }
+
+                    if (alreadyWon8009 || total8009 >= ROULETTE_8009_TOTAL_LIMIT) {
+                        blockPrizeProbability(prizeChests, 8009);
+                    }
+                    else if (total8009 <= ROULETTE_8009_EARLY_LIMIT && !has8009) {
+                        setPrizeProbability(prizeChests, 8009, ROULETTE_8009_EARLY_PROBABILITY);
                     }
 
                     // console.log(prizeChests);
@@ -554,6 +844,7 @@ class GamesService {
                     let tracker = await UserPrizeTracker.findOne({
                         where: {
                             user,
+                            game,
                             prize: prize.id
                         },
                         transaction,
@@ -564,6 +855,7 @@ class GamesService {
                         tracker = await UserPrizeTracker.create(
                             {
                                 user,
+                                game,
                                 prize: prize.id,
                                 tries: 0,
                                 spent: 0
