@@ -1646,7 +1646,7 @@ class EventService {
             //Cash, oro, puntos
             case 1:
             case 2:
-            // case 3:
+            case 3:
 
               typename = 'giros';
 
@@ -1654,7 +1654,7 @@ class EventService {
                 // attributes: ['tickets'],
                 where: {
                   user: userId,
-                  asset: 3
+                   asset: modalidad === 1 ? 3 : 5
                 },
                 transaction: t, // Asociar la transacción con esta consulta
                 lock: t.LOCK.UPDATE,
@@ -1666,7 +1666,7 @@ class EventService {
                   by: 1,
                   where: {
                     user: userId,
-                    asset: 3
+                     asset: modalidad === 1 ? 3 : 5
                   },
                   transaction: t, // Asociar la transacción con esta operación
                 });
