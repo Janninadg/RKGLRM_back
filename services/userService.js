@@ -1489,7 +1489,7 @@ async getRanking() {
 
        // Obtener todos los id's de personajes
        const personajes = await CharacterInfo.findAll({
-        attributes: ['id'],
+        attributes: ['id', 'name'],
         where: {
           userid: usergetId.id,
         },
@@ -1512,7 +1512,7 @@ async getRanking() {
 
       for(const p of arrayPersonajes){
         //console.log(p);
-        const ExistPersonajeInStage = await UserStageInfo.findOne({
+        const stagesForCharacter = await UserStageInfo.findAll({
           attributes: ['id'],
           where: {
             characterid: p,
@@ -1520,11 +1520,12 @@ async getRanking() {
               [Op.in]: stageIds,
             },
           },
+          raw: true,
           transaction: t, // Asociar la transacción con esta consulta
         });
 
-        if(ExistPersonajeInStage){
-          arrId.push(ExistPersonajeInStage.id);
+        if(stagesForCharacter.length > 0){
+          arrId.push(...stagesForCharacter.map((item) => item.id));
         }
       }
 
@@ -1535,16 +1536,9 @@ async getRanking() {
 
       // Como si existe...eliminamos:
       // Eliminar los registros
-      await UserStageInfo.destroy({
-        where: {
-          id: {
-            [Op.in]: arrId,
-          },
-        },
-        transaction: t,
-      });
+      let successMessage = 'Se ha reseteado el stage correctamente';
 
-      if (stageType === 1) {
+      if (Number(stageType) === 1) {
         // 🔥 SPECIAL → eliminar para TODOS los personajes encontrados
         await UserStageInfo.destroy({
           where: {
@@ -1555,8 +1549,21 @@ async getRanking() {
           transaction: t,
         });
 
+        successMessage = 'Se reseteo el stage para todos los personajes';
+
       } else {
         // 🟢 NORMAL → eliminar SOLO para el personaje seleccionado (ch)
+
+        const selectedCharacter = personajes.find((item) => Number(item.id) === Number(ch));
+
+        if (!selectedCharacter) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '100',
+            message: 'El personaje no pertenece a este usuario',
+          };
+        }
 
         const stageToDelete = await UserStageInfo.findOne({
           attributes: ['id'],
@@ -1574,7 +1581,7 @@ async getRanking() {
           return {
             success: false,
             code: '100',
-            message: 'Este personaje no ha usado este stage',
+            message: `El personaje ${selectedCharacter.name} no ha usado este stage`,
           };
         }
 
@@ -1584,6 +1591,8 @@ async getRanking() {
           },
           transaction: t,
         });
+
+        successMessage = `Se reseteo el stage para el personaje ${selectedCharacter.name}`;
       }
 
       // Decrementar:
@@ -1592,7 +1601,7 @@ async getRanking() {
 
       // Commit de la transacción si todo fue exitoso
       await t.commit();
-      return { success: true, code: '000', message: 'Se ha reseteado el stage correctamente' };
+      return { success: true, code: '000', message: successMessage };
     } catch (error) {
       await t.rollback();
       console.error('Error al obtener la cantidad de tickets:', error);
