@@ -32,6 +32,7 @@ import EventPoint from '../models/eventPointsModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import TicketsMode from '../models/ticketsModeModel.js';
+import StagesReset from '../models/stagesResetModel.js';
 import TempPrize from '../models/tempPrizes.js';
 import UserPrizeTracker from '../models/userPrizeTrackerModel.js';
 import prizeGameCache from '../modules/events/prizeGame.cache.js';
@@ -1797,6 +1798,86 @@ class GamesService {
     }
 
     /**
+     * Guarda tickets de stages para el usuario.
+     *
+     * @param {string} userId - ID del usuario (nombre del usuario).
+     * @param {Object} prize - Objeto del premio que contiene los detalles del premio.
+     * @param {number} prize.prize - Cantidad de tickets a entregar.
+     * @param {Transaction} t - Transaccion de Sequelize.
+     * @param {number} fallbackMode - Ticket/mode de stagesreset para guardar en ticketsmode.
+     * @returns {Promise<Object>} Resultado de la operacion con exito o fallo.
+     */
+    async saveTicketsStages(userId, prize, t, fallbackMode = null) {
+        try {
+            const ticketsAmount = Number(prize?.prize || 0);
+            const stageTicketMode = Number(fallbackMode || 0);
+
+            if (!Number.isInteger(ticketsAmount) || ticketsAmount <= 0) {
+                await t.rollback();
+                return { success: false, code: '202', message: 'Cantidad de tickets de stage no valida' };
+            }
+
+            if (!Number.isInteger(stageTicketMode) || stageTicketMode <= 0) {
+                await t.rollback();
+                return { success: false, code: '203', message: 'Ticket de stage no configurado' };
+            }
+
+            const stageInfo = await StagesReset.findOne({
+                where: {
+                    ticket: stageTicketMode,
+                    // visible: 1,
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (!stageInfo) {
+                await t.rollback();
+                return { success: false, code: '204', message: 'Ticket de stage no encontrado' };
+            }
+
+            const tcksStage = await TicketsMode.findOne({
+                where:{
+                  user: userId,
+                  type:1,
+                  mode: stageTicketMode,
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+              });
+
+            let currentTickets = ticketsAmount;
+
+            if (tcksStage) {
+                tcksStage.tickets = Number(tcksStage.tickets || 0) + ticketsAmount;
+                currentTickets = tcksStage.tickets;
+                await tcksStage.save({ transaction: t });
+            } else {
+                await TicketsMode.create(
+                {
+                    user: userId,
+                    type:1,
+                    mode: stageTicketMode,
+                    tickets: ticketsAmount,
+                },
+                { transaction: t }
+                );
+            }
+
+            return {
+                message:`Has obtenido ${ticketsAmount} ticket(s) para ${stageInfo.name}`,
+                success: true,
+                last: Math.max(currentTickets - ticketsAmount, 0),
+                curr: currentTickets,
+            };
+        } catch (error) {
+            await t.rollback();
+            console.error('Error al guardar tickets de stage:', error);
+            throw new Error('Error interno del servidor');
+        }
+    }
+
+    /**
      * Guarda tickts de theme park para el usuario.
      * 
      * @param {string} userId - ID del usuario (nombre del usuario).
@@ -1934,7 +2015,8 @@ class GamesService {
                     response = await this.savePowerUser(userId,prize,t);
                     break;
                 case 7:
-                    response = await this.saveThemeParkTicket(userId,prize,t);
+                    // Ticket de Theme Park 1
+                    response = await this.saveTicketsStages(userId,prize,t,1);
                     break;
                 case 8:
                     response = await this.saveBolsaOro(game,userId,prize,t);
@@ -1958,7 +2040,8 @@ class GamesService {
                     response = await this.saveGiroRuleta(userId,prize,t);
                     break;
                 case 17:
-                    response = await this.saveThemeParkTicket2(userId,prize,t);
+                    // Ticket de Theme Park 2
+                    response = await this.saveTicketsStages(userId,prize,t,2);
                     break;
                 case 18:
                     // console.log(2);
@@ -1979,6 +2062,10 @@ class GamesService {
                     break;
             }
             // console.log(3);
+
+            if (!response?.success) {
+                return response;
+            }
 
             if (!excludedPrizes.includes(typePrize)) {
                 await LogRewardsUser.create({  
