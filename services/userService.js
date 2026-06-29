@@ -1537,18 +1537,11 @@ async getRanking() {
       // Como si existe...eliminamos:
       // Eliminar los registros
       let successMessage = 'Se ha reseteado el stage correctamente';
+      let stageResetIds = [];
 
       if (Number(stageType) === 1) {
         // 🔥 SPECIAL → eliminar para TODOS los personajes encontrados
-        await UserStageInfo.destroy({
-          where: {
-            id: {
-              [Op.in]: arrId,
-            },
-          },
-          transaction: t,
-        });
-
+        stageResetIds = arrId;
         successMessage = 'Se reseteo el stage para todos los personajes';
 
       } else {
@@ -1565,7 +1558,7 @@ async getRanking() {
           };
         }
 
-        const stageToDelete = await UserStageInfo.findOne({
+        const stagesToDelete = await UserStageInfo.findAll({
           attributes: ['id'],
           where: {
             characterid: ch,      // personaje seleccionado
@@ -1573,10 +1566,11 @@ async getRanking() {
             [Op.in]: stageIds, // 👈 array de stages
           },
           },
+          raw: true,
           transaction: t,
         });
 
-        if (!stageToDelete) {
+        if (stagesToDelete.length <= 0) {
           await t.rollback();
           return {
             success: false,
@@ -1585,19 +1579,22 @@ async getRanking() {
           };
         }
 
-        await UserStageInfo.destroy({
-          where: {
-            id: stageToDelete.id,
-          },
-          transaction: t,
-        });
-
+        stageResetIds = stagesToDelete.map((item) => item.id);
         successMessage = `Se reseteo el stage para el personaje ${selectedCharacter.name}`;
       }
 
       // Decrementar:
       tcksStage.tickets -= 1;
       await tcksStage.save({ transaction: t });
+
+      await UserStageInfo.destroy({
+        where: {
+          id: {
+            [Op.in]: stageResetIds,
+          },
+        },
+        transaction: t,
+      });
 
       // Commit de la transacción si todo fue exitoso
       await t.commit();
