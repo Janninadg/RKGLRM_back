@@ -18,6 +18,14 @@ import UsersPanel from '../models/usersPanelModel.js';
 import { generateRandomCoupon } from '../utils/utils.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 
+const STREAMER_ALLOWED_ITEMS = new Map([
+  [12215, 'HP+1 100 ea'],
+  [12272, 'AP+1 100 ea'],
+  [12282, 'Chaos 100 ea'],
+]);
+
+const COUPON_PRIZE_TYPES = new Set([0, 1, 2]);
+
 class StreamersService {
     async verifyIsStreamer(user) {
         try {
@@ -70,10 +78,14 @@ class StreamersService {
           return { success: false, code: '005', message: 'Token inválido...' };
         }
 
-        const name = data._pn;
+        let name = String(data._pn || '').trim();
         const limit = Number(data.lm);
         const prize = parseInt(data._prc,10);
         const tipoCupon = parseInt(data.sc,10);
+        const rawType = Number(data._tc);
+        const type = data.schema === 'streamer_reward_v2'
+          ? rawType
+          : (tipoCupon === 0 ? 2 : (rawType === 2 ? 0 : rawType + 1));
         const qty = Number(data.qty) || 1;
 
         if (qty > 1) {
@@ -85,7 +97,41 @@ class StreamersService {
           };
         }
 
-        const type = tipoCupon === 0 ? 2 : (Number(data._tc) === 2 ? 0 : Number(data._tc)+1);
+        if (!Number.isInteger(tipoCupon) || ![0, 1].includes(tipoCupon)) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '007',
+            message: 'Tipo de cupon invalido.',
+          };
+        }
+
+        if (!Number.isInteger(type) || !COUPON_PRIZE_TYPES.has(type)) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '007',
+            message: 'Tipo de premio invalido.',
+          };
+        }
+
+        if (!Number.isInteger(prize) || prize <= 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '007',
+            message: 'Premio invalido.',
+          };
+        }
+
+        if (!Number.isInteger(limit) || limit <= 0) {
+          await t.rollback();
+          return {
+            success: false,
+            code: '007',
+            message: 'El limite debe ser mayor a 0.',
+          };
+        }
 
         const existSt = await UsersPanel.findOne({
           attributes:['id'],
@@ -100,6 +146,17 @@ class StreamersService {
 
         // validar item
         if(type === 0){
+          const allowedItemName = STREAMER_ALLOWED_ITEMS.get(prize);
+
+          if (!allowedItemName) {
+            await t.rollback();
+            return {
+              success:false,
+              code:'007',
+              message:'No estas autorizado a generar cupon de este item',
+            };
+          }
+
           const itemData = await ItemInfo.findOne({
             attributes: ['type'],
             where: { id: prize },
@@ -110,6 +167,24 @@ class StreamersService {
             await t.rollback();
             return { success:false, code:'003', message:'Item no existe' };
           }
+
+          name = allowedItemName;
+        } else if (!name) {
+          await t.rollback();
+          return {
+            success:false,
+            code:'007',
+            message:'Debe ingresar un nombre de premio',
+          };
+        }
+
+        if (tipoCupon === 0 && type === 2 && prize > 1500) {
+          await t.rollback();
+          return {
+            success:false,
+            code:'007',
+            message:'La cantidad de Cash debe ser mayor a 0 y menor a 1500',
+          };
         }
 
         // 🔥 VALIDAR LIMITE DIARIO
