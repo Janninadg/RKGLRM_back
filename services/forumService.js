@@ -1059,7 +1059,7 @@ class ForumService {
                 apodo: reply.user_id,
                 color: await this.getUserColorByApodo(replyUser?.apodo), // <-- usamos la función
                 photo: replyWebUser ? replyWebUser.photo : null,
-                role: await this.getNameRoleByApodo(user?.apodo),
+                role: await this.getNameRoleByApodo(replyUser?.apodo),
                 stats: await this.getUserStatsByApodo(replyUser?.apodo)
               },
           });
@@ -1380,10 +1380,9 @@ async incrementView(post_id) {
   if (!apodo) return null;
 
   try {
-    // 1. Buscar roles del usuario en forum_roles, priorizando principal
+    // 1. Buscar el rol principal del usuario en forum_roles
     const forumRole = await ForumUserRole.findOne({
-      where: { user_id: apodo },
-      order: [['principal', 'DESC'], ['role_id', 'ASC']],
+      where: { user_id: apodo, principal: 1 },
       transaction,
     });
 
