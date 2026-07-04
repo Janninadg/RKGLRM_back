@@ -32,6 +32,7 @@ import PendingPresents from '../models/pendingPresentsModel.js';
 import MarketBanned from '../models/MarketBannedModel.js';
 import UsersPanel from '../models/usersPanelModel.js';
 import LogPanelGM from '../models/logPanelGMModel.js';
+import ItemLoan from '../models/itemLoanModel.js';
 
 class MarketService {
 
@@ -2558,6 +2559,28 @@ async getChat(user, token, chatId) {
                await t.rollback(); // Revertir la transacción en caso de error
                 console.log('[INFO]'.blue,'El item está en un personaje'.blue);
                 return { success: false, code: '200', message: 'Tu item está en un personaje, devuelvelo al inventario para poder tradearlo.' };
+            }
+
+            const itemUniqueCode = String(userItem.uniqueitemcode || '').trim();
+
+            if (itemUniqueCode) {
+                const loanedItem = await ItemLoan.findOne({
+                    attributes: ['id', 'status'],
+                    where: {
+                        uniqueitemcode: itemUniqueCode,
+                    },
+                    transaction: t,
+                });
+
+                if (loanedItem) {
+                    await t.rollback();
+                    console.log('[INFO]'.blue, 'Item prestado no comercializable'.blue);
+                    return {
+                        success: false,
+                        code: '200',
+                        message: 'No puedes vender un item prestado en el marketplace.',
+                    };
+                }
             }
 
             const itmprb = await ConfigParameters.findOne({

@@ -52,6 +52,11 @@ const UserItemInfo = sequelize.define('useriteminfo', {
     type: DataTypes.BIGINT(20),
     allowNull: false,
     defaultValue: 0
+  },
+  uniqueitemcode: {
+    type: DataTypes.STRING(40),
+    allowNull: true,
+    defaultValue: null
   }
 }, {
   tableName: 'useriteminfo', // Nombre de la tabla en la base de datos

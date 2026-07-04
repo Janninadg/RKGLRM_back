@@ -9,6 +9,9 @@ import Banlist from '../models/banListModel.js';
 import Cash from '../models/cashModel.js';
 import TrackingPacket from '../models/trackingPacketModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
+import UserItemInfo from '../models/userItemInfoModel.js';
+import ItemLoan from '../models/itemLoanModel.js';
+import LogItemLoan from '../models/logItemLoanModel.js';
 import Cupon from '../models/cuponesModel.js';
 import InitialIpUser from '../models/ipUserModel.js';
 import LogPanelGM from '../models/logPanelGMModel.js';
@@ -35,6 +38,7 @@ import path from 'path';
 import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import FileManager from '../models/fileManagerModel.js';
 import { generateRandomCoupon, getSerialFromFile } from '../utils/utils.js';
+import { generateUniqueItemCode } from '../utils/itemLoanUtils.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import TradeChats from '../models/Trades/tradeChatsModel.js';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
@@ -46,6 +50,7 @@ import WebUser from '../models/webUsersModel.js';
 import marketService from './marketService.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
+  PUBLIC_CACHE_TTL,
 } from '../modules/public/publicData.cache.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import TipoParametro from '../models/tipoParametroModel.js';
@@ -69,6 +74,7 @@ const LOG_MODEL_MAP = {
   LogPanelGM,
   LogRewardsUser,
   LogStream,
+  LogItemLoan,
 };
 
 const LOG_FILTER_SOURCE_MAP = {
@@ -252,7 +258,7 @@ class GMPanelService {
             const userIds = matchedUsers.map(u => u.id);
             const userNames = matchedUsers.map(u => u.name);
 
-            const [characters, cashList] = await Promise.all([
+            const [characters, cashList, activeLoanRows] = await Promise.all([
               CharacterInfo.findAll({
                 where: {
                   userid: {
@@ -271,6 +277,20 @@ class GMPanelService {
                 attributes: ['id', 'cash'],
                 raw: true,
               }),
+              ItemLoan.findAll({
+                attributes: [
+                  'userid',
+                  [Sequelize.fn('COUNT', Sequelize.col('id')), 'active_loans'],
+                ],
+                where: {
+                  userid: {
+                    [Op.in]: userIds
+                  },
+                  status: 1,
+                },
+                group: ['userid'],
+                raw: true,
+              }),
             ]);
 
             // Maps
@@ -287,6 +307,11 @@ class GMPanelService {
               cashMap[cash.id] = cash.cash;
             }
 
+            const activeLoansMap = {};
+            for (const row of activeLoanRows) {
+              activeLoansMap[row.userid] = Number(row.active_loans || 0);
+            }
+
             // Usuarios enriquecidos
             const fullUsers = matchedUsers.map(u => ({
               id: u.id,
@@ -295,6 +320,7 @@ class GMPanelService {
               gold: u.gold,
               cash: cashMap[u.name] || 0,
               ep: u.clanpoint || 0,
+              activeLoans: activeLoansMap[u.id] || 0,
             }));
 
             // Agrupar por término, como tu frontend espera
@@ -1889,46 +1915,126 @@ class GMPanelService {
         where.ticket = ticketConstraint;
       }
 
+      addNumberInConstraint(where, field, values) {
+        const cleanValues = [...new Set(
+          (values || [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value))
+        )];
+        const nextConstraint = { [Op.in]: cleanValues.length > 0 ? cleanValues : [-1] };
+
+        if (where[field]) {
+          where[Op.and] = [
+            ...(where[Op.and] || []),
+            { [field]: where[field] },
+            { [field]: nextConstraint },
+          ];
+          delete where[field];
+          return;
+        }
+
+        where[field] = nextConstraint;
+      }
+
+      async getLoanUserMap(userIds) {
+        const cleanIds = [...new Set(
+          (userIds || [])
+            .map((userId) => Number(userId))
+            .filter((userId) => Number.isFinite(userId))
+        )];
+
+        if (cleanIds.length === 0) {
+          return {};
+        }
+
+        const rows = await UserGameInfo.findAll({
+          attributes: ['id', 'name'],
+          where: {
+            id: { [Op.in]: cleanIds },
+          },
+          raw: true,
+        });
+
+        return Object.fromEntries(rows.map((row) => [String(row.id), row.name]));
+      }
+
+      getLoanUserNameLiteral() {
+        return Sequelize.literal(`(
+          SELECT ug.name
+          FROM usergameinfo AS ug
+          WHERE ug.id = \`log_item_loans\`.\`userid\`
+          LIMIT 1
+        )`);
+      }
+
       async applyComputedLogFilters(table, filters, where) {
-        if (table.key !== 'coupons-generated') return where;
+        if (table.key === 'coupons-generated') {
+          const adminColumn = table.columns.find((column) => column.computed === 'couponGenerator');
+          const adminFilter = this.getFilterForColumn(table, filters, adminColumn);
+          const adminValue = String(adminFilter?.value || '').trim();
 
-        const adminColumn = table.columns.find((column) => column.computed === 'couponGenerator');
-        const adminFilter = this.getFilterForColumn(table, filters, adminColumn);
-        const adminValue = String(adminFilter?.value || '').trim();
+          if (!adminValue) return where;
 
-        if (!adminValue) return where;
+          const generatorCondition = adminFilter.operator === 'equals' || adminFilter.exact === true
+            ? adminValue
+            : { [Op.like]: `%${adminValue}%` };
+          const [gmRows, streamerRows] = await Promise.all([
+            LogPanelGM.findAll({
+              attributes: ['cupon'],
+              where: {
+                type: 3,
+                userAction: generatorCondition,
+              },
+              raw: true,
+            }),
+            LogStream.findAll({
+              attributes: ['cupon'],
+              where: {
+                user: generatorCondition,
+              },
+              raw: true,
+            }),
+          ]);
 
-        const generatorCondition = adminFilter.operator === 'equals' || adminFilter.exact === true
-          ? adminValue
-          : { [Op.like]: `%${adminValue}%` };
-        const [gmRows, streamerRows] = await Promise.all([
-          LogPanelGM.findAll({
-            attributes: ['cupon'],
+          this.addCouponTicketConstraint(where, [
+            ...gmRows.map((row) => row.cupon),
+            ...streamerRows.map((row) => row.cupon),
+          ]);
+          return where;
+        }
+
+        if (table.key === 'item-loans') {
+          const userColumn = table.columns.find((column) => column.computed === 'loanUser');
+          const userFilter = this.getFilterForColumn(table, filters, userColumn);
+          const userValue = String(userFilter?.value || '').trim();
+
+          if (!userValue) return where;
+
+          const userCondition = userFilter.operator === 'equals' || userFilter.exact === true
+            ? userValue
+            : { [Op.like]: `%${userValue}%` };
+          const userRows = await UserGameInfo.findAll({
+            attributes: ['id'],
             where: {
-              type: 3,
-              userAction: generatorCondition,
+              name: userCondition,
             },
             raw: true,
-          }),
-          LogStream.findAll({
-            attributes: ['cupon'],
-            where: {
-              user: generatorCondition,
-            },
-            raw: true,
-          }),
-        ]);
+          });
 
-        this.addCouponTicketConstraint(where, [
-          ...gmRows.map((row) => row.cupon),
-          ...streamerRows.map((row) => row.cupon),
-        ]);
+          this.addNumberInConstraint(where, 'userid', userRows.map((row) => row.id));
+          return where;
+        }
+
         return where;
       }
 
       buildLogOrder(table, sortColumn, sortField, sortDirection) {
         if (table.key === 'coupons-generated' && sortColumn?.computed === 'couponGenerator') {
           return [[this.getCouponGeneratorLiteral(), sortDirection], ['id', 'DESC']];
+        }
+
+        if (table.key === 'item-loans' && sortColumn?.computed === 'loanUser') {
+          return [[this.getLoanUserNameLiteral(), sortDirection], ['id', 'DESC']];
         }
 
         return [[sortField, sortDirection]];
@@ -2012,9 +2118,11 @@ class GMPanelService {
 
       async formatLogRows(table, rows) {
         const needsCouponGenerator = table.columns.some((column) => column.computed === 'couponGenerator');
+        const needsLoanUser = table.columns.some((column) => column.computed === 'loanUser');
         const sources = [...new Set(table.columns.map((column) => column.source).filter(Boolean))];
-        const [couponGeneratorMap, sourceOptionEntries] = await Promise.all([
+        const [couponGeneratorMap, loanUserMap, sourceOptionEntries] = await Promise.all([
           needsCouponGenerator ? this.getCouponGeneratorMap(rows.map((row) => row.ticket)) : Promise.resolve({}),
+          needsLoanUser ? this.getLoanUserMap(rows.map((row) => row.userid)) : Promise.resolve({}),
           Promise.all(sources.map(async (source) => {
             const options = await this.getLogSourceOptions(source);
             return [
@@ -2038,6 +2146,12 @@ class GMPanelService {
 
             if (column.computed === 'couponGenerator') {
               formatted[column.key] = couponGeneratorMap[String(row.ticket || '')] || '-';
+              return;
+            }
+
+            if (column.computed === 'loanUser') {
+              const userId = row.userid;
+              formatted[column.key] = loanUserMap[String(userId)] || (userId ? `#${userId}` : '-');
               return;
             }
 
@@ -2115,11 +2229,15 @@ class GMPanelService {
           const sortField = sortColumn?.field || selectedTable.defaultSort.field;
           const sortDirection = String(query.sortDirection || selectedTable.defaultSort.direction).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
           const order = this.buildLogOrder(selectedTable, sortColumn, sortField, sortDirection);
-          const attributes = [...new Set(
-            selectedTable.columns
+          const computedDependencies = selectedTable.columns.some((column) => column.computed === 'loanUser')
+            ? ['userid']
+            : [];
+          const attributes = [...new Set([
+            ...selectedTable.columns
               .filter((column) => !column.computed && column.type !== 'actions')
-              .map((column) => column.field)
-          )];
+              .map((column) => column.field),
+            ...computedDependencies,
+          ])];
 
           const result = await Model.findAndCountAll({
             attributes,
@@ -4961,6 +5079,760 @@ class GMPanelService {
       // Si hay un error, realiza un rollback de la transacción
       await t.rollback();
       throw error;
+    }
+  }
+
+  async validateSuperGMSession(user, token, transaction = null) {
+    const transactionOptions = transaction ? { transaction } : {};
+
+    const sessionToken = await TokenSession.findOne({
+      attributes: ['token'],
+      where: {
+        token,
+        id: user,
+      },
+      ...transactionOptions,
+    });
+
+    if (!sessionToken) {
+      return {
+        success: false,
+        code: '002',
+        message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+      };
+    }
+
+    const existGM = await UsersPanel.findOne({
+      attributes: ['id', 'type'],
+      where: {
+        user,
+        type: SUPER_GM_TYPE,
+        ban: 0,
+      },
+      ...transactionOptions,
+    });
+
+    if (!existGM) {
+      return {
+        success: false,
+        code: '403',
+        message: 'Solo un GM tipo 9 puede administrar prestamos de items.'
+      };
+    }
+
+    return null;
+  }
+
+  normalizePositiveIntegerList(values) {
+    const list = Array.isArray(values) ? values : [];
+
+    return [...new Set(
+      list
+        .map((value) => {
+          const rawValue = value && typeof value === 'object'
+            ? value.id ?? value.userid ?? value.userId ?? value.itemid ?? value.itemId
+            : value;
+          const parsedValue = Number(rawValue);
+
+          return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+        })
+        .filter((value) => value !== null)
+    )];
+  }
+
+  normalizeLoanPageSize(pageSize) {
+    const parsedPageSize = Number(pageSize);
+
+    if (!Number.isFinite(parsedPageSize)) {
+      return 25;
+    }
+
+    return Math.min(Math.max(parsedPageSize, 5), 100);
+  }
+
+  async buildLoanUniqueItemCode(userId, itemId, transaction) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const uniqueitemcode = generateUniqueItemCode({ userId, itemId });
+
+      const [existingItem, existingLoan] = await Promise.all([
+        UserItemInfo.findOne({
+          attributes: ['id'],
+          where: { uniqueitemcode },
+          transaction,
+        }),
+        ItemLoan.findOne({
+          attributes: ['id'],
+          where: { uniqueitemcode },
+          transaction,
+        }),
+      ]);
+
+      if (!existingItem && !existingLoan) {
+        return uniqueitemcode;
+      }
+    }
+
+    throw new Error('No se pudo generar un codigo unico para el item.');
+  }
+
+  async getLoanItems(user, token, options = {}) {
+    try {
+      const authError = await this.validateSuperGMSession(user, token);
+
+      if (authError) {
+        return authError;
+      }
+
+      const search = String(options?.search || '').trim().toLowerCase();
+      const limitValue = Number(options?.limit);
+      const limit = Number.isFinite(limitValue)
+        ? Math.min(Math.max(limitValue, 10), 200)
+        : 0;
+
+      const catalogItems = await publicDataCache.getOrLoad(
+        PUBLIC_CACHE_KEYS.LOAN_ITEMS,
+        PUBLIC_CACHE_TTL.VLONG,
+        () => ItemInfo.findAll({
+          attributes: [
+            'id',
+            'name',
+            'type',
+            'Class',
+            'level',
+            'gold',
+            'cash',
+            'hit1',
+            'hit2',
+            'hit3',
+            'hit4',
+            'chit',
+            'ap',
+            'hp',
+            'maxcp',
+            'power',
+          ],
+          order: [['id', 'ASC']],
+          raw: true,
+        })
+      );
+
+      const numericSearch = Number(search);
+      const items = catalogItems
+        .filter((item) => {
+          if (!search) {
+            return true;
+          }
+
+          const name = String(item.name || '').toLowerCase();
+          const matchesName = name.includes(search);
+          const matchesId = Number.isInteger(numericSearch) && Number(item.id) === numericSearch;
+
+          return matchesName || matchesId;
+        })
+        .slice(0, limit > 0 ? limit : undefined);
+
+      return {
+        success: true,
+        code: '000',
+        items,
+        cache: {
+          scope: 'iteminfo',
+          ttlMs: PUBLIC_CACHE_TTL.VLONG,
+        },
+      };
+    } catch (error) {
+      console.error('Error al obtener items para prestamos:', error);
+      return {
+        success: false,
+        code: '500',
+        message: 'Error al obtener items para prestamos.'
+      };
+    }
+  }
+
+  async getItemLoans(user, token, options = {}) {
+    try {
+      const authError = await this.validateSuperGMSession(user, token);
+
+      if (authError) {
+        return authError;
+      }
+
+      const page = Math.max(Number(options?.page) || 0, 0);
+      const pageSize = this.normalizeLoanPageSize(options?.pageSize);
+      const offset = page * pageSize;
+      const statusValue = options?.status;
+      const search = String(options?.search || '').trim();
+      const where = {};
+
+      if (statusValue !== undefined && statusValue !== null && statusValue !== '' && statusValue !== 'all') {
+        const parsedStatus = Number(statusValue);
+
+        if ([0, 1].includes(parsedStatus)) {
+          where.status = parsedStatus;
+        }
+      }
+
+      if (search) {
+        const userSearchConditions = [
+          {
+            name: {
+              [Op.like]: `%${search}%`,
+            },
+          },
+        ];
+        const numericSearch = Number(search);
+
+        if (Number.isInteger(numericSearch) && numericSearch > 0) {
+          userSearchConditions.push({ id: numericSearch });
+        }
+
+        const matchedUsers = await UserGameInfo.findAll({
+          attributes: ['id'],
+          where: {
+            [Op.or]: userSearchConditions,
+          },
+          raw: true,
+        });
+
+        const matchedUserIds = matchedUsers.map((item) => Number(item.id));
+
+        if (matchedUserIds.length === 0) {
+          return {
+            success: true,
+            code: '000',
+            loans: [],
+            total: 0,
+            page,
+            pageSize,
+            stats: {
+              active: await ItemLoan.count({ where: { status: 1 } }),
+              inactive: await ItemLoan.count({ where: { status: 0 } }),
+            },
+            userSummary: [],
+          };
+        }
+
+        where.userid = {
+          [Op.in]: matchedUserIds,
+        };
+      }
+
+      const { rows, count } = await ItemLoan.findAndCountAll({
+        where,
+        order: [
+          ['loaned_at', 'DESC'],
+          ['id', 'DESC'],
+        ],
+        limit: pageSize,
+        offset,
+        raw: true,
+      });
+
+      const userIds = [...new Set(rows.map((row) => Number(row.userid)).filter(Boolean))];
+      const itemIds = [...new Set(rows.map((row) => Number(row.itemid)).filter(Boolean))];
+
+      const [usersInfo, itemsInfo, activeCount, inactiveCount, summaryRows] = await Promise.all([
+        userIds.length > 0
+          ? UserGameInfo.findAll({
+              attributes: ['id', 'name'],
+              where: {
+                id: {
+                  [Op.in]: userIds,
+                },
+              },
+              raw: true,
+            })
+          : [],
+        itemIds.length > 0
+          ? ItemInfo.findAll({
+              attributes: ['id', 'name', 'type', 'Class', 'level'],
+              where: {
+                id: {
+                  [Op.in]: itemIds,
+                },
+              },
+              raw: true,
+            })
+          : [],
+        ItemLoan.count({ where: { status: 1 } }),
+        ItemLoan.count({ where: { status: 0 } }),
+        ItemLoan.findAll({
+          attributes: [
+            'userid',
+            [Sequelize.fn('COUNT', Sequelize.col('id')), 'items_count'],
+          ],
+          where: {
+            status: 1,
+          },
+          group: ['userid'],
+          order: [[Sequelize.fn('COUNT', Sequelize.col('id')), 'DESC']],
+          limit: 20,
+          raw: true,
+        }),
+      ]);
+
+      const usersMap = new Map(usersInfo.map((item) => [Number(item.id), item]));
+      const itemsMap = new Map(itemsInfo.map((item) => [Number(item.id), item]));
+      const missingSummaryUserIds = summaryRows
+        .map((item) => Number(item.userid))
+        .filter((userid) => userid && !usersMap.has(userid));
+
+      if (missingSummaryUserIds.length > 0) {
+        const summaryUsers = await UserGameInfo.findAll({
+          attributes: ['id', 'name'],
+          where: {
+            id: {
+              [Op.in]: missingSummaryUserIds,
+            },
+          },
+          raw: true,
+        });
+
+        summaryUsers.forEach((item) => usersMap.set(Number(item.id), item));
+      }
+
+      const loans = rows.map((loan) => {
+        const userInfo = usersMap.get(Number(loan.userid));
+        const itemInfo = itemsMap.get(Number(loan.itemid));
+
+        return {
+          ...loan,
+          user_name: userInfo?.name || String(loan.userid),
+          item_name: itemInfo?.name || String(loan.itemid),
+          item_type: itemInfo?.type,
+          item_class: itemInfo?.Class,
+          item_level: itemInfo?.level,
+        };
+      });
+
+      return {
+        success: true,
+        code: '000',
+        loans,
+        total: count,
+        page,
+        pageSize,
+        stats: {
+          active: activeCount,
+          inactive: inactiveCount,
+        },
+        userSummary: summaryRows.map((item) => {
+          const userInfo = usersMap.get(Number(item.userid));
+
+          return {
+            userid: Number(item.userid),
+            user_name: userInfo?.name || String(item.userid),
+            items_count: Number(item.items_count || 0),
+          };
+        }),
+      };
+    } catch (error) {
+      console.error('Error al obtener prestamos de items:', error);
+      return {
+        success: false,
+        code: '500',
+        message: 'Error al obtener prestamos de items.'
+      };
+    }
+  }
+
+  async grantItemLoans(token, data, user, isDataIntegrityValid, paramsString, req) {
+    const t = await sequelize.transaction();
+    let committed = false;
+
+    try {
+      const verifyPacketEqual = isDataIntegrityValid;
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
+
+      if (banInfo) {
+        await t.rollback();
+        return banInfo;
+      }
+
+      await TrackingPacket.create(
+        {
+          packet: paramsString,
+          user,
+          fecha_uso: new Date(),
+        },
+        { transaction: t }
+      );
+
+      const authError = await this.validateSuperGMSession(user, token, t);
+
+      if (authError) {
+        await t.rollback();
+        return authError;
+      }
+
+      const userIds = this.normalizePositiveIntegerList(data?.users || data?._lu || data?.userIds);
+      const itemIds = this.normalizePositiveIntegerList(data?.itemIds || data?.items);
+
+      if (userIds.length === 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe seleccionar al menos un usuario.'
+        };
+      }
+
+      if (itemIds.length === 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe seleccionar al menos un item.'
+        };
+      }
+
+      if (userIds.length > 50 || itemIds.length > 30) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'La solicitud supera el limite permitido para prestamos masivos.'
+        };
+      }
+
+      const [targetUsers, itemInfos] = await Promise.all([
+        UserGameInfo.findAll({
+          attributes: ['id', 'name', 'bag'],
+          where: {
+            id: {
+              [Op.in]: userIds,
+            },
+            ban: 0,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }),
+        ItemInfo.findAll({
+          attributes: ['id', 'name'],
+          where: {
+            id: {
+              [Op.in]: itemIds,
+            },
+          },
+          transaction: t,
+          raw: true,
+        }),
+      ]);
+
+      const usersMap = new Map(targetUsers.map((item) => [Number(item.id), item]));
+      const itemsMap = new Map(itemInfos.map((item) => [Number(item.id), item]));
+      const missingUsers = userIds.filter((id) => !usersMap.has(id));
+      const missingItems = itemIds.filter((id) => !itemsMap.has(id));
+
+      if (missingItems.length > 0) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '004',
+          message: `Items no encontrados: ${missingItems.join(', ')}.`
+        };
+      }
+
+      const orderedUsers = userIds.map((id) => usersMap.get(id));
+      const orderedItems = itemIds.map((id) => itemsMap.get(id));
+      const freeSlotsByUserId = new Map();
+      const errorUsers = missingUsers.map((id) => ({
+        userid: id,
+        user_name: String(id),
+        reason: 'Usuario no encontrado o baneado.',
+      }));
+      const usersReadyToLoan = [];
+
+      for (const targetUser of orderedUsers) {
+        if (!targetUser) {
+          continue;
+        }
+
+        const distinctSlots = await UserItemInfo.findAll({
+          attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']],
+          where: {
+            userid: targetUser.id,
+            characterid: 0,
+          },
+          raw: true,
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+        const occupiedSlots = distinctSlots.map((slotRow) => Number(slotRow.slot));
+        const bagCount = Math.max(Number(targetUser.bag || 1), 1);
+        const maxSlotIndex = bagCount * 30 - 1;
+        const freeSlots = [];
+
+        for (let slot = 0; slot <= maxSlotIndex; slot++) {
+          if (!occupiedSlots.includes(slot)) {
+            freeSlots.push(slot);
+
+            if (freeSlots.length === orderedItems.length) {
+              break;
+            }
+          }
+        }
+
+        if (freeSlots.length < orderedItems.length) {
+          errorUsers.push({
+            userid: Number(targetUser.id),
+            user_name: targetUser.name,
+            reason: `No tiene slots suficientes. Requiere ${orderedItems.length}, disponibles ${freeSlots.length}.`,
+          });
+          continue;
+        }
+
+        freeSlotsByUserId.set(Number(targetUser.id), freeSlots);
+        usersReadyToLoan.push(targetUser);
+      }
+
+      const now = new Date();
+      const createdLoans = [];
+      const successUsersMap = new Map();
+
+      for (const targetUser of usersReadyToLoan) {
+        const freeSlots = freeSlotsByUserId.get(Number(targetUser.id));
+
+        for (let index = 0; index < orderedItems.length; index++) {
+          const item = orderedItems[index];
+          const uniqueitemcode = await this.buildLoanUniqueItemCode(targetUser.id, item.id, t);
+
+          const userItem = await UserItemInfo.create(
+            {
+              userid: targetUser.id,
+              characterid: 0,
+              itemid: item.id,
+              item_sn: '8000',
+              sn_type: 3,
+              level: 1,
+              limittime: 0,
+              slot: freeSlots[index],
+              exp: 0,
+              uniqueitemcode,
+            },
+            { transaction: t }
+          );
+
+          const loan = await ItemLoan.create(
+            {
+              userid: targetUser.id,
+              itemid: item.id,
+              useriteminfo_id: userItem.id,
+              uniqueitemcode,
+              status: 1,
+              loaned_at: now,
+              returned_at: null,
+            },
+            { transaction: t }
+          );
+
+          await LogItemLoan.create(
+            {
+              loan_id: loan.id,
+              gm_user: user,
+              action: 'Prestar item',
+              userid: targetUser.id,
+              itemid: item.id,
+              useriteminfo_id: userItem.id,
+              uniqueitemcode,
+              status: 1,
+              date: now,
+              detail: null,
+            },
+            { transaction: t }
+          );
+
+          createdLoans.push({
+            id: loan.id,
+            userid: targetUser.id,
+            user_name: targetUser.name,
+            itemid: item.id,
+            item_name: item.name,
+            useriteminfo_id: userItem.id,
+            uniqueitemcode,
+            status: 1,
+            loaned_at: now,
+          });
+
+          if (!successUsersMap.has(Number(targetUser.id))) {
+            successUsersMap.set(Number(targetUser.id), {
+              userid: Number(targetUser.id),
+              user_name: targetUser.name,
+              items_count: 0,
+              items: [],
+            });
+          }
+
+          const successUser = successUsersMap.get(Number(targetUser.id));
+          successUser.items_count += 1;
+          successUser.items.push({
+            loan_id: loan.id,
+            itemid: item.id,
+            item_name: item.name,
+            uniqueitemcode,
+          });
+        }
+      }
+
+      await t.commit();
+      committed = true;
+
+      const successUsers = [...successUsersMap.values()];
+      const hasLoans = createdLoans.length > 0;
+
+      return {
+        success: hasLoans,
+        code: hasLoans ? '000' : '200',
+        message: hasLoans
+          ? `${createdLoans.length} item(s) prestado(s) correctamente. ${errorUsers.length} usuario(s) con error.`
+          : 'No se presto ningun item. Revisa los usuarios con error.',
+        loans: createdLoans,
+        successUsers,
+        errorUsers,
+      };
+    } catch (error) {
+      if (!committed) {
+        await t.rollback();
+      }
+
+      console.error('Error al prestar items:', error);
+      throw new Error('Error al prestar items');
+    }
+  }
+
+  async returnItemLoan(token, data, user, isDataIntegrityValid, paramsString, req) {
+    const t = await sequelize.transaction();
+    let committed = false;
+
+    try {
+      const verifyPacketEqual = isDataIntegrityValid;
+      const banInfo = await verifyPacketAndBan(user, user, paramsString, verifyPacketEqual, t, req);
+
+      if (banInfo) {
+        await t.rollback();
+        return banInfo;
+      }
+
+      await TrackingPacket.create(
+        {
+          packet: paramsString,
+          user,
+          fecha_uso: new Date(),
+        },
+        { transaction: t }
+      );
+
+      const authError = await this.validateSuperGMSession(user, token, t);
+
+      if (authError) {
+        await t.rollback();
+        return authError;
+      }
+
+      const loanId = Number(data?.loanId || data?.id);
+      const uniqueitemcode = String(data?.uniqueitemcode || data?.code || '').trim();
+
+      if ((!Number.isInteger(loanId) || loanId <= 0) && !uniqueitemcode) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '003',
+          message: 'Debe indicar el prestamo a retirar.'
+        };
+      }
+
+      const whereLoan = Number.isInteger(loanId) && loanId > 0
+        ? { id: loanId, status: 1 }
+        : { uniqueitemcode, status: 1 };
+
+      const loan = await ItemLoan.findOne({
+        where: whereLoan,
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!loan) {
+        await t.rollback();
+        return {
+          success: false,
+          code: '004',
+          message: 'El prestamo no existe o ya fue retirado.'
+        };
+      }
+
+      let removedRows = 0;
+
+      if (loan.useriteminfo_id) {
+        removedRows = await UserItemInfo.destroy({
+          where: {
+            id: loan.useriteminfo_id,
+            uniqueitemcode: loan.uniqueitemcode,
+          },
+          transaction: t,
+        });
+      }
+
+      if (removedRows === 0) {
+        removedRows = await UserItemInfo.destroy({
+          where: {
+            userid: loan.userid,
+            itemid: loan.itemid,
+            uniqueitemcode: loan.uniqueitemcode,
+          },
+          transaction: t,
+        });
+      }
+
+      const now = new Date();
+
+      loan.status = 0;
+      loan.returned_at = now;
+      await loan.save({ transaction: t });
+
+      await LogItemLoan.create(
+        {
+          loan_id: loan.id,
+          gm_user: user,
+          action: 'Retirar item',
+          userid: loan.userid,
+          itemid: loan.itemid,
+          useriteminfo_id: loan.useriteminfo_id,
+          uniqueitemcode: loan.uniqueitemcode,
+          status: 0,
+          date: now,
+          detail: removedRows > 0 ? null : 'No se encontro el item en useriteminfo al retirarlo.',
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+      committed = true;
+
+      return {
+        success: true,
+        code: '000',
+        message: removedRows > 0
+          ? 'Item retirado correctamente.'
+          : 'Prestamo marcado como retirado. No se encontro el item en useriteminfo.',
+        loan: {
+          id: loan.id,
+          userid: loan.userid,
+          itemid: loan.itemid,
+          useriteminfo_id: loan.useriteminfo_id,
+          uniqueitemcode: loan.uniqueitemcode,
+          status: 0,
+          returned_at: now,
+        },
+      };
+    } catch (error) {
+      if (!committed) {
+        await t.rollback();
+      }
+
+      console.error('Error al retirar item prestado:', error);
+      throw new Error('Error al retirar item prestado');
     }
   }
 

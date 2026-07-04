@@ -26,6 +26,7 @@ class PublicDataCache {
     if (key.startsWith(PUBLIC_CACHE_KEYS.RANKING_CHARACTERS)) return 'ranking personajes';
     if (key.startsWith(PUBLIC_CACHE_KEYS.RANKING_CLANS)) return 'ranking clanes';
     if (key.startsWith(PUBLIC_CACHE_KEYS.MARKET_PAYMENTS)) return 'metodos de pago';
+    if (key.startsWith(PUBLIC_CACHE_KEYS.LOAN_ITEMS)) return 'items para prestamos';
     if (key.startsWith(PUBLIC_CACHE_KEYS.FORUM_CATEGORIES)) return 'categorias del foro';
     if (key.startsWith(PUBLIC_CACHE_KEYS.FORUM_LATEST_POSTS)) return 'ultimos posts';
     if (key.startsWith(PUBLIC_CACHE_KEYS.FORUM_POSTS_BY_CATEGORY)) return 'posts por categoria';
@@ -143,6 +144,7 @@ export const PUBLIC_CACHE_KEYS = {
   RANKING_CHARACTERS: 'users:ranking:characters',
   RANKING_CLANS: 'users:ranking:clans',
   MARKET_PAYMENTS: 'market:payments',
+  LOAN_ITEMS: 'gm:loan-items',
   FORUM_CATEGORIES: 'forum:categories',
   FORUM_LATEST_POSTS: 'forum:latest-posts',
   FORUM_POSTS_BY_CATEGORY: 'forum:posts-by-category',

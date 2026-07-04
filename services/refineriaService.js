@@ -5,6 +5,7 @@ import UserGameInfo from '../models/userGameInfoModel.js';
 import ItemInfo from '../models/itemInfoModel.js';
 import TokenSession from '../models/tokenSessionModel.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
+import ItemLoan from '../models/itemLoanModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
@@ -44,7 +45,7 @@ class RefineriaService {
             console.log(userGame.bag)
            // Obtener todos los items del usuario, ordenados por 'slot' y luego por 'id'
             const allUserItems = await UserItemInfo.findAll({
-                attributes:['id','itemid','level','slot','exp','limittime'],
+                attributes:['id','userid','characterid','itemid','item_sn','sn_type','level','slot','exp','limittime','uniqueitemcode'],
                 where: {
                     userid: userGame.id,
                     characterid: 0,
@@ -57,6 +58,7 @@ class RefineriaService {
             // Revertir la transacción en caso de error o si no hay registros
             if (!allUserItems || allUserItems.length === 0) {
                 // await t.rollback();
+                await t.commit();
                 return { success: true, code: '000', bag:userGame.bag, _ui: [] };
             }
             
@@ -72,6 +74,25 @@ class RefineriaService {
                 
                 return acc;
             }, []);
+
+            const loanCodes = uniqueUserItems
+                .map((item) => String(item.uniqueitemcode || '').trim())
+                .filter((code) => code);
+            const loanRows = loanCodes.length > 0
+                ? await ItemLoan.findAll({
+                    attributes: ['uniqueitemcode'],
+                    where: {
+                        uniqueitemcode: {
+                            [Op.in]: loanCodes,
+                        },
+                    },
+                    raw: true,
+                    transaction: t,
+                })
+                : [];
+            const loanCodeSet = new Set(
+                loanRows.map((loan) => String(loan.uniqueitemcode || '').trim()).filter((code) => code)
+            );
 
             // console.log(uniqueUserItems);
 
@@ -104,6 +125,7 @@ class RefineriaService {
                     itemData.name = fullName;
                     itemData.remain = remainDays.days;
                     itemData.remText = remainDays.text;
+                    itemData.isLoan = loanCodeSet.has(String(itemData.uniqueitemcode || '').trim());
 
                     return itemData;
                 })

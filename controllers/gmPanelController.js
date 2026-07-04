@@ -169,6 +169,112 @@ class GMPanelController {
         }
       }
 
+      async getItemLoans(req, res) {
+        try {
+          const { user, token, page, pageSize, status, search } = req.body;
+
+          const result = await GMPanelService.getItemLoans(user, token, {
+            page,
+            pageSize,
+            status,
+            search,
+          });
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al obtener prestamos de items:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async getLoanItems(req, res) {
+        try {
+          const { user, token, search, limit } = req.body;
+
+          const result = await GMPanelService.getLoanItems(user, token, {
+            search,
+            limit,
+          });
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al obtener items para prestamos:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async grantItemLoans(req, res) {
+        try {
+          const { IDODUI, jMdiOl } = req.body;
+
+          const receivedDataHash = calculateDataHash(IDODUI);
+          const isDataIntegrityValid = receivedDataHash === jMdiOl;
+
+          const { SIDMCS, O0gDPD, cMDIfe, MUDKFF } = IDODUI;
+
+          const key = SIDMCS;
+          const data = JSON.parse(decrypt(O0gDPD, key));
+
+          const user = decrypt(cMDIfe, key);
+          const token = decrypt(MUDKFF, key);
+
+          const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green, ' Prestamo item'.white, (' - Admin: ' + user).white);
+
+          const result = await GMPanelService.grantItemLoans(token, data, user, isDataIntegrityValid, paramsString, req);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al prestar items:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
+      async returnItemLoan(req, res) {
+        try {
+          const { IDODUI, jMdiOl } = req.body;
+
+          const receivedDataHash = calculateDataHash(IDODUI);
+          const isDataIntegrityValid = receivedDataHash === jMdiOl;
+
+          const { SIDMCS, O0gDPD, cMDIfe, MUDKFF } = IDODUI;
+
+          const key = SIDMCS;
+          const data = JSON.parse(decrypt(O0gDPD, key));
+
+          const user = decrypt(cMDIfe, key);
+          const token = decrypt(MUDKFF, key);
+
+          const paramsString = `${SIDMCS}-${O0gDPD}-${cMDIfe}-${MUDKFF}`;
+
+          console.log("[GM Panel]".green, ' Retiro item prestado'.white, (' - Admin: ' + user).white);
+
+          const result = await GMPanelService.returnItemLoan(token, data, user, isDataIntegrityValid, paramsString, req);
+
+          if (result.success || result.code) {
+            return res.status(200).json(result);
+          } else {
+            return res.status(400).json(result);
+          }
+        } catch (error) {
+          console.error('Error al retirar item prestado:', error);
+          return res.status(500).json({ message: 'Error interno del servidor' });
+        }
+      }
+
       async getConfigParameters(req, res) {
         try {
           const { user, token } = req.body;

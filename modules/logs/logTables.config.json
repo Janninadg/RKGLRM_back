@@ -100,5 +100,28 @@
       { "key": "Elemento generado", "field": "cupon", "filter": "text" },
       { "key": "Fecha", "field": "date", "filter": "date" }
     ]
+  },
+  {
+    "key": "item-loans",
+    "label": "Log Prestamos",
+    "model": "LogItemLoan",
+    "defaultSort": { "field": "date", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "GM", "field": "gm_user", "filter": "text" },
+      { "key": "Accion", "field": "action", "filter": "text" },
+      {
+        "key": "Usuario",
+        "field": "_loanUser",
+        "computed": "loanUser",
+        "filter": "text",
+        "sortable": true
+      },
+      { "key": "Item ID", "field": "itemid", "filter": "number" },
+      { "key": "Codigo unico", "field": "uniqueitemcode", "filter": "text" },
+      { "key": "Estado", "field": "status", "filter": "number" },
+      { "key": "Detalle", "field": "detail", "filter": "text" },
+      { "key": "Fecha", "field": "date", "filter": "date" }
+    ]
   }
 ]
