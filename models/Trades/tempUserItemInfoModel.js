@@ -57,6 +57,31 @@ const TempUserItemInfo = sequelize.define('temp_useriteminfo', {
     allowNull: false,
     defaultValue: 0,
   },
+  uniqueitemcode: {
+    type: DataTypes.STRING(40),
+    allowNull: true,
+    defaultValue: null,
+  },
+  code_generated_on_publish: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  code_from_useriteminfo: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  istemporal: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  dias: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
 }, {
   tableName: 'temp_useriteminfo',
   timestamps: false, // Evita la creación automática de campos createdAt y updatedAt

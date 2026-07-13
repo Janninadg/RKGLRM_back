@@ -12,6 +12,7 @@ import ItemInfo from '../models/itemInfoModel.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
 import ItemLoan from '../models/itemLoanModel.js';
 import LogItemLoan from '../models/logItemLoanModel.js';
+import ItemTraceLog from '../models/itemTraceLogModel.js';
 import Cupon from '../models/cuponesModel.js';
 import InitialIpUser from '../models/ipUserModel.js';
 import LogPanelGM from '../models/logPanelGMModel.js';
@@ -22,7 +23,7 @@ import config from '../config/config.js';
 import { signToken } from '../utils/authUtils.js';
 import Blackout from '../models/blackoutModel.js';
 import ClanInfo from '../models/clanInfoModel.js';
-import { calculatePowerUse } from '../utils/prizesUtils.js';
+import { calculatePowerUse, getRemainingPowerTime, setClassName } from '../utils/prizesUtils.js';
 import LogRewardsUser from '../models/logRewardUserModel.js';
 import LogStream from '../models/logStreamsModel.js';
 import LogExchange from '../models/logExchanges.js';
@@ -42,7 +43,11 @@ import { generateUniqueItemCode } from '../utils/itemLoanUtils.js';
 import UserCredits from '../models/Trades/userCreditsModel.js';
 import TradeChats from '../models/Trades/tradeChatsModel.js';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
+import Marketplace from '../models/Trades/marketPlaceModel.js';
+import TempUserItemInfo from '../models/Trades/tempUserItemInfoModel.js';
+import ItemImage from '../models/itemImagesModel.js';
 import User from '../models/userModel.js';
+import PendingPresents from '../models/pendingPresentsModel.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import CharacterInfoLog from '../models/characterInfoLogModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
@@ -63,6 +68,14 @@ import TypeOrigenReward from '../models/typeOrigenRewardModel.js';
 import TypeEvents from '../models/typeEventsModel.js';
 import TypeLogsGM from '../models/typeLogsGMModel.js';
 import TypeLogsStreamers from '../models/typeLogsStreamersModel.js';
+import ItemTraceOrigin from '../models/itemTraceOriginModel.js';
+import ItemTraceAction from '../models/itemTraceActionModel.js';
+import { ITEM_TRACE_ACTIONS, ITEM_TRACE_ORIGINS } from '../utils/itemTraceConstants.js';
+import {
+  buildUniqueAccountItemReason,
+  checkUniqueAccountItemAvailability,
+  isUniqueAccountItem,
+} from '../utils/uniqueAccountItems.js';
 
 const SUPER_GM_TYPE = 9;
 const PACK_RECHARGE_GM_TYPES = [0, 2, 4, SUPER_GM_TYPE];
@@ -75,6 +88,7 @@ const LOG_MODEL_MAP = {
   LogRewardsUser,
   LogStream,
   LogItemLoan,
+  ItemTraceLog,
 };
 
 const LOG_FILTER_SOURCE_MAP = {
@@ -83,6 +97,8 @@ const LOG_FILTER_SOURCE_MAP = {
   typeEvents: TypeEvents,
   typeLogsGM: TypeLogsGM,
   typeLogsStreamers: TypeLogsStreamers,
+  itemTraceOrigins: ItemTraceOrigin,
+  itemTraceActions: ItemTraceAction,
 };
 
 const LOG_METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1042,6 +1058,421 @@ class GMPanelService {
           throw new Error('Error interno del servidor');
         }
       }
+
+     async validateMarketplaceAdminAccess(user, token, transaction) {
+        const sessionToken = await TokenSession.findOne({
+            attributes: ['token'],
+            where: {
+                token,
+                id: user,
+            },
+            transaction,
+        });
+
+        if (!sessionToken) {
+            return {
+                success: false,
+                code: '002',
+                message: 'Token invalido o tienes una sesion iniciada en otro navegador...'
+            };
+        }
+
+        const existGM = await UsersPanel.findOne({
+            attributes: ['id'],
+            where: {
+                user,
+                [Op.or]: [{ type: 0 }, { type: 9 }, { type: 4 }],
+            },
+            transaction,
+        });
+
+        if (!existGM) {
+            return {
+                success: false,
+                code: '001',
+                message: 'Usted no puede gestionar publicaciones de marketplace porque ya no es GM.'
+            };
+        }
+
+        return null;
+     }
+
+     async buildMarketPublicationsWithoutChatRows({ page = 1, pageSize = 20, filters = {}, transaction, paginate = true }) {
+        const currentPage = Number(page) > 0 ? Number(page) : 1;
+        const currentPageSize = Number(pageSize) > 0 ? Number(pageSize) : 20;
+        const safeFilters = filters || {};
+        const filterMarketId = safeFilters.market_id ? Number(safeFilters.market_id) : null;
+        const filterSeller = (safeFilters.usuario || safeFilters.vendedor)
+            ? String(safeFilters.usuario || safeFilters.vendedor).trim().toLowerCase()
+            : '';
+        const filterItem = safeFilters.item ? String(safeFilters.item).trim().toLowerCase() : '';
+
+        const activeChats = await TradeChats.findAll({
+            attributes: ['trade_id'],
+            where: {
+                status: {
+                    [Op.in]: ['ACTIVE', 'COMPLETED']
+                }
+            },
+            raw: true,
+            transaction,
+        });
+
+        const busyTradeIds = [...new Set(
+            activeChats
+                .map((chat) => Number(chat.trade_id))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+
+        const marketWhere = { estado: 1 };
+
+        if (filterMarketId) {
+            marketWhere.id = filterMarketId;
+        } else if (busyTradeIds.length) {
+            marketWhere.id = { [Op.notIn]: busyTradeIds };
+        }
+
+        const marketRows = await Marketplace.findAll({
+            where: marketWhere,
+            order: [['fecha', 'DESC'], ['id', 'DESC']],
+            transaction,
+        });
+
+        const tempIds = [...new Set(
+            marketRows
+                .map((item) => Number(item.itemid))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+
+        const tempRows = tempIds.length
+            ? await TempUserItemInfo.findAll({
+                where: { id: { [Op.in]: tempIds } },
+                transaction,
+            })
+            : [];
+
+        const tempMap = tempRows.reduce((acc, item) => {
+            acc[item.id] = item;
+            return acc;
+        }, {});
+
+        const itemIds = [...new Set(
+            tempRows
+                .map((item) => Number(item.itemid))
+                .filter((id) => Number.isInteger(id) && id > 0)
+        )];
+
+        const sellerApodos = [...new Set(marketRows.map((item) => item.vendedor).filter(Boolean))];
+
+        const [itemRows, imageRows, paymentRows, sellerRows] = await Promise.all([
+            itemIds.length
+                ? ItemInfo.findAll({ where: { id: { [Op.in]: itemIds } }, transaction })
+                : [],
+            itemIds.length
+                ? ItemImage.findAll({ where: { item: { [Op.in]: itemIds } }, transaction })
+                : [],
+            PaymentMethods.findAll({ attributes: ['id', 'name', 'color', 'icon', 'type'], transaction }),
+            sellerApodos.length
+                ? User.findAll({
+                    attributes: ['id', 'apodo'],
+                    where: {
+                        apodo: {
+                            [Op.in]: sellerApodos
+                        }
+                    },
+                    transaction,
+                })
+                : [],
+        ]);
+
+        const itemMap = itemRows.reduce((acc, item) => {
+            acc[item.id] = item;
+            return acc;
+        }, {});
+
+        const imageMap = imageRows.reduce((acc, item) => {
+            acc[item.item] = item.image;
+            return acc;
+        }, {});
+
+        const paymentMap = paymentRows.reduce((acc, item) => {
+            acc[item.id] = item;
+            return acc;
+        }, {});
+
+        const sellerMap = sellerRows.reduce((acc, item) => {
+            acc[item.apodo] = item;
+            return acc;
+        }, {});
+
+        let formatted = await Promise.all(marketRows.map(async (market) => {
+            const marketData = market.toJSON();
+            const temp = tempMap[market.itemid] || null;
+            const itemInfo = temp ? itemMap[temp.itemid] : null;
+            const sellerInfo = sellerMap[marketData.vendedor] || null;
+            const className = itemInfo ? setClassName(itemInfo.Class) : '';
+            const itemName = itemInfo ? `${itemInfo.name}${className}` : 'Desconocido';
+            const frozenTemporal = Number(temp?.istemporal || 0) === 1;
+            const frozenDays = Math.max(0, Number(temp?.dias) || 0);
+            const limitTime = Number(temp?.limittime || 0);
+            const isTemporal = frozenTemporal || limitTime > 0;
+            const remainingPowerTime = !frozenTemporal && isTemporal
+                ? await getRemainingPowerTime(limitTime)
+                : { days: 0 };
+            const payment = paymentMap[market.medio_pago] || null;
+
+            return {
+                market_id: marketData.id,
+                vendedor: sellerInfo?.id || marketData.vendedor,
+                vendedor_apodo: marketData.vendedor,
+                vendedor_usuario: sellerInfo?.id || marketData.vendedor,
+                precio: marketData.precio,
+                medio_pago: marketData.medio_pago,
+                fecha: marketData.fecha,
+                itemid: temp?.itemid || null,
+                temp_item_id: temp?.id || marketData.itemid,
+                item_name: itemName,
+                item_image: temp ? imageMap[temp.itemid] || null : null,
+                uniqueitemcode: temp?.uniqueitemcode || null,
+                isTemporal,
+                remainingDays: frozenTemporal ? frozenDays : Math.max(0, Number(remainingPowerTime.days) || 0),
+                payment: payment ? payment.toJSON() : null,
+            };
+        }));
+
+        if (filterSeller) {
+            formatted = formatted.filter((item) =>
+                String(item.vendedor_usuario || '').toLowerCase().includes(filterSeller)
+            );
+        }
+
+        if (filterItem) {
+            formatted = formatted.filter((item) =>
+                String(item.item_name || '').toLowerCase().includes(filterItem) ||
+                String(item.itemid || '').includes(filterItem)
+            );
+        }
+
+        const totalRecords = formatted.length;
+        const offset = (currentPage - 1) * currentPageSize;
+        const rows = paginate ? formatted.slice(offset, offset + currentPageSize) : formatted;
+
+        return {
+            publications: rows,
+            pagination: {
+                totalRecords,
+                page: currentPage,
+                pageSize: currentPageSize,
+                totalPages: Math.ceil(totalRecords / currentPageSize),
+            }
+        };
+     }
+
+     async getMarketPublicationsWithoutChat(user, token, page = 1, pageSize = 20, filters = {}) {
+        const t = await sequelize.transaction();
+
+        try {
+            const accessError = await this.validateMarketplaceAdminAccess(user, token, t);
+
+            if (accessError) {
+                await t.rollback();
+                return accessError;
+            }
+
+            const result = await this.buildMarketPublicationsWithoutChatRows({
+                page,
+                pageSize,
+                filters,
+                transaction: t,
+            });
+
+            await t.commit();
+
+            return {
+                success: true,
+                code: '000',
+                message: 'ok',
+                ...result,
+            };
+        } catch (error) {
+            try {
+                await t.rollback();
+            } catch (_) {}
+
+            console.error('Error en getMarketPublicationsWithoutChat:', error);
+            return { success: false, code: '999', message: 'Error interno al obtener publicaciones.' };
+        }
+     }
+
+     async cancelMarketPublication(user, token, marketId) {
+        const numericMarketId = Number(marketId);
+
+        if (!Number.isInteger(numericMarketId) || numericMarketId <= 0) {
+            return { success: false, code: '200', message: 'Publicacion invalida.' };
+        }
+
+        const t = await sequelize.transaction();
+
+        try {
+            const accessError = await this.validateMarketplaceAdminAccess(user, token, t);
+
+            if (accessError) {
+                await t.rollback();
+                return accessError;
+            }
+
+            const marketItem = await Marketplace.findOne({
+                where: { id: numericMarketId },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (!marketItem) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'Publicacion no encontrada.' };
+            }
+
+            if (Number(marketItem.estado) !== 1) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'La publicacion ya no esta activa o tiene un chat en proceso.' };
+            }
+
+            const activeChat = await TradeChats.findOne({
+                attributes: ['id'],
+                where: {
+                    trade_id: numericMarketId,
+                    status: {
+                        [Op.in]: ['ACTIVE', 'COMPLETED']
+                    }
+                },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (activeChat) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'La publicacion tiene un chat activo o completado.' };
+            }
+
+            const seller = marketItem.vendedor;
+            await t.commit();
+
+            const returned = await marketService.returnItem(seller, null, numericMarketId, 3, undefined, true, {
+                actor: user,
+                reason: `Item retornado por cancelacion de publicacion marketplace #${numericMarketId}`,
+            });
+
+            if (!returned.success) {
+                return {
+                    success: false,
+                    code: returned.code || '200',
+                    message: returned.code === '201'
+                        ? 'El vendedor no tiene espacio disponible en su inventario.'
+                        : returned.message || 'No se pudo retornar la publicacion.',
+                };
+            }
+
+            await LogPanelGM.create({
+                userAction: user,
+                action: 'Cancelar publicacion marketplace',
+                user: numericMarketId,
+                amount: 0,
+                type: 21,
+                date: new Date(),
+            });
+
+            return {
+                success: true,
+                code: '000',
+                message: 'Publicacion cancelada y item retornado al vendedor.',
+                publication_id: numericMarketId,
+            };
+        } catch (error) {
+            try {
+                await t.rollback();
+            } catch (_) {}
+
+            console.error('Error en cancelMarketPublication:', error);
+            return { success: false, code: '999', message: 'Error interno al cancelar publicacion.' };
+        }
+     }
+
+     async cancelMarketPublications(user, token, marketIds = [], filters = {}, cancelFiltered = false) {
+        let idsToCancel = [];
+
+        if (cancelFiltered) {
+            const t = await sequelize.transaction();
+
+            try {
+                const accessError = await this.validateMarketplaceAdminAccess(user, token, t);
+
+                if (accessError) {
+                    await t.rollback();
+                    return accessError;
+                }
+
+                const result = await this.buildMarketPublicationsWithoutChatRows({
+                    page: 1,
+                    pageSize: 1,
+                    filters,
+                    transaction: t,
+                    paginate: false,
+                });
+
+                idsToCancel = result.publications.map((item) => item.market_id);
+                await t.commit();
+            } catch (error) {
+                try {
+                    await t.rollback();
+                } catch (_) {}
+
+                console.error('Error al preparar cancelacion de publicaciones:', error);
+                return { success: false, code: '999', message: 'Error interno al preparar publicaciones.' };
+            }
+        } else {
+            idsToCancel = Array.isArray(marketIds)
+                ? marketIds
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isInteger(id) && id > 0)
+                : [];
+        }
+
+        idsToCancel = [...new Set(idsToCancel)];
+
+        if (!idsToCancel.length) {
+            return {
+                success: false,
+                code: '200',
+                message: 'No hay publicaciones para cancelar con los filtros indicados.',
+                publications_success: [],
+                publications_werror: []
+            };
+        }
+
+        const publicationsSuccess = [];
+        const publicationsWithError = [];
+
+        for (const marketId of idsToCancel) {
+            const response = await this.cancelMarketPublication(user, token, marketId);
+
+            if (response?.code === '000') {
+                publicationsSuccess.push(marketId);
+            } else {
+                publicationsWithError.push({
+                    market_id: marketId,
+                    message: response?.message || 'No se pudo cancelar la publicacion.'
+                });
+            }
+        }
+
+        return {
+            success: true,
+            code: '000',
+            message: 'Proceso de cancelacion de publicaciones finalizado.',
+            publications_success: publicationsSuccess,
+            publications_werror: publicationsWithError
+        };
+     }
 
      async cancelChats(user, token, action, chatIds = [], filters = {}, cancelFiltered = false, skipReturnPoints = false) {
         const t = await sequelize.transaction();
@@ -5536,7 +5967,7 @@ class GMPanelService {
 
       const orderedUsers = userIds.map((id) => usersMap.get(id));
       const orderedItems = itemIds.map((id) => itemsMap.get(id));
-      const freeSlotsByUserId = new Map();
+      const loanPlanByUserId = new Map();
       const errorUsers = missingUsers.map((id) => ({
         userid: id,
         user_name: String(id),
@@ -5564,28 +5995,117 @@ class GMPanelService {
         const bagCount = Math.max(Number(targetUser.bag || 1), 1);
         const maxSlotIndex = bagCount * 30 - 1;
         const freeSlots = [];
+        const uniqueItemIds = orderedItems
+          .map((item) => Number(item.id))
+          .filter((itemId) => isUniqueAccountItem(itemId));
 
         for (let slot = 0; slot <= maxSlotIndex; slot++) {
           if (!occupiedSlots.includes(slot)) {
             freeSlots.push(slot);
-
-            if (freeSlots.length === orderedItems.length) {
-              break;
-            }
           }
         }
 
-        if (freeSlots.length < orderedItems.length) {
-          errorUsers.push({
-            userid: Number(targetUser.id),
-            user_name: targetUser.name,
-            reason: `No tiene slots suficientes. Requiere ${orderedItems.length}, disponibles ${freeSlots.length}.`,
+        const [existingUniqueItems, pendingUniqueItems] = uniqueItemIds.length > 0
+          ? await Promise.all([
+              UserItemInfo.findAll({
+                attributes: ['itemid'],
+                where: {
+                  userid: targetUser.id,
+                  itemid: {
+                    [Op.in]: uniqueItemIds,
+                  },
+                },
+                raw: true,
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+              }),
+              PendingPresents.findAll({
+                attributes: ['present_id'],
+                where: {
+                  user_id: targetUser.id,
+                  present_id: {
+                    [Op.in]: uniqueItemIds,
+                  },
+                },
+                raw: true,
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+              }),
+            ])
+          : [[], []];
+
+        const existingUniqueItemIds = new Set([
+          ...existingUniqueItems.map((item) => Number(item.itemid)),
+          ...pendingUniqueItems.map((item) => Number(item.present_id)),
+        ]);
+        const plannedUniqueItemIds = new Set();
+        const loanPlan = [];
+        let nextFreeSlotIndex = 0;
+
+        for (const item of orderedItems) {
+          const itemId = Number(item.id);
+          const itemLabel = item.name || `Item ${itemId}`;
+
+          if (isUniqueAccountItem(itemId)) {
+            let uniqueErrorReason = null;
+
+            if (existingUniqueItemIds.has(itemId) || plannedUniqueItemIds.has(itemId)) {
+              uniqueErrorReason = buildUniqueAccountItemReason(itemLabel);
+            } else {
+              const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                userGameId: targetUser.id,
+                itemId,
+                itemName: itemLabel,
+                transaction: t,
+                actionLabel: 'prestar',
+              });
+
+              if (!uniqueAvailability.allowed) {
+                uniqueErrorReason = uniqueAvailability.reason;
+              }
+            }
+
+            if (uniqueErrorReason) {
+              errorUsers.push({
+                userid: Number(targetUser.id),
+                user_name: targetUser.name,
+                itemid: itemId,
+                item_name: itemLabel,
+                reason: uniqueErrorReason,
+              });
+              continue;
+            }
+          }
+
+          const freeSlot = freeSlots[nextFreeSlotIndex];
+
+          if (freeSlot === undefined) {
+            errorUsers.push({
+              userid: Number(targetUser.id),
+              user_name: targetUser.name,
+              itemid: itemId,
+              item_name: itemLabel,
+              reason: 'No tiene slots suficientes para recibir este item.',
+            });
+            continue;
+          }
+
+          nextFreeSlotIndex += 1;
+
+          if (isUniqueAccountItem(itemId)) {
+            plannedUniqueItemIds.add(itemId);
+          }
+
+          loanPlan.push({
+            item,
+            slot: freeSlot,
           });
-          continue;
         }
 
-        freeSlotsByUserId.set(Number(targetUser.id), freeSlots);
-        usersReadyToLoan.push(targetUser);
+        if (loanPlan.length > 0) {
+          loanPlanByUserId.set(Number(targetUser.id), loanPlan);
+          usersReadyToLoan.push(targetUser);
+        }
       }
 
       const now = new Date();
@@ -5593,10 +6113,10 @@ class GMPanelService {
       const successUsersMap = new Map();
 
       for (const targetUser of usersReadyToLoan) {
-        const freeSlots = freeSlotsByUserId.get(Number(targetUser.id));
+        const loanPlan = loanPlanByUserId.get(Number(targetUser.id)) || [];
 
-        for (let index = 0; index < orderedItems.length; index++) {
-          const item = orderedItems[index];
+        for (const planItem of loanPlan) {
+          const item = planItem.item;
           const uniqueitemcode = await this.buildLoanUniqueItemCode(targetUser.id, item.id, t);
 
           const userItem = await UserItemInfo.create(
@@ -5608,7 +6128,7 @@ class GMPanelService {
               sn_type: 3,
               level: 1,
               limittime: 0,
-              slot: freeSlots[index],
+              slot: planItem.slot,
               exp: 0,
               uniqueitemcode,
             },
@@ -5640,6 +6160,23 @@ class GMPanelService {
               status: 1,
               date: now,
               detail: null,
+            },
+            { transaction: t }
+          );
+
+          await ItemTraceLog.create(
+            {
+              uniqueitemcode,
+              itemid: item.id,
+              origin_id: ITEM_TRACE_ORIGINS.LOAN,
+              action_id: ITEM_TRACE_ACTIONS.LOAN_GRANT,
+              from_user: user,
+              to_user: String(targetUser.id),
+              origin_ref_id: loan.id,
+              temp_useriteminfo_id: null,
+              useriteminfo_id: userItem.id,
+              detail: `Prestado por ${user} a ${targetUser.name}`,
+              date: now,
             },
             { transaction: t }
           );
@@ -5803,6 +6340,25 @@ class GMPanelService {
           status: 0,
           date: now,
           detail: removedRows > 0 ? null : 'No se encontro el item en useriteminfo al retirarlo.',
+        },
+        { transaction: t }
+      );
+
+      await ItemTraceLog.create(
+        {
+          uniqueitemcode: loan.uniqueitemcode,
+          itemid: loan.itemid,
+          origin_id: ITEM_TRACE_ORIGINS.LOAN,
+          action_id: ITEM_TRACE_ACTIONS.LOAN_RETURN,
+          from_user: String(loan.userid),
+          to_user: user,
+          origin_ref_id: loan.id,
+          temp_useriteminfo_id: null,
+          useriteminfo_id: loan.useriteminfo_id,
+          detail: removedRows > 0
+            ? `Prestamo retirado por ${user}`
+            : `Prestamo retirado por ${user}; no se encontro el item en useriteminfo.`,
+          date: now,
         },
         { transaction: t }
       );

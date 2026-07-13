@@ -27,6 +27,11 @@ import ItemImage from '../models/itemImagesModel.js';
 import { calculatePowerUse, getRemainingPowerTime, setClassName } from '../utils/prizesUtils.js';
 import UserItemInfo from '../models/userItemInfoModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
+import {
+    buildUniqueAccountItemReason,
+    checkUniqueAccountItemAvailability,
+    isUniqueAccountItem,
+} from '../utils/uniqueAccountItems.js';
 
 class StoreService {
 
@@ -202,6 +207,22 @@ class StoreService {
             
                     itemName = itemReal ? itemReal.name : item.itemid;
 
+                    const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                        userGameId: userPoints.id,
+                        itemId: item.itemid,
+                        itemName,
+                        transaction: t,
+                    });
+
+                    if (!uniqueAvailability.allowed || (isUniqueAccountItem(item.itemid) && Number(amount) > 1)) {
+                        await t.rollback();
+                        return {
+                            success: false,
+                            code: '200',
+                            message: uniqueAvailability.reason || buildUniqueAccountItemReason(itemName),
+                        };
+                    }
+
                     // console.log(userPoints.id);
                     // console.log('aqui ...');
                     const presentsToInsert = [];
@@ -275,6 +296,23 @@ class StoreService {
                     });
 
                     itemName = itemReal2 ? itemReal2.name : item.itemid;
+
+                    const uniqueDirectAvailability = await checkUniqueAccountItemAvailability({
+                        userGameId: userGame.id,
+                        itemId: item.itemid,
+                        itemName,
+                        transaction: t,
+                    });
+
+                    if (!uniqueDirectAvailability.allowed || (isUniqueAccountItem(item.itemid) && Number(amount) > 1)) {
+                        await t.rollback();
+                        return {
+                            success: false,
+                            code: '200',
+                            message: uniqueDirectAvailability.reason || buildUniqueAccountItemReason(itemName),
+                        };
+                    }
+
                     typeReward = 0;
 
                     const limitTime = await calculatePowerUse(0,5);

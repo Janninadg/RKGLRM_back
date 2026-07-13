@@ -123,5 +123,23 @@
       { "key": "Detalle", "field": "detail", "filter": "text" },
       { "key": "Fecha", "field": "date", "filter": "date" }
     ]
+  },
+  {
+    "key": "item-trace",
+    "label": "Log Trazabilidad Items",
+    "model": "ItemTraceLog",
+    "defaultSort": { "field": "date", "direction": "DESC" },
+    "columns": [
+      { "key": "ID", "field": "id", "filter": "number" },
+      { "key": "Codigo unico", "field": "uniqueitemcode", "filter": "text" },
+      { "key": "Origen", "field": "origin_id", "filter": "type", "source": "itemTraceOrigins" },
+      { "key": "Accion", "field": "action_id", "filter": "type", "source": "itemTraceActions" },
+      { "key": "Item ID", "field": "itemid", "filter": "number" },
+      { "key": "Desde", "field": "from_user", "filter": "text" },
+      { "key": "Hacia", "field": "to_user", "filter": "text" },
+      { "key": "Referencia origen", "field": "origin_ref_id", "filter": "number" },
+      { "key": "Detalle", "field": "detail", "filter": "text" },
+      { "key": "Fecha", "field": "date", "filter": "date" }
+    ]
   }
 ]

@@ -801,6 +801,94 @@ class GMPanelController {
       }
     }
 
+      async getMarketPublicationsWithoutChat(req, res, next) {
+      try {
+        const {
+          user,
+          token,
+          page,
+          pageSize,
+          filters,
+        } = req.body;
+
+        console.log("[GM Panel]".green, ' Obtener publicaciones sin chat'.white, (' - Admin: ' + user).white);
+
+        const response = await GMPanelService.getMarketPublicationsWithoutChat(
+          user,
+          token,
+          page,
+          pageSize,
+          filters
+        );
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+
+      } catch (error) {
+        console.error('Error al obtener publicaciones sin chat:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
+
+      async cancelMarketPublication(req, res, next) {
+      try {
+        const { user, token, market_id } = req.body;
+
+        console.log("[GM Panel]".green, ' Cancelar publicacion marketplace'.white, (' - Admin: ' + user).white);
+
+        const response = await GMPanelService.cancelMarketPublication(
+          user,
+          token,
+          market_id
+        );
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+
+      } catch (error) {
+        console.error('Error al cancelar publicacion marketplace:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
+
+      async cancelMarketPublications(req, res, next) {
+      try {
+        const {
+          user,
+          token,
+          market_ids,
+          filters,
+          cancel_filtered,
+        } = req.body;
+
+        console.log("[GM Panel]".green, ' Cancelar publicaciones marketplace en lote'.white, (' - Admin: ' + user).white);
+
+        const response = await GMPanelService.cancelMarketPublications(
+          user,
+          token,
+          market_ids,
+          filters,
+          cancel_filtered === true
+        );
+
+        if (response.success || response.code) {
+          return res.status(200).json(response);
+        } else {
+          return res.status(400).json(response);
+        }
+
+      } catch (error) {
+        console.error('Error al cancelar publicaciones marketplace:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+      }
+    }
+
       async getLogs(req, res, next) {
         try {
           const {

@@ -46,6 +46,7 @@ import publicDataCache, {
 } from '../modules/public/publicData.cache.js';
 import prizeGameCache from '../modules/events/prizeGame.cache.js';
 import eventTestUserCache from '../modules/events/eventTestUser.cache.js';
+import { checkUniqueAccountItemAvailability } from '../utils/uniqueAccountItems.js';
 
 const getDatabaseErrorCode = (error) => (
   error?.parent?.code ||
@@ -2180,6 +2181,18 @@ class EventService {
               await t.rollback();
               return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
             }
+
+            const uniqueAvailability = await checkUniqueAccountItemAvailability({
+              userGameId: userGameInfo.id,
+              itemId: cuponPrize.id_prize,
+              itemName: cuponPrize.name_prize || `Item ${cuponPrize.id_prize}`,
+              transaction: t,
+            });
+
+            if (!uniqueAvailability.allowed) {
+              await t.rollback();
+              return { success: false, code: '004', message: 'El cupón ingresado no existe' };
+            }
             
             await PendingPresents.create(
               {
@@ -2264,6 +2277,18 @@ class EventService {
             if (!userGame) {
               await t.rollback();
               return { success: false, code: '202', message: 'ID de Usuario no encontrado' };
+            }
+
+            const uniqueTemporalAvailability = await checkUniqueAccountItemAvailability({
+              userGameId: userGame.id,
+              itemId: cuponPrize.id_prize,
+              itemName: cuponPrize.name_prize || `Item ${cuponPrize.id_prize}`,
+              transaction: t,
+            });
+
+            if (!uniqueTemporalAvailability.allowed) {
+              await t.rollback();
+              return { success: false, code: '004', message: 'El cupón ingresado no existe' };
             }
             
             const distinctSlots = await UserItemInfo.findAll({

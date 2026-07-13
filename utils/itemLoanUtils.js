@@ -7,7 +7,41 @@ const padNumber = (value, size) => {
 
 const padDate = (value, size = 2) => String(value).padStart(size, '0');
 
-export const generateUniqueItemCode = ({ userId = 0, itemId = 0, date = new Date() } = {}) => {
+const normalizePrefix = (value) => {
+  const prefix = String(value || 'LN')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 2);
+
+  return prefix.padEnd(2, 'X');
+};
+
+const digitizeText = (value, size = 6) => {
+  const cleanValue = String(value || '').trim().toLowerCase();
+
+  if (!cleanValue) {
+    return null;
+  }
+
+  const numericChars = cleanValue.replace(/\D/g, '');
+
+  if (numericChars.length >= size) {
+    return numericChars.slice(-size);
+  }
+
+  const hash = crypto.createHash('sha1').update(cleanValue).digest('hex');
+  const numericHash = parseInt(hash.slice(0, 12), 16) % (10 ** size);
+
+  return padNumber(numericHash, size);
+};
+
+export const generateUniqueItemCode = ({
+  userId = 0,
+  userName = '',
+  itemId = 0,
+  date = new Date(),
+  prefix = 'LN',
+} = {}) => {
   const stamp = [
     date.getFullYear(),
     padDate(date.getMonth() + 1),
@@ -19,6 +53,7 @@ export const generateUniqueItemCode = ({ userId = 0, itemId = 0, date = new Date
   ].join('');
 
   const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const ownerDigits = digitizeText(userName) || padNumber(userId, 6);
 
-  return `LN${stamp}${padNumber(userId, 6)}${padNumber(itemId, 6)}${randomPart}`;
+  return `${normalizePrefix(prefix)}${stamp}${ownerDigits}${padNumber(itemId, 6)}${randomPart}`;
 };

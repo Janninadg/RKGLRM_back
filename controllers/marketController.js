@@ -140,6 +140,50 @@ class MarketController {
     }
   }
 
+  async getMarketplaceContactStatus(req, res, next) {
+    try {
+      const { user, token, ip } = req.body;
+
+      console.log("---------------------------------------------------------------".cyan);
+      console.log("MARKETPLACE (WHATSAPP STATUS) - FROM IP: ".cyan, ip?.green);
+      console.log("Usuario:".cyan, user.magenta);
+
+      const response = await MarketService.getMarketplaceContactStatus(user, token);
+
+      console.log("---------------------------------------------------------------".cyan);
+
+      if (response.success || response.code) {
+        return res.status(200).json(response);
+      }
+      return res.status(400).json(response);
+    } catch (error) {
+      console.error("Error en getMarketplaceContactStatus:", error);
+      return res.status(500).json({ error: "Error interno del servidor" });
+    }
+  }
+
+  async updateMarketplaceWhatsapp(req, res, next) {
+    try {
+      const { user, token, phone, ip } = req.body;
+
+      console.log("---------------------------------------------------------------".cyan);
+      console.log("MARKETPLACE (UPDATE WHATSAPP) - FROM IP: ".cyan, ip?.green);
+      console.log("Usuario:".cyan, user.magenta);
+
+      const response = await MarketService.updateMarketplaceWhatsapp(user, token, phone);
+
+      console.log("---------------------------------------------------------------".cyan);
+
+      if (response.success || response.code) {
+        return res.status(200).json(response);
+      }
+      return res.status(400).json(response);
+    } catch (error) {
+      console.error("Error en updateMarketplaceWhatsapp:", error);
+      return res.status(500).json({ error: "Error interno del servidor" });
+    }
+  }
+
    async sendMessage(req, res) {
     try {
       const { chat_id, sender, content_type, message, auth,image } = req.body;

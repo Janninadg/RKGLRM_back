@@ -22,6 +22,9 @@ import StreamPlatform from '../models/streamsPlatformsModel.js';
 import puppeteer from 'puppeteer'; // Importa Puppeteer
 import axios from 'axios';
 import StagesReset from '../models/stagesResetModel.js';
+import CharacterInfo from '../models/characterInfo.js';
+import ClanInfo from '../models/clanInfoModel.js';
+import Evento from '../models/eventosModel.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
   PUBLIC_CACHE_TTL,
@@ -30,6 +33,129 @@ import publicDataCache, {
 const IMG_OFF = "https://res.cloudinary.com/dgh0ctded/image/upload/f_auto,q_auto/afbhaox5bxrydq17t8ik";
 
 class WebService {
+
+    async getHomeSummary() {
+      try {
+        return await publicDataCache.getOrLoad(PUBLIC_CACHE_KEYS.HOME_SUMMARY, PUBLIC_CACHE_TTL.SHORT, async () => {
+          const now = new Date();
+          const onlineSince = new Date(Date.now() - (2 * 24 * 60 * 60 * 1000));
+
+          const rankingPromise = sequelize.query(
+            `
+            SELECT
+              ci.name AS charName,
+              ci.level,
+              ci.class AS charClass,
+              ar.win,
+              ar.lose,
+              COALESCE(clan.name, '-') AS clanName,
+              (ar.win - ar.lose) AS winLossDifference,
+              ar.position,
+              wu.photo AS photoUrl
+            FROM autoranking ar
+            INNER JOIN usergameinfo ugi ON ar.userid = ugi.id
+            INNER JOIN characterinfo ci ON ci.id = ar.id
+            LEFT JOIN claninfo clan ON ugi.clanid = clan.id
+            LEFT JOIN webusers wu ON wu.user = ugi.name
+            WHERE ar.enable = 1
+            ORDER BY ar.position ASC
+            LIMIT 5
+            `,
+            { type: sequelize.QueryTypes.SELECT }
+          ).catch(async () => {
+            const characters = await CharacterInfo.findAll({
+              attributes: ['name', 'level', 'Class', 'exp', 'rankgrade'],
+              where: {
+                auth: {
+                  [Op.ne]: 10,
+                },
+              },
+              order: [
+                ['level', 'DESC'],
+                ['exp', 'DESC'],
+              ],
+              limit: 5,
+              raw: true,
+            });
+
+            return characters.map((character, index) => ({
+              charName: character.name,
+              level: character.level,
+              charClass: character.Class,
+              win: 0,
+              lose: 0,
+              clanName: '-',
+              winLossDifference: character.exp || 0,
+              position: index + 1,
+              photoUrl: null,
+            }));
+          });
+
+          const [
+            registeredUsers,
+            onlinePlayers,
+            activeClans,
+            activeEvents,
+            rankingRows,
+          ] = await Promise.all([
+            UserGameInfo.count(),
+            UserGameInfo.count({
+              where: {
+                lastconnect: {
+                  [Op.gte]: onlineSince,
+                },
+              },
+            }),
+            ClanInfo.count({
+              where: {
+                members: {
+                  [Op.gt]: 0,
+                },
+              },
+            }),
+            Evento.count({
+              where: {
+                estado: 1,
+                show: 1,
+                inicio: {
+                  [Op.lte]: now,
+                },
+                [Op.or]: [
+                  { fin: { [Op.gte]: now } },
+                  { fin: null },
+                ],
+              },
+            }),
+            rankingPromise,
+          ]);
+
+          return {
+            success: true,
+            code: '000',
+            stats: {
+              onlinePlayers,
+              registeredUsers,
+              activeClans,
+              activeEvents,
+            },
+            rankingTop: rankingRows.map((row, index) => ({
+              position: Number(row.position || index + 1),
+              charName: row.charName || '-',
+              level: Number(row.level || 0),
+              charClass: row.charClass,
+              clanName: row.clanName || '-',
+              points: Math.max(0, Number(row.winLossDifference || 0)),
+              wins: Number(row.win || 0),
+              loses: Number(row.lose || 0),
+              photoUrl: row.photoUrl || null,
+            })),
+          };
+        });
+      } catch (error) {
+        console.error('Error al obtener el resumen del home:', error);
+        throw new Error('Error interno del servidor');
+      }
+    }
   
     async getLinks() {
         try {

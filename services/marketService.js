@@ -13,9 +13,10 @@ import SellsRecord from '../models/Trades/sellsRecordModel.js';
 import ItemImage from '../models/itemImagesModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import User from '../models/userModel.js';
+import UserContactUpdate from '../models/userContactUpdateModel.js';
 //import { enviarMensajeACliente, obtenerClientesActivos } from '../socket/socketServer.mjs';
 import CharacterInfo from '../models/characterInfo.js';
-import { getRemainingPowerTime, setClassName, setTypeName } from '../utils/prizesUtils.js';
+import { calculatePowerUse, getRemainingPowerTime, setClassName, setTypeName } from '../utils/prizesUtils.js';
 import PaymentMethods from '../models/Trades/paymentMethodsModel.js';
 import publicDataCache, {
   PUBLIC_CACHE_KEYS,
@@ -33,8 +34,233 @@ import MarketBanned from '../models/MarketBannedModel.js';
 import UsersPanel from '../models/usersPanelModel.js';
 import LogPanelGM from '../models/logPanelGMModel.js';
 import ItemLoan from '../models/itemLoanModel.js';
+import { generateUniqueItemCode } from '../utils/itemLoanUtils.js';
+import ItemTraceLog from '../models/itemTraceLogModel.js';
+import { ITEM_TRACE_ACTIONS, ITEM_TRACE_ORIGINS } from '../utils/itemTraceConstants.js';
+import {
+    UNIQUE_ACCOUNT_ITEM_IDS,
+    checkUniqueAccountItemAvailability,
+} from '../utils/uniqueAccountItems.js';
 
 class MarketService {
+    normalizeWhatsappPhone(phone = '') {
+        return String(phone || '').replace(/[^\d]/g, '');
+    }
+
+    validateWhatsappPhone(phone = '') {
+        const normalized = this.normalizeWhatsappPhone(phone);
+        return /^\d{8,15}$/.test(normalized) ? normalized : null;
+    }
+
+    buildWhatsappUrl(phone = '') {
+        const normalized = this.validateWhatsappPhone(phone);
+        return normalized ? `https://wa.me/${normalized}` : null;
+    }
+
+    async getMarketplaceContactStatus(user, token) {
+        const t = await sequelize.transaction();
+
+        try {
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: { token, id: user },
+                transaction: t,
+            });
+
+            if (!sessionToken) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '999',
+                    message: 'Sesion invalida o expirada.',
+                };
+            }
+
+            const [contactFlag, userInfo] = await Promise.all([
+                UserContactUpdate.findOne({
+                    attributes: ['updated_number'],
+                    where: { user },
+                    transaction: t,
+                }),
+                User.findOne({
+                    attributes: ['phone'],
+                    where: { id: user },
+                    transaction: t,
+                }),
+            ]);
+
+            await t.commit();
+
+            const hasUpdatedNumber = Number(contactFlag?.updated_number || 0) === 1;
+            const hasValidPhone = Boolean(this.validateWhatsappPhone(userInfo?.phone));
+
+            return {
+                success: true,
+                code: '000',
+                updated_number: hasUpdatedNumber && hasValidPhone ? 1 : 0,
+                phone: userInfo?.phone || '',
+            };
+        } catch (error) {
+            await t.rollback();
+            console.error('Error al obtener estado de WhatsApp marketplace:', error);
+            return {
+                success: false,
+                code: '999',
+                message: 'Error interno del servidor.',
+            };
+        }
+    }
+
+    async updateMarketplaceWhatsapp(user, token, phone) {
+        const t = await sequelize.transaction();
+
+        try {
+            const sessionToken = await TokenSession.findOne({
+                attributes: ['token'],
+                where: { token, id: user },
+                transaction: t,
+            });
+
+            if (!sessionToken) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '999',
+                    message: 'Sesion invalida o expirada.',
+                };
+            }
+
+            const normalizedPhone = this.validateWhatsappPhone(phone);
+
+            if (!normalizedPhone) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Ingresa un numero de WhatsApp valido.',
+                };
+            }
+
+            const userInfo = await User.findOne({
+                where: { id: user },
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+
+            if (!userInfo) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'Usuario no encontrado.',
+                };
+            }
+
+            const phoneWithCountryPrefix = `+${normalizedPhone}`;
+
+            await userInfo.update({ phone: phoneWithCountryPrefix }, { transaction: t });
+
+            const [contactFlag, created] = await UserContactUpdate.findOrCreate({
+                where: { user },
+                defaults: {
+                    user,
+                    updated_number: 1,
+                },
+                transaction: t,
+            });
+
+            if (!created && Number(contactFlag.updated_number) !== 1) {
+                await contactFlag.update({ updated_number: 1 }, { transaction: t });
+            }
+
+            await t.commit();
+
+            return {
+                success: true,
+                code: '000',
+                phone: phoneWithCountryPrefix,
+                message: 'Numero de WhatsApp actualizado correctamente.',
+            };
+        } catch (error) {
+            await t.rollback();
+            console.error('Error al actualizar WhatsApp marketplace:', error);
+            return {
+                success: false,
+                code: '999',
+                message: 'Error interno del servidor.',
+            };
+        }
+    }
+
+    async buildMarketUniqueItemCode(userId, itemId, transaction, userName = '') {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const uniqueitemcode = generateUniqueItemCode({
+                prefix: 'MK',
+                userId,
+                userName,
+                itemId,
+            });
+
+            const [userItem, tempItem, loanItem] = await Promise.all([
+                UserItemInfo.findOne({
+                    attributes: ['id'],
+                    where: { uniqueitemcode },
+                    transaction,
+                }),
+                TempUserItemInfo.findOne({
+                    attributes: ['id'],
+                    where: { uniqueitemcode },
+                    transaction,
+                }),
+                ItemLoan.findOne({
+                    attributes: ['id'],
+                    where: { uniqueitemcode },
+                    transaction,
+                }),
+            ]);
+
+            if (!userItem && !tempItem && !loanItem) {
+                return uniqueitemcode;
+            }
+        }
+
+        throw new Error('No se pudo generar un codigo unico para marketplace.');
+    }
+
+    async getFrozenMarketTemporalData(limitTime) {
+        const numericLimitTime = Number(limitTime || 0);
+
+        if (numericLimitTime <= 0) {
+            return { istemporal: 0, dias: 0, expired: false };
+        }
+
+        const remaining = await getRemainingPowerTime(numericLimitTime);
+        const totalMinutes =
+            (Number(remaining.days) || 0) * 1440 +
+            (Number(remaining.hours) || 0) * 60 +
+            (Number(remaining.minutes) || 0);
+
+        if (totalMinutes <= 0) {
+            return { istemporal: 1, dias: 0, expired: true };
+        }
+
+        return {
+            istemporal: 1,
+            dias: Math.max(1, Math.ceil(totalMinutes / 1440)),
+            expired: false,
+        };
+    }
+
+    async resolveMarketItemLimitTime(tempItem) {
+        const isTemporal = Number(tempItem?.istemporal || 0) === 1;
+        const days = Number(tempItem?.dias || 0);
+
+        if (isTemporal && days > 0) {
+            return await calculatePowerUse(0, days);
+        }
+
+        return Number(tempItem?.limittime || 0);
+    }
 
     async buyItems(apodo,token,idmarket,chatid,retries = 1, transaction) {
         const ownTransaction = !transaction;
@@ -150,6 +376,7 @@ class MarketService {
                 },
                 raw: true,
                 transaction: t,
+                lock: t.LOCK.UPDATE,
             });
 
             // Mapear los resultados a un array de números
@@ -261,7 +488,23 @@ class MarketService {
             const itemUserSeller = await TempUserItemInfo.findOne({
                 where: { id: item.itemid },
                 transaction: t,
+                lock: t.LOCK.UPDATE,
             });
+            const marketLimitTime = await this.resolveMarketItemLimitTime(itemUserSeller);
+            const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                userGameId: userGame.id,
+                itemId: itemUserSeller.itemid,
+                itemName: `Item ${itemUserSeller.itemid}`,
+                transaction: t,
+            });
+
+            if (!uniqueAvailability.allowed) {
+                return await rollbackOwn({
+                    success: false,
+                    code: '202',
+                    message: uniqueAvailability.reason,
+                });
+            }
 
             // Añadir el item a useriteminfo :)
             const newItem = await UserItemInfo.create({
@@ -271,9 +514,10 @@ class MarketService {
                 item_sn: itemUserSeller.item_sn,
                 sn_type: itemUserSeller.sn_type,
                 level: itemUserSeller.level,
-                limittime: itemUserSeller.limittime,
+                limittime: marketLimitTime,
                 slot: slotFree,               // Slot que te proporcionarán
                 exp: itemUserSeller.exp,
+                uniqueitemcode: itemUserSeller.uniqueitemcode || null,
             }, {
                 transaction: t, // Asociar la transacción con la inserción
             });
@@ -285,6 +529,22 @@ class MarketService {
                 tipo_recompensa: 0,
                 fecha: new Date(), 
               }, { transaction: t });
+
+            if (itemUserSeller.uniqueitemcode) {
+                await ItemTraceLog.create({
+                    uniqueitemcode: itemUserSeller.uniqueitemcode,
+                    itemid: itemUserSeller.itemid,
+                    origin_id: ITEM_TRACE_ORIGINS.MARKETPLACE,
+                    action_id: ITEM_TRACE_ACTIONS.MARKETPLACE_PURCHASE,
+                    from_user: sellerInfo.id,
+                    to_user: user,
+                    origin_ref_id: idmarket,
+                    temp_useriteminfo_id: itemUserSeller.id,
+                    useriteminfo_id: newItem.id,
+                    detail: `Item comprado por ${apodo}`,
+                    date: new Date(),
+                }, { transaction: t });
+            }
     
             // Registrar la compra en sellsRecord
             await SellsRecord.create({
@@ -321,9 +581,13 @@ class MarketService {
         }
     }
 
-    async returnItem(apodo,token,idmarket,retries = 1,transaction,byCancel = false) {
+    async returnItem(apodo,token,idmarket,retries = 1,transaction,byCancel = false, options = {}) {
         const ownTransaction = !transaction;
         const t = transaction || await sequelize.transaction();
+        const {
+            actor = null,
+            reason = null,
+        } = options || {};
         try {
 
             // return { success: false, code: '999', message: 'Not available' };
@@ -413,11 +677,12 @@ class MarketService {
             // Verificar si tiene slots disponibles... 3 boxes 30 items
              // Obtener el ID de usuario desde UserGameInfo por su nombre
              const userGame = await UserGameInfo.findOne({
-                attributes: ['id'],
+                attributes: ['id', 'bag'],
                 where: {
                 name: user, // Cambia esto para usar el nombre de usuario correcto
                 },
                 transaction: t,
+                lock: t.LOCK.UPDATE,
             });
     
             if (!userGame) {
@@ -436,15 +701,18 @@ class MarketService {
                 },
                 raw: true,
                 transaction: t,
+                lock: t.LOCK.UPDATE,
             });
 
             // Mapear los resultados a un array de números
-            const distinctSlotsArray = distinctSlots.map((item) => item.slot)
+            const distinctSlotsArray = distinctSlots.map((item) => Number(item.slot))
             var slotFree = null;
+            const bagCount = Math.max(Number(userGame.bag || 1), 1);
+            const maxSlotIndex = bagCount * 30 - 1;
 
             //console.log(distinctSlotsArray);
 
-            for (let i = 0; i <= 89; i++) {
+            for (let i = 0; i <= maxSlotIndex; i++) {
                 if (!distinctSlotsArray.includes(i)) {
                     slotFree = i;
                     break;
@@ -464,6 +732,19 @@ class MarketService {
                 transaction: t,
             });
 
+            if (!itemUserSeller) {
+                await t.rollback();
+                return { success: false, code: '200', message: 'No se encontro la informacion temporal del item.' };
+            }
+
+            const marketLimitTime = await this.resolveMarketItemLimitTime(itemUserSeller);
+            const generatedOnPublish = Number(itemUserSeller.code_generated_on_publish || 0) === 1;
+            const codeFromUserItemInfo = Number(itemUserSeller.code_from_useriteminfo || 0) === 1;
+            const returnedUniqueItemCode = generatedOnPublish && !codeFromUserItemInfo
+                ? null
+                : itemUserSeller.uniqueitemcode || null;
+            const shouldTraceMarketplaceReturn = Boolean(returnedUniqueItemCode) && (codeFromUserItemInfo || !generatedOnPublish);
+
             // Obtener nombre del item desde ItemInfo
             const itemInfo = await ItemInfo.findOne({
                 where: { id: itemUserSeller.itemid },
@@ -471,6 +752,25 @@ class MarketService {
             });
     
             let itemName = itemInfo ? itemInfo.name : item.itemid;
+
+            const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                userGameId: userGame.id,
+                itemId: itemUserSeller.itemid,
+                itemName,
+                transaction: t,
+                excludeMarketId: idmarket,
+                includeMarketplace: false,
+                actionLabel: 'devolver',
+            });
+
+            if (!uniqueAvailability.allowed) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '202',
+                    message: uniqueAvailability.reason,
+                };
+            }
     
             // Añadir el item a useriteminfo :)
             const newItem = await UserItemInfo.create({
@@ -480,9 +780,10 @@ class MarketService {
                 item_sn: itemUserSeller.item_sn,
                 sn_type: itemUserSeller.sn_type,
                 level: itemUserSeller.level,
-                limittime: itemUserSeller.limittime,
+                limittime: marketLimitTime,
                 slot: slotFree,               // Slot que te proporcionarán
                 exp: itemUserSeller.exp,
+                uniqueitemcode: returnedUniqueItemCode,
             }, {
                 transaction: t, // Asociar la transacción con la inserción
             });
@@ -494,6 +795,22 @@ class MarketService {
                 tipo_recompensa: 0,
                 fecha: new Date(), 
               }, { transaction:t });
+
+            if (shouldTraceMarketplaceReturn) {
+                await ItemTraceLog.create({
+                    uniqueitemcode: returnedUniqueItemCode,
+                    itemid: itemUserSeller.itemid,
+                    origin_id: ITEM_TRACE_ORIGINS.MARKETPLACE,
+                    action_id: ITEM_TRACE_ACTIONS.MARKETPLACE_RETURN,
+                    from_user: actor || 'marketplace',
+                    to_user: user,
+                    origin_ref_id: idmarket,
+                    temp_useriteminfo_id: itemUserSeller.id,
+                    useriteminfo_id: newItem.id,
+                    detail: reason || (byCancel ? 'Item retornado por cancelacion administrativa.' : 'Item retornado al vendedor.'),
+                    date: new Date(),
+                }, { transaction: t });
+            }
 
             // Eliminar item de temp useriteminfo:
     
@@ -523,7 +840,7 @@ class MarketService {
             if (ownTransaction && error.original && error.original.code === 'ER_LOCK_WAIT_TIMEOUT' && retries > 0) {
                 // Reintentar la transacción
                 console.log('Reintentando transacción...');
-                return await this.returnItem(apodo, token, idmarket, retries - 1, undefined, byCancel);
+                return await this.returnItem(apodo, token, idmarket, retries - 1, undefined, byCancel, options);
             }
     
             return { success: false, code: '200', message: 'Error interno al retornar el item.' };
@@ -893,7 +1210,10 @@ class MarketService {
             const effectiveUser = chat.seller;
 
             if (action === 'CANCEL_CHAT_RETURN') {
-                const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true);
+                const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true, {
+                    actor: panelUser,
+                    reason: `Item retornado por cancelacion de chat #${chat.id}`,
+                });
 
                 if (!returned.success) {
                     try {
@@ -1364,7 +1684,10 @@ class MarketService {
                   
                         // activar return function.... :)
 
-                        const res = await this.returnItem(chat.seller,null,chat.trade_id,3,t,true);
+                        const res = await this.returnItem(chat.seller,null,chat.trade_id,3,t,true, {
+                            actor: isPanel ? panelUser : effectiveUser,
+                            reason: `Item retornado por cancelacion de chat #${chat.id}`,
+                        });
 
                         if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
                             await TradeActions.create({
@@ -1737,11 +2060,15 @@ class MarketService {
       lock: t.LOCK.UPDATE,
     });
 
-    const uniqueAccountItems = [8004, 8009];
+    if (!tempitem) {
+      await t.rollback();
+      return { success: false, code: '200', message: 'Informacion temporal del item no encontrada.' };
+    }
+
     const marketItemId = Number(tempitem.itemid);
 
     // Solo validar items limitados a uno por cuenta.
-    if (uniqueAccountItems.includes(marketItemId)) {
+    if (UNIQUE_ACCOUNT_ITEM_IDS.includes(marketItemId)) {
 
         // 1️⃣ Obtener id real del usuario desde usergameinfo
         const userInfo = await UserGameInfo.findOne({
@@ -1778,7 +2105,7 @@ class MarketService {
             return {
             success: false,
             code: '200',
-            message: 'Ya tienes este premio en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
+            message: 'Ya tienes este item en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
             };
         }
     }
@@ -1800,6 +2127,36 @@ class MarketService {
             success: false,
             code: '200',
             message: 'ID de Usuario no encontrado',
+        };
+    }
+
+    const marketItemInfo = await ItemInfo.findOne({
+        attributes: ['name'],
+        where: {
+            id: marketItemId,
+        },
+        transaction: t,
+    });
+    const marketItemName = marketItemInfo?.name || `Item ${marketItemId}`;
+
+    const marketUniqueAvailability = await checkUniqueAccountItemAvailability({
+        userGameId: userGame.id,
+        itemId: marketItemId,
+        itemName: marketItemName,
+        transaction: t,
+        actionLabel: 'iniciar un chat para comprar',
+    });
+
+    if (!marketUniqueAvailability.allowed) {
+        await t.rollback();
+        const message = marketUniqueAvailability.source === 'marketplace'
+            ? `No puedes iniciar un chat para comprar ${marketItemName} porque ya tienes uno retenido en un chat activo o publicado en marketplace.`
+            : marketUniqueAvailability.reason;
+
+        return {
+            success: false,
+            code: '200',
+            message,
         };
     }
 
@@ -2376,6 +2733,14 @@ async getChat(user, token, chatId) {
       }
 
       // 3️⃣ Obtener datos del método de pago y trade
+      const isBuyerUser = String(userinfo.apodo) === String(chat.buyer);
+      const sellerContact = isBuyerUser ? await User.findOne({
+        attributes: ['phone'],
+        where: { apodo: chat.seller },
+        transaction: t,
+      }) : null;
+      const sellerWhatsappUrl = isBuyerUser ? this.buildWhatsappUrl(sellerContact?.phone) : null;
+
       const item = await Marketplace.findOne({
         where: { id: chat.trade_id },
         transaction: t,
@@ -2461,6 +2826,8 @@ async getChat(user, token, chatId) {
           trade_id: chat.trade_id,
           buyer: chat.buyer,
           seller: chat.seller,
+          seller_phone: sellerWhatsappUrl ? sellerContact?.phone : null,
+          seller_whatsapp_url: sellerWhatsappUrl,
           qlfy: IsQualified ? 1 : 0,
           method: method ? {
             id: method.id,
@@ -2523,6 +2890,33 @@ async getChat(user, token, chatId) {
             if(!sessionToken){
                 await t.rollback(); // Revertir la transacción en caso de error
                 return { success: false, code: '999', message: '¡Esta sesión es antigua! No puedes tener más de una sesión abierta para tradear.' };
+            }
+
+            const [marketContactFlag, marketContactUser] = await Promise.all([
+                UserContactUpdate.findOne({
+                    attributes: ['updated_number'],
+                    where: { user },
+                    transaction: t,
+                }),
+                User.findOne({
+                    attributes: ['phone'],
+                    where: { id: user },
+                    transaction: t,
+                }),
+            ]);
+
+            const hasMarketplacePhoneUpdated = Number(marketContactFlag?.updated_number || 0) === 1;
+            const hasValidMarketplacePhone = Boolean(this.validateWhatsappPhone(marketContactUser?.phone));
+
+            if (!hasMarketplacePhoneUpdated || !hasValidMarketplacePhone) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '409',
+                    requires_phone_update: true,
+                    phone: marketContactUser?.phone || '',
+                    message: 'Debes actualizar tu numero de WhatsApp antes de publicar items en marketplace.',
+                };
             }
 
             // const res = await this.socketSend(user);
@@ -2727,6 +3121,25 @@ async getChat(user, token, chatId) {
             }
 
             const nickname = userInfo.apodo;
+            const marketTemporalData = await this.getFrozenMarketTemporalData(userItem.limittime);
+
+            if (marketTemporalData.expired) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '200',
+                    message: 'No puedes vender un item temporal vencido en el marketplace.',
+                };
+            }
+
+            const marketUniqueCode = itemUniqueCode || await this.buildMarketUniqueItemCode(
+                userItem.userid,
+                userItem.itemid,
+                t,
+                user
+            );
+            const codeGeneratedOnPublish = itemUniqueCode ? 0 : 1;
+            const codeFromUserItemInfo = itemUniqueCode ? 1 : 0;
          
 
             // 1. Insertar en TempUserItemInfo con el id del marketplace
@@ -2740,6 +3153,11 @@ async getChat(user, token, chatId) {
                 limittime: userItem.limittime || 0,
                 slot: userItem.slot || 0,
                 exp: userItem.exp,
+                uniqueitemcode: marketUniqueCode,
+                code_generated_on_publish: codeGeneratedOnPublish,
+                code_from_useriteminfo: codeFromUserItemInfo,
+                istemporal: marketTemporalData.istemporal,
+                dias: marketTemporalData.dias,
                 // marketid: 0, // IMPORTANTE: asegúrate de que tu tabla temp tenga este campo
             }, { transaction: t });
 
@@ -3044,7 +3462,7 @@ async getChat(user, token, chatId) {
 
             // Obtener la info de item id en temp_useriteminfo y renombrar la columna itemid a item
             const itemGeneralInfo = await TempUserItemInfo.findAll({
-                attributes: ['id','exp', 'item_sn','level','limittime','sn_type','itemid'],
+                attributes: ['id','exp', 'item_sn','level','limittime','sn_type','itemid','uniqueitemcode','istemporal','dias'],
                 where: {
                     id: itemIds
                 },
@@ -3168,8 +3586,10 @@ async getChat(user, token, chatId) {
                     };
 
                 const limitTime = Number(item?.uii?.limittime ?? 0);
-                const isTemporal = limitTime > 0;
-                const remainingPowerTime = isTemporal
+                const frozenTemporal = Number(item?.uii?.istemporal || 0) === 1;
+                const frozenDays = Math.max(0, Number(item?.uii?.dias) || 0);
+                const isTemporal = frozenTemporal || limitTime > 0;
+                const remainingPowerTime = !frozenTemporal && isTemporal
                     ? await getRemainingPowerTime(limitTime)
                     : { days: 0 };
 
@@ -3184,7 +3604,7 @@ async getChat(user, token, chatId) {
                     payment: paymentInfo, // ✅ Añadido aquí
                     seller_rating: sellerRating,
                     isTemporal,
-                    remainingDays: Math.max(0, Number(remainingPowerTime.days) || 0),
+                    remainingDays: frozenTemporal ? frozenDays : Math.max(0, Number(remainingPowerTime.days) || 0),
                 };
             }));
 

@@ -84,6 +84,9 @@ router.post('/upFiles', upload.array('fs'), GMPanelController.uploadFiles);
 router.post('/cancelChat', GMPanelController.cancelChat);
 router.post('/cancelChats', GMPanelController.cancelChats);
 router.post('/getAllChats', GMPanelController.getAllChats);
+router.post('/getMarketPublicationsWithoutChat', GMPanelController.getMarketPublicationsWithoutChat);
+router.post('/cancelMarketPublication', GMPanelController.cancelMarketPublication);
+router.post('/cancelMarketPublications', GMPanelController.cancelMarketPublications);
 
 //Activate users:
 router.post('/activateUsers', GMPanelController.activateUsers);

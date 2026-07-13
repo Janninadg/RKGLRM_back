@@ -5,6 +5,17 @@ import colors from "colors";
 
 class WebController {
 
+    async getHomeSummary(req, res, next) {
+        try {
+          const summary = await WebService.getHomeSummary();
+
+          return res.status(200).json(summary);
+        } catch (error) {
+          console.error('Error al obtener el resumen del home:', error);
+          return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+      }
+
     async getLinks(req, res, next) {
         try {
           const links = await WebService.getLinks();

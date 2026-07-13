@@ -26,5 +26,7 @@ router.post('/sendMessage', MarketController.sendMessage); //send message to cha
 router.post('/history', MarketController.getHistory); //get history of chat
 
 router.post('/getUserChats', MarketController.getUserChats); //get history of chat
+router.post('/contactStatus', MarketController.getMarketplaceContactStatus);
+router.post('/updateWhatsapp', MarketController.updateMarketplaceWhatsapp);
 
 export default router;

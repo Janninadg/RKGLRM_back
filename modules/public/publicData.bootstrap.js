@@ -10,6 +10,7 @@ const PUBLIC_DATA_LOADERS = [
   ['anuncios', () => WebService.getAnuncios()],
   ['assets', () => WebService.getBuyAssets()],
   ['streamers', () => WebService.getStreamers()],
+  ['resumen home', () => WebService.getHomeSummary()],
   ['eventos', () => EventService.obtenerTodos()],
   ['preguntas de seguridad', () => UserService.getSecurityQuestions()],
   ['ranking personajes', () => UserService.getRanking()],

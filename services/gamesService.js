@@ -37,6 +37,10 @@ import TempPrize from '../models/tempPrizes.js';
 import UserPrizeTracker from '../models/userPrizeTrackerModel.js';
 import prizeGameCache from '../modules/events/prizeGame.cache.js';
 import configParameterCache from '../modules/events/configParameter.cache.js';
+import {
+    checkUniqueAccountItemAvailability,
+    isUniqueAccountItem,
+} from '../utils/uniqueAccountItems.js';
 
 const sortByOrderPrize = (a, b) => Number(a.orderPrize) - Number(b.orderPrize);
 
@@ -56,6 +60,7 @@ const DEFAULT_ROULETTE_MIN_SPENT = [90000, 90000, 90000];
 const ROULETTE_8009_TOTAL_LIMIT = 12;
 const ROULETTE_8009_EARLY_LIMIT = 2;
 const ROULETTE_8009_EARLY_PROBABILITY = 0.05;
+const GENERIC_UNIQUE_GAME_PRIZE_MESSAGE = 'Mejor suerte la próxima vez. No has recibido nada esta vez.';
 
 const getNumberArrayParameter = (name, fallback = []) => {
     const value = configParameterCache.getJson(name, null);
@@ -238,27 +243,14 @@ class GamesService {
             return false;
         }
 
-        const pendingPrize = await PendingPresents.findOne({
-            where: {
-                user_id: userId,
-                present_id: prizeId
-            },
-            transaction
+        const uniqueAvailability = await checkUniqueAccountItemAvailability({
+            userGameId: userId,
+            itemId: prizeId,
+            itemName: `Item ${prizeId}`,
+            transaction,
         });
 
-        if (pendingPrize) {
-            return true;
-        }
-
-        const inventoryPrize = await UserItemInfo.findOne({
-            where: {
-                userid: userId,
-                itemid: prizeId
-            },
-            transaction
-        });
-
-        return Boolean(inventoryPrize);
+        return !uniqueAvailability.allowed;
     }
 
     async userAlreadyWonPrize(game, user, prizeId, transaction) {
@@ -1001,6 +993,22 @@ class GamesService {
             };
             }
 
+            const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                userGameId: userGameInfo.id,
+                itemId: prize.prize,
+                itemName: prize.name || `Item ${prize.prize}`,
+                transaction: t,
+            });
+
+            if (!uniqueAvailability.allowed) {
+            await t.rollback();
+            return {
+                success: false,
+                code: '400',
+                message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
+            };
+            }
+
             /*
             Si es criatura y level > 1:
             guardar directo en UserItemInfo
@@ -1242,6 +1250,22 @@ class GamesService {
             };
             }
 
+            const uniqueAvailability = await checkUniqueAccountItemAvailability({
+            userGameId: userGame.id,
+            itemId: prize.prize,
+            itemName: prize.name || `Item ${prize.prize}`,
+            transaction: t,
+            });
+
+            if (!uniqueAvailability.allowed) {
+            await t.rollback();
+            return {
+                success: false,
+                code: '400',
+                message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
+            };
+            }
+
             const distinctSlots = await UserItemInfo.findAll({
             attributes: [
                 [Sequelize.fn('DISTINCT', Sequelize.col('slot')), 'slot']
@@ -1402,6 +1426,39 @@ class GamesService {
 
             // Mapear los resultados a un array de números
             const arrayItems = itemsSet.map((item) => item.itemid);
+            const plannedUniqueItemIds = new Set();
+            for (const itemId of arrayItems) {
+                const numericItemId = Number(itemId);
+
+                if (isUniqueAccountItem(numericItemId) && plannedUniqueItemIds.has(numericItemId)) {
+                    await t.rollback();
+                    return {
+                        success: false,
+                        code: '400',
+                        message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
+                    };
+                }
+
+                const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                    userGameId: userGameInfoID.id,
+                    itemId: numericItemId,
+                    itemName: `Item ${numericItemId}`,
+                    transaction: t,
+                });
+
+                if (!uniqueAvailability.allowed) {
+                    await t.rollback();
+                    return {
+                        success: false,
+                        code: '400',
+                        message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
+                    };
+                }
+
+                if (isUniqueAccountItem(numericItemId)) {
+                    plannedUniqueItemIds.add(numericItemId);
+                }
+            }
             //console.log(arrayItems);
 
             // Crear los registros para bulkCreate
