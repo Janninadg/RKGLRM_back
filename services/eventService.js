@@ -2134,7 +2134,16 @@ class EventService {
         for(const pr of prizesWin){
 
           var typePrize = pr.type;
-          const res = await gamesService.setWinPrizes(type,typePrize,pr,user,t);
+          const res = await gamesService.setWinPrizes(
+            type,
+            typePrize,
+            pr,
+            user,
+            t,
+            {
+              matchPrizeName: Array.isArray(namesPrizes) ? namesPrizes[i] : null,
+            }
+          );
           if (!res.success) return res;
           i+=1;
         }

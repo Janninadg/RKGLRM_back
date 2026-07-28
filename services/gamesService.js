@@ -1626,7 +1626,24 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-     async saveBolsaOro(game,userId,prize,t) {
+     getAmountFromPrizeLabel(label) {
+        const match = String(label || '').match(/\d+/);
+        return match ? parseInt(match[0], 10) : null;
+    }
+
+     getRandomAmountFromPrizeRange(prize) {
+        const [minStr, maxStr] = String(prize?.name || '').split('-');
+        const min = parseInt(minStr, 10);
+        const max = parseInt(maxStr, 10);
+
+        if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        return Number(prize?.prize || 0);
+    }
+
+     async saveBolsaOro(game,userId,prize,t,prizeParams = null) {
         try {
 
             const uCoin = await UserGameInfo.findOne({
@@ -1637,23 +1654,15 @@ class GamesService {
 
              const lastuCoin = uCoin.gold;
             
-            // 1. Partir el rango "100-2000" en sus dos extremos
-            const [minStr, maxStr] = prize.name.split('-');
-            const min = parseInt(minStr, 10);
-            const max = parseInt(maxStr, 10);
-
-            // 2. Generar un entero aleatorio entre min y max (inclusive)
             let amount;
 
             if(game == 4){
-                const matchg = await Matches.findOne({
-                    where:{ user:userId, estado: 1, game }
-                })
-
-                const texto = JSON.parse(matchg.nombres)[0]
-                amount = parseInt(texto.match(/\d+/)[0], 10);
+                amount = this.getAmountFromPrizeLabel(prizeParams?.matchPrizeName);
+                if (amount === null) {
+                    amount = this.getRandomAmountFromPrizeRange(prize);
+                }
             } else{
-                amount = Math.floor(Math.random() * (max - min + 1)) + min;
+                amount = this.getRandomAmountFromPrizeRange(prize);
             }
 
             // 3. Incrementar el oro del usuario por el valor aleatorio calculado
@@ -1676,7 +1685,7 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-     async saveBolsaCash(game,userId,prize,t) {
+     async saveBolsaCash(game,userId,prize,t,prizeParams = null) {
         try {
 
              const uCoin = await Cash.findOne({
@@ -1687,23 +1696,15 @@ class GamesService {
 
             const lastuCoin = uCoin.cash;
 
-            // 1. Partir el rango "100-2000" en sus dos extremos
-            const [minStr, maxStr] = prize.name.split('-');
-            const min = parseInt(minStr, 10);
-            const max = parseInt(maxStr, 10);
-
-            // 2. Generar un entero aleatorio entre min y max (inclusive)
             let amount;
 
             if(game == 4){
-                const matchg = await Matches.findOne({
-                    where:{ user:userId, estado: 1 , game}
-                })
-
-                const texto = JSON.parse(matchg.nombres)[0]
-                amount = parseInt(texto.match(/\d+/)[0], 10);
+                amount = this.getAmountFromPrizeLabel(prizeParams?.matchPrizeName);
+                if (amount === null) {
+                    amount = this.getRandomAmountFromPrizeRange(prize);
+                }
             } else{
-                amount = Math.floor(Math.random() * (max - min + 1)) + min;
+                amount = this.getRandomAmountFromPrizeRange(prize);
             }
 
             // 3. Incrementar el cash del usuario por el valor aleatorio calculado
@@ -2149,11 +2150,11 @@ class GamesService {
                     response = await this.saveTicketsStages(userId,prize,t,1);
                     break;
                 case 8:
-                    response = await this.saveBolsaOro(game,userId,prize,t);
+                    response = await this.saveBolsaOro(game,userId,prize,t,prizeParams);
                     regBolsa=1;
                     break;
                 case 9:
-                    response = await this.saveBolsaCash(game,userId,prize,t);
+                    response = await this.saveBolsaCash(game,userId,prize,t,prizeParams);
                     regBolsa=1;
                     break;
                 case 10:
