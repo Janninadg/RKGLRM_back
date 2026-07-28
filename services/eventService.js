@@ -166,6 +166,54 @@ const rollbackCouponTransaction = async (transaction) => {
   }
 };
 
+const validateEventAccess = async (gameActive, type, user) => {
+  if (!gameActive) {
+    return {
+      success: false,
+      response: {
+        success: false,
+        code: '999',
+        message: 'Este evento ya ha concluido. ¡Por favor, actualice la página!',
+      },
+    };
+  }
+
+  const isTestMode = Number(gameActive.mode) === 0;
+
+  if (!isTestMode) {
+    return {
+      success: true,
+      isTestMode: false,
+    };
+  }
+
+  if (!eventTestUserCache.loaded) {
+    await eventTestUserCache.loadFromDatabase();
+  }
+
+  if (!eventTestUserCache.has(type, user)) {
+    return {
+      success: false,
+      response: {
+        success: false,
+        code: '999',
+        message: 'Este evento está en modo test y no tienes acceso.',
+      },
+    };
+  }
+
+  return {
+    success: true,
+    isTestMode: true,
+  };
+};
+
+const withTestModeParam = (params = {}, isTestMode = false) => (
+  isTestMode
+    ? { ...params, _testMode: true }
+    : params
+);
+
 class EventService {
   async verifyUserTickets(userId) {
     try {
@@ -415,6 +463,26 @@ class EventService {
         return { success: false, code: '100', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
 
+      const gameActive = await Evento.findOne({
+        attributes: ['id', 'mode'],
+        where: {
+          id: type,
+          show: 1,
+          estado: 1,
+        },
+        raw: true,
+        transaction: t,
+      });
+
+      const eventAccess = await validateEventAccess(gameActive, type, user);
+
+      if (!eventAccess.success) {
+        await t.rollback();
+        return eventAccess.response;
+      }
+
+      const isTestMode = eventAccess.isTestMode;
+
       // var const
 
       const goldPrizes = [];
@@ -482,29 +550,34 @@ class EventService {
                     lock: t.LOCK.UPDATE,
                   });
                   nameAsset = 'tickets de cash';
-                } else{
+                } else if(modality == 3){
                    picas = await UserAsset.findOne({
                     where: {
                       user: user,
-                      asset:4
+                      asset:5
                     },
                     transaction:t, // Asociar la transacción con esta consulta
                     lock: t.LOCK.UPDATE,
                   });
-                   nameAsset = 'tickets de oro';
+                   nameAsset = 'tickets de puntos';
+                } else {
+                  await t.rollback();
+                  return { success: false, code: '001', message: 'Modalidad no válida para buscaminas' };
                 }
                 
 
-                if(!picas || picas.amount < 1){
+                if(!isTestMode && (!picas || picas.amount < 1)){
                   await t.rollback(); // Revertir la transacción en caso de error
                   return { success: false, code: '001', message:`No tienes ${nameAsset} suficientes para jugar al buscaminas` };
                 }
 
                 // console.log(handleGetAssets)
 
-               // Decrementar picas
-                picas.amount -= 1;
-                await picas.save({transaction:t});
+               // Decrementar picas solo en eventos reales.
+                if (!isTestMode) {
+                  picas.amount -= 1;
+                  await picas.save({transaction:t});
+                }
                 // Creo una nueva partida...
 
                 await Matches.create(
@@ -607,36 +680,36 @@ class EventService {
 
               if (Math.random() < probabilidades[Number(matchFound.picked)]){
                 const dataPr = await this.getAllPrizes(type,t);
-                //console.log(dataPr);
-                const prizes = [];
+                const prizesByOrder = dataPr.reduce((acc, prize) => {
+                  const orderPrize = Number(prize.orderPrize);
+                  const lastGroup = acc[acc.length - 1];
 
-                // Recorrer el arreglo dataPr y construir probs y data
-                let i = 0;
-                while(i < dataPr.length){
-                  const newDataPrize = [];
-                  let sumprob = 0;
-                  let order = dataPr[i].orderPrize;
+                  const newItem = {
+                    id: prize.orderPrize,
+                    name: prize.name,
+                    url: prize.url,
+                    prob: Number(prize.probability || 0),
+                  };
 
-                  do {
-                    const newItem = {
-                      id: dataPr[i].orderPrize,
-                      name: dataPr[i].name,
-                      url: dataPr[i].url,
-                      prob: dataPr[i].probability,
-                    };
-      
-                    sumprob += dataPr[i].probability;
-                    sumprob = parseFloat(sumprob.toFixed(2)); 
-      
-                    newDataPrize.push(newItem);
-                    i += 1;
-                  } while (sumprob < 1 || (i <  dataPr.length && order == dataPr[i].orderPrize));
-      
-                  prizes.push(newDataPrize);
-      
-                  //i += 1;
+                  if (!lastGroup || Number(lastGroup.orderPrize) !== orderPrize) {
+                    acc.push({
+                      orderPrize,
+                      items: [newItem],
+                    });
+                  } else {
+                    lastGroup.items.push(newItem);
+                  }
+
+                  return acc;
+                }, []);
+                const prizes = prizesByOrder.map((group) => group.items);
+                const currentPrizes = prizes[Number(matchFound.picked)];
+
+                if (!currentPrizes || currentPrizes.length === 0) {
+                  await t.rollback();
+                  return { success: false, code: '001', message: 'No hay premios configurados para esta jugada de buscaminas.' };
                 }
-                // console.log(prizes);
+
                 nuevasCalabazas[index] = {
                   ...setcalabazas[index],
                   presionada: true,
@@ -648,17 +721,21 @@ class EventService {
 
                 //console.log(prizes);
 
-                for (let i = 0; i < prizes[Number(matchFound.picked)].length; i++) {
-                  cumulativeProb += prizes[Number(matchFound.picked)][i].prob;
+                for (let i = 0; i < currentPrizes.length; i++) {
+                  cumulativeProb += currentPrizes[i].prob;
                   if (randomProb <= cumulativeProb) {
                     premioIndex = i;
                     break;
                   }
                 }
 
-                const premio = prizes[Number(matchFound.picked)][premioIndex].name;
-                const id = prizes[Number(matchFound.picked)][premioIndex].id;
-                const premioUrl = prizes[Number(matchFound.picked)][premioIndex].url;
+                if (premioIndex === undefined) {
+                  premioIndex = currentPrizes.length - 1;
+                }
+
+                const premio = currentPrizes[premioIndex].name;
+                const id = currentPrizes[premioIndex].id;
+                const premioUrl = currentPrizes[premioIndex].url;
 
                 nuevasCalabazas[index].premio = premio;
                 nuevosPremios = [...setpremios, id];
@@ -842,16 +919,18 @@ class EventService {
                 }
                 
 
-                if(!hot || hot.amount < 1){
+                if(!isTestMode && (!hot || hot.amount < 1)){
                   await t.rollback(); // Revertir la transacción en caso de error
                   return { success: false, code: '001', message:`No tienes ${nameAsset} suficientes para jugar al buscaminas` };
                 }
 
                 // console.log(handleGetAssets)
 
-               // Decrementar hot tickets
-                hot.amount -= 1;
-                await hot.save({transaction:t});
+               // Decrementar hot tickets solo en eventos reales.
+                if (!isTestMode) {
+                  hot.amount -= 1;
+                  await hot.save({transaction:t});
+                }
 
                 if(Math.random() < hotProb){
                   //Pierdes :)
@@ -1512,26 +1591,14 @@ class EventService {
       }*/
 
       //Primero verificar si el juego esta en modo show :)
-      if(!gameActive){
-        console.log('Win:'.magenta,'false'.red);
-        return { success: false, code: '999', message:`Este evento ya ha concluido. ¡Por favor, actualice la página!` };
+      const eventAccess = await validateEventAccess(gameActive, type, userId);
+
+      if (!eventAccess.success) {
+        console.log('Win:'.magenta, 'false'.red);
+        return eventAccess.response;
       }
 
-      if (Number(gameActive.mode) === 0) {
-        if (!eventTestUserCache.loaded) {
-          await eventTestUserCache.loadFromDatabase();
-        }
-
-        if (!eventTestUserCache.has(type, userId)) {
-          console.log('Win:'.magenta, 'false'.red);
-
-          return {
-            success: false,
-            code: '999',
-            message: 'Este evento está en modo test y no tienes acceso.',
-          };
-        }
-      }
+      const isTestMode = eventAccess.isTestMode;
 
       // Verificar token (todos los juegos sin partida):
       if(!tokenCount){
@@ -1542,7 +1609,9 @@ class EventService {
       t = await sequelize.transaction();
 
       // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,przId,t);
+      const GameRes = await gamesService.getPrizeByGame(type,opcion,userId,modalidad,przId,t, {
+        testMode: isTestMode,
+      });
 
       if (!GameRes) {
         await rollbackTransaction();
@@ -1561,7 +1630,7 @@ class EventService {
       if(!GameRes.win){
         console.log('Win:'.magenta,'false'.red);
         await t.commit(); // Revertir la transacción en caso de error
-        return { success: false, code: '400',params: GameRes.params, message: GameRes.ms };
+        return { success: false, code: '400',params: withTestModeParam(GameRes.params, isTestMode), message: GameRes.ms };
       }
 
       if (!prizesGame) {
@@ -1599,10 +1668,10 @@ class EventService {
 
       // Verificar si el premio excedio el limite :( :
 
-      if (prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite || prizesGame.limite == -1){
+      if (!isTestMode && (prizesGame.limite > 0 && prizesGame.users >= prizesGame.limite || prizesGame.limite == -1)){
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '100', message:`El premio '${prizesGame.name}' ya ha llegado ha su límite de usuarios. Vuelve a jugar para obtener el premio :)`};
-      } else if(prizesGame.limite > 0 && prizesGame.users < prizesGame.limite){
+      } else if(!isTestMode && prizesGame.limite > 0 && prizesGame.users < prizesGame.limite){
         //update
         await PrizesGame.increment(
           'users',
@@ -1627,7 +1696,9 @@ class EventService {
             return { success: false, code: '200', message: 'No existe este tipo de modalidad para este juego' };
           }
 
-          const res = await gamesService.eventLevelVerificator(type,opcion,userId,t,prizesGame);
+          const res = await gamesService.eventLevelVerificator(type,opcion,userId,t,prizesGame, {
+            testMode: isTestMode,
+          });
           // console.log(res);
 
           if (!res.success){
@@ -1651,30 +1722,32 @@ class EventService {
 
               typename = 'giros';
 
-              giros = await UserAsset.findOne({
-                // attributes: ['tickets'],
-                where: {
-                  user: userId,
-                   asset: modalidad === 1 ? 3 : 5
-                },
-                transaction: t, // Asociar la transacción con esta consulta
-                lock: t.LOCK.UPDATE,
-              });
-
-              if(giros && giros.amount > 0){
-                // Decrementar el ticket del usuario
-                await UserAsset.decrement('amount', {
-                  by: 1,
+              if (!isTestMode) {
+                giros = await UserAsset.findOne({
+                  // attributes: ['tickets'],
                   where: {
                     user: userId,
-                     asset: modalidad === 1 ? 3 : 5
+                    asset: modalidad === 1 ? 3 : 5
                   },
-                  transaction: t, // Asociar la transacción con esta operación
+                  transaction: t, // Asociar la transacción con esta consulta
+                  lock: t.LOCK.UPDATE,
                 });
-              } else{
-                await t.rollback(); 
-                return { success: false, code: '200', message: 'No tienes tickets suficientes para girar la ruleta.' };
-                break;
+
+                if(giros && giros.amount > 0){
+                  // Decrementar el ticket del usuario
+                  await UserAsset.decrement('amount', {
+                    by: 1,
+                    where: {
+                      user: userId,
+                      asset: modalidad === 1 ? 3 : 5
+                    },
+                    transaction: t, // Asociar la transacción con esta operación
+                  });
+                } else{
+                  await t.rollback(); 
+                  return { success: false, code: '200', message: 'No tienes tickets suficientes para girar la ruleta.' };
+                  break;
+                }
               }
 
               //slotsAvaible = true;
@@ -1700,48 +1773,50 @@ class EventService {
           }
           //Verificaciones
 
-          //Verificar tiempo de redencion
+          if (!isTestMode) {
+            //Verificar tiempo de redencion
 
-          // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
-          const lastDate = await TempPrize.findOne({
-            attributes: ['fecha'],
-            where: {
-              game: type,
-              user: userId
-            },
-            order: [['fecha', 'DESC']],
-            transaction: t, // Asociar la transacción con esta consulta
-          });
+            // Obtener todos los premios de la tabla rouletteprizes según tipo de evento:
+            const lastDate = await TempPrize.findOne({
+              attributes: ['fecha'],
+              where: {
+                game: type,
+                user: userId
+              },
+              order: [['fecha', 'DESC']],
+              transaction: t, // Asociar la transacción con esta consulta
+            });
 
-          const vdat = new Date();
+            const vdat = new Date();
 
-          if(lastDate){
-            console.log("TIME : %s - %d".magenta,userId,(vdat-lastDate.fecha)/1000); //dif seg
+            if(lastDate){
+              console.log("TIME : %s - %d".magenta,userId,(vdat-lastDate.fecha)/1000); //dif seg
 
-            var timedif = (vdat-lastDate.fecha)/1000;
-            var veriTime;
+              var timedif = (vdat-lastDate.fecha)/1000;
+              var veriTime;
 
-            // console.log(opcion);
+              // console.log(opcion);
 
-            if(opcion === 0){
-              veriTime = 290;
-            } 
-            // else if (opcion === 1){
-            //   veriTime = 120;
-            // } 
-            else{
-              await t.rollback(); 
-              return { success: false, code: '200', message: 'No existe esta opción en el juego' };
-            }
-            // 5 min 300 seg
-            // 3 min 180 seg
+              if(opcion === 0){
+                veriTime = 290;
+              } 
+              // else if (opcion === 1){
+              //   veriTime = 120;
+              // } 
+              else{
+                await t.rollback(); 
+                return { success: false, code: '200', message: 'No existe esta opción en el juego' };
+              }
+              // 5 min 300 seg
+              // 3 min 180 seg
 
-            console.log("USER TIME: ".magenta,(timedif >= veriTime));
+              console.log("USER TIME: ".magenta,(timedif >= veriTime));
 
-            if(timedif < veriTime){
-              await t.rollback(); 
-              console.log('Win:'.magenta,'false'.red);
-              return { success: false, code: '100', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos ¡Evita ser sancionado!' };
+              if(timedif < veriTime){
+                await t.rollback(); 
+                console.log('Win:'.magenta,'false'.red);
+                return { success: false, code: '100', message: '¡Alto! Estás canjeando premios demasiado rápido. Recuerda que solo puedes canjear premios cada 5 minutos ¡Evita ser sancionado!' };
+              }
             }
           }
 
@@ -1778,18 +1853,21 @@ class EventService {
           // Resta cofre:
 
           const cofres = JSON.parse(userGame.picked);
-          cofres[0] -= 1;
+          const cofresResponse = [...cofres];
+          cofresResponse[0] -= 1;
           //const decrementedArr = newArr.map((element) => element - 1);
 
-          await Matches.update(
-            { 
-              //premios:JSON.stringify(decrementedArr),
-              picked: JSON.stringify(cofres),
-            }, //cambiar a codigo_base
-            { where: { user: userId,game:type, },
-              transaction: t
-            },
-          );
+          if (!isTestMode) {
+            await Matches.update(
+              { 
+                //premios:JSON.stringify(decrementedArr),
+                picked: JSON.stringify(cofresResponse),
+              }, //cambiar a codigo_base
+              { where: { user: userId,game:type, },
+                transaction: t
+              },
+            );
+          }
 
            const allPrizesFinal = prizeGameCache
             .getByGame(type)
@@ -1800,7 +1878,7 @@ class EventService {
             }));
 
            Object.assign(params, {
-              allpz:allPrizesFinal,_cf:cofres
+              allpz:allPrizesFinal,_cf:cofresResponse
           });
 
           break;
@@ -1819,23 +1897,28 @@ class EventService {
         prizesGame,
         userId,
         t,
-        params?.prize || null
+        params?.prize || null,
+        {
+          testMode: isTestMode,
+        }
       );
       if(!resWin.success) return resWin;
   
-      await TempPrize.create(
-        {
-          user: userId,
-          type: typePrize,
-          prize: resWin.bv ? resWin.bv : prizesGame.prize,
-          game: type,
-          opcion: opcion,
-          fecha: new Date(),
-        },
-        {
-          transaction: t, // Asociar la transacción con esta operación
-        }
-      );
+      if (!isTestMode) {
+        await TempPrize.create(
+          {
+            user: userId,
+            type: typePrize,
+            prize: resWin.bv ? resWin.bv : prizesGame.prize,
+            game: type,
+            opcion: opcion,
+            fecha: new Date(),
+          },
+          {
+            transaction: t, // Asociar la transacción con esta operación
+          }
+        );
+      }
 
       console.log('Win:'.magenta,'true'.green);
 
@@ -1844,7 +1927,7 @@ class EventService {
       // _pw:selectedItem
 
       await t.commit();
-      return { success: true, code: '000', message:resWin.message,params};
+      return { success: true, code: '000', message:resWin.message,params: withTestModeParam(params, isTestMode)};
     } catch (error) {
       await rollbackTransaction(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);
@@ -1902,6 +1985,26 @@ class EventService {
         await t.rollback(); // Revertir la transacción en caso de error
         return { success: false, code: '301', message: 'Token inválido o tienes una sesión iniciada en otro navegador...' };
       }
+
+      const gameActive = await Evento.findOne({
+        attributes: ['id', 'mode'],
+        where: {
+          id: type,
+          show: 1,
+          estado: 1,
+        },
+        raw: true,
+        transaction: t,
+      });
+
+      const eventAccess = await validateEventAccess(gameActive, type, user);
+
+      if (!eventAccess.success) {
+        await t.rollback();
+        return eventAccess.response;
+      }
+
+      const isTestMode = eventAccess.isTestMode;
 
       //namePrizes prizes
 
@@ -2027,16 +2130,19 @@ class EventService {
 
       //var message;
       var i = 0;
-      for(const pr of prizesWin){
+      if (!isTestMode) {
+        for(const pr of prizesWin){
 
-        var typePrize = pr.type;
-        const res = await gamesService.setWinPrizes(type,typePrize,pr,user,t);
-        i+=1;
+          var typePrize = pr.type;
+          const res = await gamesService.setWinPrizes(type,typePrize,pr,user,t);
+          if (!res.success) return res;
+          i+=1;
+        }
       }
   
       await t.commit(); // Confirmar la transacción si todas las operaciones tienen éxito
       console.log('Win: '.magenta,'true'.green);
-      return { success: true, code: '000',_om4:namesPrizes, message:"Felicidades :)" };
+      return { success: true, code: '000',_om4:namesPrizes, _testMode: isTestMode || undefined, message:"Felicidades :)" };
     } catch (error) {
       await t.rollback(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);

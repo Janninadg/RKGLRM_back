@@ -291,8 +291,9 @@ class GamesService {
         });
     }
 
-    async getPrizeByGame(game,clase,user,modalidad,prizeData,transaction) {
+    async getPrizeByGame(game,clase,user,modalidad,prizeData,transaction, options = {}) {
         try {
+            const isTestMode = Boolean(options.testMode);
             let allP;
             let rP;
             let cP;
@@ -344,10 +345,10 @@ class GamesService {
                         rouletteHardPrizes,
                         rouletteMinimumSpent
                     );
-                    const rouletteSpentPerTry = rouletteMinimumSpentByPrize.size > 0
+                    const rouletteSpentPerTry = !isTestMode && rouletteMinimumSpentByPrize.size > 0
                         ? await this.getRouletteSpentPerTry(modalidad, transaction)
                         : 0;
-                    const rouletteTrackerState = rouletteMinimumSpentByPrize.size > 0
+                    const rouletteTrackerState = !isTestMode && rouletteMinimumSpentByPrize.size > 0
                         ? await this.trackPrizeAttempt({
                             game,
                             user,
@@ -374,7 +375,7 @@ class GamesService {
 
                     if(Math.random() < (1-prob)) {
                         
-                        const  giros = await UserAsset.findOne({
+                        const  giros = isTestMode ? null : await UserAsset.findOne({
                             // attributes: ['tickets'],
                             where: {
                               user: user,
@@ -385,12 +386,13 @@ class GamesService {
                           });
 
                          // await t.rollback(); // Revertir la transacción en caso de error
-                         if(!giros || giros.amount < 1){
+                         if(!isTestMode && (!giros || giros.amount < 1)){
                             await transaction.rollback(); // Revertir la transacción en caso de error
                             return { success: false, code: '001', message:`No tiene tickets suficientes para jugar a la ruleta` };
                         }
 
                         // Decrementar el giro del usuario
+                        if (!isTestMode) {
                         await UserAsset.decrement('amount', {
                             by: 1,
                             where: {
@@ -399,13 +401,14 @@ class GamesService {
                             },
                             transaction, // Asociar la transacción con esta operación
                           });
+                        }
 
                         const lastClass = allPrizes.reduce((max, item) => {
                             return item.clase > max ? item.clase : max;
                           }, 0); // Iniciar con 0 o cualquier otro valor mínimo válido
 
                           /** dar el 30% de lo que costo... */
-                        const priceRecord = await AssetPrice.findOne({
+                        const priceRecord = isTestMode ? { price: 0 } : await AssetPrice.findOne({
                             where: {
                                 asset: modalidad === 1 ? 3 : 5
                             },
@@ -422,7 +425,7 @@ class GamesService {
                             // Calcular 30%
                             const refundAmount = Math.floor(Number(priceRecord.price) * 0.30);
 
-                            if (!isFatalLose && modalidad === 1) {
+                            if (!isTestMode && !isFatalLose && modalidad === 1) {
 
                             // 🔹 Devolver en CASH
                             await Cash.increment(
@@ -434,7 +437,7 @@ class GamesService {
                                 }
                             );
 
-                            } else if (!isFatalLose) {
+                            } else if (!isTestMode && !isFatalLose) {
 
                             // 🔹 Devolver en PUNTOS DE EVENTO (clanpoint)
                             await UserGameInfo.increment(
@@ -489,7 +492,7 @@ class GamesService {
                         completedTrackedPrizeIds.push(8009);
                     }
 
-                    if (completedTrackedPrizeIds.length > 0) {
+                    if (!isTestMode && completedTrackedPrizeIds.length > 0) {
                         await UserPrizeTracker.destroy({
                             where: {
                                 user,
@@ -597,7 +600,7 @@ class GamesService {
                     const selectedPrize = allPrizes[selectedItem];
                     const selectedPrizeId = getPrizeId(selectedPrize);
 
-                    if (rouletteMinimumSpentByPrize.has(selectedPrizeId)) {
+                    if (!isTestMode && rouletteMinimumSpentByPrize.has(selectedPrizeId)) {
                         await UserPrizeTracker.destroy({
                             where: {
                                 user,
@@ -807,7 +810,7 @@ class GamesService {
                     }
                     }
 
-                    if (slotFree === null) {
+                    if (!isTestMode && slotFree === null) {
                         return {
                             success: false,
                             code: '200',
@@ -825,7 +828,7 @@ class GamesService {
                         };
                     }
 
-                    const chance = await UserAsset.findOne({
+                    const chance = isTestMode ? null : await UserAsset.findOne({
                         where: {
                             user,
                             asset: 6
@@ -834,7 +837,7 @@ class GamesService {
                         lock: transaction.LOCK.UPDATE
                     });
 
-                    if (!chance || chance.amount <= 0) {
+                    if (!isTestMode && (!chance || chance.amount <= 0)) {
                         return {
                             success: false,
                             code: '200',
@@ -842,20 +845,22 @@ class GamesService {
                         };
                     }
 
-                    await UserAsset.decrement('amount', {
-                        by: 1,
-                        where: {
-                            user,
-                            asset: 6
-                        },
-                        transaction
-                    });
+                    if (!isTestMode) {
+                        await UserAsset.decrement('amount', {
+                            by: 1,
+                            where: {
+                                user,
+                                asset: 6
+                            },
+                            transaction
+                        });
+                    }
 
                     const maxSpent = configParameterCache.getNumber('max_spent', 50);
 
                     const probTemporal = configParameterCache.getNumber('prob_temporal', 0.5);
 
-                    let tracker = await UserPrizeTracker.findOne({
+                    let tracker = isTestMode ? null : await UserPrizeTracker.findOne({
                         where: {
                             user,
                             game,
@@ -865,7 +870,7 @@ class GamesService {
                         lock: transaction.LOCK.UPDATE
                     });
 
-                    if (!tracker) {
+                    if (!isTestMode && !tracker) {
                         tracker = await UserPrizeTracker.create(
                             {
                                 user,
@@ -880,11 +885,13 @@ class GamesService {
                         );
                     }
 
-                    tracker.tries += 1;
-                    tracker.spent += 1;
+                    if (!isTestMode) {
+                        tracker.tries += 1;
+                        tracker.spent += 1;
+                    }
 
                     const forcedWin =
-                        tracker.spent >= maxSpent;
+                        !isTestMode && tracker.spent >= maxSpent;
 
                     const probabilityWin =
                         Math.random() <= Number(prize.probability);
@@ -894,9 +901,11 @@ class GamesService {
                     Object.assign(params, {});
 
                     if (!win) {
-                        await tracker.save({
-                            transaction
-                        });
+                        if (!isTestMode) {
+                            await tracker.save({
+                                transaction
+                            });
+                        }
 
                         return {
                             all: null,
@@ -909,9 +918,11 @@ class GamesService {
                     const isTemporary =
                         Math.random() <= probTemporal ? 1 : 0;
 
-                    await tracker.destroy({
-                        transaction
-                    });
+                    if (!isTestMode) {
+                        await tracker.destroy({
+                            transaction
+                        });
+                    }
 
                     params.prize = {
                         id: prize.id,
@@ -2038,8 +2049,70 @@ class GamesService {
         }
     }
 
-    async setWinPrizes(game, typePrize, prize, userId, t, prizeParams = null) {
+    getTestBagAmount(prize) {
+        const [minStr, maxStr] = String(prize?.name || '').split('-');
+        const min = parseInt(minStr, 10);
+        const max = parseInt(maxStr, 10);
+
+        if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        return Number(prize?.prize || 0);
+    }
+
+    buildTestPrizeResponse(typePrize, prize, prizeParams = null) {
+        const amount = Number(prize?.prize || 0);
+        const name = prize?.name || `Item ${amount}`;
+        const days = prizeParams?.days ?? 2;
+
+        switch (Number(typePrize)) {
+            case 0:
+            case 10:
+            case 11:
+            case 98:
+            case 99:
+                return { message: `Has obtenido un(a) ${name}`, success: true, testMode: true };
+            case 1:
+                return { message: `Has obtenido ${amount} de Oro`, success: true, last: 0, curr: 0, testMode: true };
+            case 2:
+                return { message: `Has obtenido ${amount} de Cash`, success: true, last: 0, curr: 0, testMode: true };
+            case 3:
+                return { message: `Has obtenido ${amount} ticket(s) de cash`, success: true, testMode: true };
+            case 4:
+                return { message: `Has obtenido ${amount} ticket(s) de oro`, success: true, testMode: true };
+            case 5:
+                return { message: `Has obtenido un(a) ${name} temporal (${String(days)} dias)`, success: true, testMode: true };
+            case 6:
+                return { message: `Has obtenido ${amount} dias de Power User`, success: true, last: 0, curr: 0, testMode: true };
+            case 7:
+            case 17:
+                return { message: `Has obtenido ${amount} ticket(s) para theme park`, success: true, testMode: true };
+            case 8: {
+                const bagAmount = this.getTestBagAmount(prize);
+                return { message: `Has obtenido ${bagAmount} de Oro de la Bolsa`, success: true, bv: bagAmount, last: 0, curr: 0, testMode: true };
+            }
+            case 9: {
+                const bagAmount = this.getTestBagAmount(prize);
+                return { message: `Has obtenido ${bagAmount} de Cash de la Bolsa`, success: true, bv: bagAmount, last: 0, curr: 0, testMode: true };
+            }
+            case 12:
+                return { message: `Has obtenido ${amount} tickets de cash`, success: true, testMode: true };
+            case 18:
+                return { message: `Has obtenido ${amount} pica(s) de minar`, success: true, testMode: true };
+            case 19:
+                return { message: `Has obtenido ${amount} tickets de puntos`, success: true, testMode: true };
+            default:
+                return { success: false, code: '201', message: 'Tipo de premio no valido' };
+        }
+    }
+
+    async setWinPrizes(game, typePrize, prize, userId, t, prizeParams = null, options = {}) {
         try {
+            if (options.testMode) {
+                return this.buildTestPrizeResponse(typePrize, prize, prizeParams);
+            }
+
             // Agregar el premio según el tipo
             var response = null;
             const excludedPrizes = [10,11, 98, 99];
@@ -2291,7 +2364,7 @@ class GamesService {
         }
     }
 
-    async eventLevelVerificator(game,opcion,username,transaction,prize) {
+    async eventLevelVerificator(game,opcion,username,transaction,prize, options = {}) {
         try {
             
             // Verificar que el usuario se encuentre en ese nivel...
@@ -2389,9 +2462,11 @@ class GamesService {
                 }
                 premiosObtenidos[opcion] = prizeob;
 
-                // Convertir de nuevo a JSON string para actualizar en la base de datos
-                match.premios_obtenidos = JSON.stringify(premiosObtenidos);
-                await match.save({ transaction });
+                // En modo test solo se devuelve el estado visual al front.
+                if (!options.testMode) {
+                    match.premios_obtenidos = JSON.stringify(premiosObtenidos);
+                    await match.save({ transaction });
+                }
 
                 return {po:premiosObtenidos,success: true};
             }
