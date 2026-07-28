@@ -2051,14 +2051,6 @@ class EventService {
           // console.log(prizes);
           namesPrizes = JSON.parse(match.nombres);
 
-           // Eliminar partida:
-            await Matches.update(
-              { estado: 0}, //cambiar a codigo_base
-              { where: { user: user, estado:1, game:type },
-                transaction: t 
-              },
-            );
-
           break;
         case 5:
            // Verifico token...
@@ -2108,15 +2100,17 @@ class EventService {
       //console.log(prizes);
       //console.log(type);
 
-      for (const p of prizes) {
+      for (let prizeIndex = 0; prizeIndex < prizes.length; prizeIndex++) {
+        const p = prizes[prizeIndex];
         // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
    
         const prizePumpkin = await PrizesGame.findOne({
-          attributes: ['type', 'prize', 'name', 'url'],
+          attributes: ['orderPrize', 'type', 'prize', 'name', 'url'],
           where: {
             orderPrize: p,
             type_game: type,
           },
+          raw: true,
           transaction: t, // Asociar la transacción con esta consulta
         });
 
@@ -2125,15 +2119,18 @@ class EventService {
           return { success: false, code: '302', message: 'No se encontró un premio para las calabazas' };
         }
 
-        prizesWin.push(prizePumpkin);
+        prizesWin.push({
+          ...prizePumpkin,
+          matchPrizeName: Array.isArray(namesPrizes) ? namesPrizes[prizeIndex] : null,
+        });
       }
 
       //var message;
-      var i = 0;
+      const deliveryResults = [];
       if (!isTestMode) {
         for(const pr of prizesWin){
 
-          var typePrize = pr.type;
+          var typePrize = Number(pr.type);
           const res = await gamesService.setWinPrizes(
             type,
             typePrize,
@@ -2141,17 +2138,36 @@ class EventService {
             user,
             t,
             {
-              matchPrizeName: Array.isArray(namesPrizes) ? namesPrizes[i] : null,
+              matchPrizeName: pr.matchPrizeName,
             }
           );
-          if (!res.success) return res;
-          i+=1;
+          if (!res.success) {
+            if (!t.finished) {
+              await t.rollback();
+            }
+            return res;
+          }
+
+          deliveryResults.push({
+            orderPrize: pr.orderPrize,
+            type: typePrize,
+            prize: pr.prize,
+            name: pr.matchPrizeName || pr.name,
+          });
         }
       }
+
+      await Matches.update(
+        { estado: 0 },
+        {
+          where: { user: user, estado: 1, game: type },
+          transaction: t,
+        },
+      );
   
       await t.commit(); // Confirmar la transacción si todas las operaciones tienen éxito
       console.log('Win: '.magenta,'true'.green);
-      return { success: true, code: '000',_om4:namesPrizes, _testMode: isTestMode || undefined, message:"Felicidades :)" };
+      return { success: true, code: '000',_om4:namesPrizes, _delivery: deliveryResults, _testMode: isTestMode || undefined, message:"Felicidades :)" };
     } catch (error) {
       await t.rollback(); // Revertir la transacción en caso de error
       console.error('Error al realizar la operación:', error);
