@@ -491,7 +491,7 @@ class EventService {
         case 0:
           // Eliminar partida:
           await Matches.update(
-            { estado: 0}, //cambiar a codigo_base
+            type === 4 ? { estado: 0, status: 0 } : { estado: 0 }, //cambiar a codigo_base
             { where: { user: user, estado:1, game:type },
               transaction: t 
             },
@@ -680,34 +680,31 @@ class EventService {
 
               if (Math.random() < probabilidades[Number(matchFound.picked)]){
                 const dataPr = await this.getAllPrizes(type,t);
-                const prizesByOrder = dataPr.reduce((acc, prize) => {
-                  const orderPrize = Number(prize.orderPrize);
-                  const lastGroup = acc[acc.length - 1];
+                const prizesByClass = dataPr.reduce((acc, prize) => {
+                  const prizeClass = prize.clase === null ? 0 : Number(prize.clase);
 
                   const newItem = {
-                    id: prize.orderPrize,
+                    id: prize.id,
+                    orderPrize: prize.orderPrize,
+                    clase: prizeClass,
                     name: prize.name,
                     url: prize.url,
                     prob: Number(prize.probability || 0),
                   };
 
-                  if (!lastGroup || Number(lastGroup.orderPrize) !== orderPrize) {
-                    acc.push({
-                      orderPrize,
-                      items: [newItem],
-                    });
-                  } else {
-                    lastGroup.items.push(newItem);
+                  if (!acc.has(prizeClass)) {
+                    acc.set(prizeClass, []);
                   }
 
+                  acc.get(prizeClass).push(newItem);
                   return acc;
-                }, []);
-                const prizes = prizesByOrder.map((group) => group.items);
-                const currentPrizes = prizes[Number(matchFound.picked)];
+                }, new Map());
+                const currentClass = Number(matchFound.picked);
+                const currentPrizes = prizesByClass.get(currentClass);
 
                 if (!currentPrizes || currentPrizes.length === 0) {
                   await t.rollback();
-                  return { success: false, code: '001', message: 'No hay premios configurados para esta jugada de buscaminas.' };
+                  return { success: false, code: '001', message: 'No hay premios configurados para esta clase de buscaminas.' };
                 }
 
                 nuevasCalabazas[index] = {
@@ -733,14 +730,18 @@ class EventService {
                   premioIndex = currentPrizes.length - 1;
                 }
 
-                const premio = currentPrizes[premioIndex].name;
-                const id = currentPrizes[premioIndex].id;
-                const premioUrl = currentPrizes[premioIndex].url;
+                const selectedPrize = currentPrizes[premioIndex];
+                const premio = selectedPrize.name;
+                const id = selectedPrize.id;
+                const premioUrl = selectedPrize.url;
 
                 nuevasCalabazas[index].premio = premio;
                 nuevosPremios = [...setpremios, id];
                 nuevosNombres = [...setnombres, premio];
                 nuevasCalabazas[index].premioUrl = premioUrl;
+                nuevasCalabazas[index].prizeGameId = id;
+                nuevasCalabazas[index].orderPrize = selectedPrize.orderPrize;
+                nuevasCalabazas[index].clase = selectedPrize.clase;
 
                 //console.log('BBB');
                 await Matches.update(
@@ -764,7 +765,7 @@ class EventService {
 
                 // Eliminar partida:
                 await Matches.update(
-                  { estado: 0}, //cambiar a codigo_base
+                  { estado: 0, status: 0 }, //cambiar a codigo_base
                   { where: { user: user, estado:1, game:type },
                     transaction: t 
                   },
@@ -2102,17 +2103,57 @@ class EventService {
 
       for (let prizeIndex = 0; prizeIndex < prizes.length; prizeIndex++) {
         const p = prizes[prizeIndex];
-        // Obtener el premio de la tabla rouletteprizes según orderPrize y tipo de evento:
+        // Las partidas nuevas guardan prizesgames.id. El fallback por orderPrize
+        // mantiene reclamables las partidas antiguas que ya estaban guardadas.
    
-        const prizePumpkin = await PrizesGame.findOne({
-          attributes: ['orderPrize', 'type', 'prize', 'name', 'url'],
+        let prizePumpkin = await PrizesGame.findOne({
+          attributes: ['id', 'orderPrize', 'clase', 'type', 'prize', 'name', 'url'],
           where: {
-            orderPrize: p,
+            id: p,
             type_game: type,
           },
           raw: true,
           transaction: t, // Asociar la transacción con esta consulta
         });
+
+        if (!prizePumpkin) {
+          prizePumpkin = await PrizesGame.findOne({
+            attributes: ['id', 'orderPrize', 'clase', 'type', 'prize', 'name', 'url'],
+            where: {
+              orderPrize: p,
+              type_game: type,
+            },
+            order: [['id', 'ASC']],
+            raw: true,
+            transaction: t,
+          });
+        }
+
+        const matchPrizeName = Array.isArray(namesPrizes) ? namesPrizes[prizeIndex] : null;
+
+        if (
+          type === 4 &&
+          matchPrizeName &&
+          prizePumpkin &&
+          Number(prizePumpkin.type) === 0 &&
+          prizePumpkin.name !== matchPrizeName
+        ) {
+          const prizeByName = await PrizesGame.findOne({
+            attributes: ['id', 'orderPrize', 'clase', 'type', 'prize', 'name', 'url'],
+            where: {
+              type_game: type,
+              type: 0,
+              name: matchPrizeName,
+            },
+            order: [['orderPrize', 'ASC'], ['id', 'ASC']],
+            raw: true,
+            transaction: t,
+          });
+
+          if (prizeByName) {
+            prizePumpkin = prizeByName;
+          }
+        }
 
         if (!prizePumpkin) {
           await t.rollback(); // Revertir la transacción en caso de error
@@ -2121,7 +2162,7 @@ class EventService {
 
         prizesWin.push({
           ...prizePumpkin,
-          matchPrizeName: Array.isArray(namesPrizes) ? namesPrizes[prizeIndex] : null,
+          matchPrizeName,
         });
       }
 
@@ -2149,7 +2190,9 @@ class EventService {
           }
 
           deliveryResults.push({
+            prizeGameId: pr.id,
             orderPrize: pr.orderPrize,
+            clase: pr.clase,
             type: typePrize,
             prize: pr.prize,
             name: pr.matchPrizeName || pr.name,
@@ -2158,7 +2201,7 @@ class EventService {
       }
 
       await Matches.update(
-        { estado: 0 },
+        type === 4 ? { estado: 0, status: 1 } : { estado: 0 },
         {
           where: { user: user, estado: 1, game: type },
           transaction: t,
@@ -2578,7 +2621,7 @@ class EventService {
         where: {
           type_game: type,
         },
-        order: [['orderPrize', 'ASC']],
+        order: [['orderPrize', 'ASC'], ['id', 'ASC']],
         transaction: t,
       });
   

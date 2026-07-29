@@ -46,6 +46,11 @@ const Matches = sequelize.define('matches', {
     allowNull: false,
     defaultValue: 1,
   },
+  status: {
+    type: DataTypes.TINYINT,
+    allowNull: true,
+    defaultValue: null,
+  },
 }, {
   tableName: 'matches',
   timestamps: false, // Evita la creación automática de campos createdAt y updatedAt
