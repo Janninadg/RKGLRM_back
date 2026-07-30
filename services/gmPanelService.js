@@ -1360,6 +1360,7 @@ class GMPanelService {
             const returned = await marketService.returnItem(seller, null, numericMarketId, 3, undefined, true, {
                 actor: user,
                 reason: `Item retornado por cancelacion de publicacion marketplace #${numericMarketId}`,
+                bypassUniqueAccountValidation: true,
             });
 
             if (!returned.success) {

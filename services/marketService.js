@@ -587,6 +587,7 @@ class MarketService {
         const {
             actor = null,
             reason = null,
+            bypassUniqueAccountValidation = false,
         } = options || {};
         try {
 
@@ -753,23 +754,25 @@ class MarketService {
     
             let itemName = itemInfo ? itemInfo.name : item.itemid;
 
-            const uniqueAvailability = await checkUniqueAccountItemAvailability({
-                userGameId: userGame.id,
-                itemId: itemUserSeller.itemid,
-                itemName,
-                transaction: t,
-                excludeMarketId: idmarket,
-                includeMarketplace: false,
-                actionLabel: 'devolver',
-            });
+            if (!bypassUniqueAccountValidation) {
+                const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                    userGameId: userGame.id,
+                    itemId: itemUserSeller.itemid,
+                    itemName,
+                    transaction: t,
+                    excludeMarketId: idmarket,
+                    includeMarketplace: false,
+                    actionLabel: 'devolver',
+                });
 
-            if (!uniqueAvailability.allowed) {
-                await t.rollback();
-                return {
-                    success: false,
-                    code: '202',
-                    message: uniqueAvailability.reason,
-                };
+                if (!uniqueAvailability.allowed) {
+                    await t.rollback();
+                    return {
+                        success: false,
+                        code: '202',
+                        message: uniqueAvailability.reason,
+                    };
+                }
             }
     
             // Añadir el item a useriteminfo :)
@@ -1213,6 +1216,7 @@ class MarketService {
                 const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true, {
                     actor: panelUser,
                     reason: `Item retornado por cancelacion de chat #${chat.id}`,
+                    bypassUniqueAccountValidation: true,
                 });
 
                 if (!returned.success) {
@@ -1687,6 +1691,7 @@ class MarketService {
                         const res = await this.returnItem(chat.seller,null,chat.trade_id,3,t,true, {
                             actor: isPanel ? panelUser : effectiveUser,
                             reason: `Item retornado por cancelacion de chat #${chat.id}`,
+                            bypassUniqueAccountValidation: isPanel,
                         });
 
                         if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
