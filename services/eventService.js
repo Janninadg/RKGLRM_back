@@ -36,6 +36,7 @@ import colors from "colors";
 import EventsReview from '../models/eventsReviewModel.js';
 import UserAsset from '../models/userAssetsModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
+import Game4SpendingTracker from '../models/game4SpendingTrackerModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import tempCouponCache from '../modules/coupons/tempCoupon.cache.js';
@@ -214,7 +215,122 @@ const withTestModeParam = (params = {}, isTestMode = false) => (
     : params
 );
 
+const GAME_4_SPEND_CONFIG = {
+  1: {
+    ticketValue: 400,
+    limitParameter: 'game_4_spend_limit_cash',
+    fallbackLimit: 60000,
+  },
+  3: {
+    ticketValue: 50,
+    limitParameter: 'game_4_spend_limit_points',
+    fallbackLimit: 7500,
+  },
+};
+
 class EventService {
+  getGame4SpendConfig(modality) {
+    return GAME_4_SPEND_CONFIG[Number(modality)] || null;
+  }
+
+  async getNumberConfigParameter(name, fallback, transaction) {
+    const parameter = await ConfigParameters.findOne({
+      attributes: ['value'],
+      where: { name },
+      transaction,
+    });
+
+    const value = Number(parameter?.value);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  async getGame4SpendTracker(user, modality, transaction) {
+    const normalizedModality = Number(modality);
+
+    let tracker = await Game4SpendingTracker.findOne({
+      where: {
+        user,
+        modalidad: normalizedModality,
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!tracker) {
+      const now = new Date();
+      tracker = await Game4SpendingTracker.create(
+        {
+          user,
+          modalidad: normalizedModality,
+          spent_amount: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          transaction,
+        }
+      );
+    }
+
+    return tracker;
+  }
+
+  async addGame4Spend(user, modality, transaction) {
+    const spendConfig = this.getGame4SpendConfig(modality);
+
+    if (!spendConfig) {
+      return null;
+    }
+
+    const tracker = await this.getGame4SpendTracker(user, modality, transaction);
+    tracker.spent_amount = Number(tracker.spent_amount || 0) + spendConfig.ticketValue;
+    tracker.updated_at = new Date();
+
+    await tracker.save({ transaction });
+    return tracker;
+  }
+
+  async isGame4SpendGuaranteeActive(user, modality, transaction) {
+    const spendConfig = this.getGame4SpendConfig(modality);
+
+    if (!spendConfig) {
+      return false;
+    }
+
+    const tracker = await this.getGame4SpendTracker(user, modality, transaction);
+    const spendLimit = await this.getNumberConfigParameter(
+      spendConfig.limitParameter,
+      spendConfig.fallbackLimit,
+      transaction
+    );
+
+    return Number(tracker.spent_amount || 0) >= spendLimit;
+  }
+
+  async resetGame4Spend(user, modality, matchId, transaction) {
+    const spendConfig = this.getGame4SpendConfig(modality);
+
+    if (!spendConfig) {
+      return;
+    }
+
+    await this.getGame4SpendTracker(user, modality, transaction);
+
+    const now = new Date();
+    await Game4SpendingTracker.update(
+      {
+        spent_amount: 0,
+        last_win_match_id: matchId,
+        last_win_at: now,
+        updated_at: now,
+      },
+      {
+        where: { user },
+        transaction,
+      }
+    );
+  }
+
   async verifyUserTickets(userId) {
     try {
       const userTicket = await Ticket.findOne({
@@ -577,6 +693,7 @@ class EventService {
                 if (!isTestMode) {
                   picas.amount -= 1;
                   await picas.save({transaction:t});
+                  await this.addGame4Spend(user, modality, t);
                 }
                 // Creo una nueva partida...
 
@@ -677,8 +794,11 @@ class EventService {
               let nuevasCalabazas = [...setcalabazas];
               let nuevosPremios = [...setpremios];
               let nuevosNombres = [...setnombres];
+              const spendGuaranteeActive = !isTestMode
+                ? await this.isGame4SpendGuaranteeActive(user, matchFound.modalidad, t)
+                : false;
 
-              if (Math.random() < probabilidades[Number(matchFound.picked)]){
+              if (spendGuaranteeActive || Math.random() < probabilidades[Number(matchFound.picked)]){
                 const dataPr = await this.getAllPrizes(type,t);
                 const prizesByClass = dataPr.reduce((acc, prize) => {
                   const prizeClass = prize.clase === null ? 0 : Number(prize.clase);
@@ -757,9 +877,13 @@ class EventService {
                 //console.log('CCCC');
 
                 var ix = Number(matchFound.picked)+1;
+                if (!isTestMode && ix === 6) {
+                  await this.resetGame4Spend(user, matchFound.modalidad, matchFound.id, t);
+                }
+
                 console.log('Partida: '.magenta,'Ganó un premio'.green);
                 await t.commit();
-                return {success:true,code:'003',xc:false,_om2:nuevasCalabazas,_om3:nuevosPremios,_om4:nuevosNombres,_om5:ix };
+                return {success:true,code:'003',xc:false,_om2:nuevasCalabazas,_om3:nuevosPremios,_om4:nuevosNombres,_om5:ix,_guarantee: spendGuaranteeActive || undefined };
 
               } else {
 
