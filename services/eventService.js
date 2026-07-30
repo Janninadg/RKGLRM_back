@@ -35,6 +35,7 @@ import EventPoint from '../models/eventPointsModel.js';
 import colors from "colors";
 import EventsReview from '../models/eventsReviewModel.js';
 import UserAsset from '../models/userAssetsModel.js';
+import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import Game4SpendingTracker from '../models/game4SpendingTrackerModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
@@ -217,14 +218,16 @@ const withTestModeParam = (params = {}, isTestMode = false) => (
 
 const GAME_4_SPEND_CONFIG = {
   1: {
-    ticketValue: 400,
+    asset: 3,
     limitParameter: 'game_4_spend_limit_cash',
     fallbackLimit: 60000,
+    fallbackTicketValue: 400,
   },
   3: {
-    ticketValue: 50,
+    asset: 5,
     limitParameter: 'game_4_spend_limit_points',
     fallbackLimit: 7500,
+    fallbackTicketValue: 50,
   },
 };
 
@@ -242,6 +245,23 @@ class EventService {
 
     const value = Number(parameter?.value);
     return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  async getGame4TicketPrice(modality, transaction) {
+    const spendConfig = this.getGame4SpendConfig(modality);
+
+    if (!spendConfig) {
+      return null;
+    }
+
+    const assetPrice = await AssetPrice.findOne({
+      attributes: ['price'],
+      where: { asset: spendConfig.asset },
+      transaction,
+    });
+
+    const price = Number(assetPrice?.price);
+    return Number.isFinite(price) && price > 0 ? price : spendConfig.fallbackTicketValue;
   }
 
   async getGame4SpendTracker(user, modality, transaction) {
@@ -283,7 +303,8 @@ class EventService {
     }
 
     const tracker = await this.getGame4SpendTracker(user, modality, transaction);
-    tracker.spent_amount = Number(tracker.spent_amount || 0) + spendConfig.ticketValue;
+    const ticketPrice = await this.getGame4TicketPrice(modality, transaction);
+    tracker.spent_amount = Number(tracker.spent_amount || 0) + Number(ticketPrice || 0);
     tracker.updated_at = new Date();
 
     await tracker.save({ transaction });
