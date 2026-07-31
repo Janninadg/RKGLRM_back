@@ -985,8 +985,9 @@ class GamesService {
      * @param {Transaction} t - Transacción de Sequelize.
      * @returns {Promise<Object>} Resultado de la operación con éxito o fallo.
      */
-    async saveItem(userId, prize, t, prizeParams = null) {
+    async saveItem(userId, prize, t, prizeParams = null, options = {}) {
         try {
+            const bypassUniqueAccountValidation = Boolean(options.bypassUniqueAccountValidation);
             const userGameInfo = await UserGameInfo.findOne({
             attributes: ['id', 'bag'],
             where: {
@@ -1004,20 +1005,22 @@ class GamesService {
             };
             }
 
-            const uniqueAvailability = await checkUniqueAccountItemAvailability({
-                userGameId: userGameInfo.id,
-                itemId: prize.prize,
-                itemName: prize.name || `Item ${prize.prize}`,
-                transaction: t,
-            });
+            if (!bypassUniqueAccountValidation) {
+                const uniqueAvailability = await checkUniqueAccountItemAvailability({
+                    userGameId: userGameInfo.id,
+                    itemId: prize.prize,
+                    itemName: prize.name || `Item ${prize.prize}`,
+                    transaction: t,
+                });
 
-            if (!uniqueAvailability.allowed) {
-            await t.rollback();
-            return {
-                success: false,
-                code: '400',
-                message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
-            };
+                if (!uniqueAvailability.allowed) {
+                await t.rollback();
+                return {
+                    success: false,
+                    code: '400',
+                    message: GENERIC_UNIQUE_GAME_PRIZE_MESSAGE
+                };
+                }
             }
 
             /*
@@ -2125,7 +2128,9 @@ class GamesService {
 
             switch (typePrize) {
                 case 0:
-                    response = await this.saveItem(userId, prize, t, prizeParams);
+                    response = await this.saveItem(userId, prize, t, prizeParams, {
+                        bypassUniqueAccountValidation: Number(game) === 4,
+                    });
                     break;
                 case 1:
                     response = await this.saveOro(userId,prize,t);

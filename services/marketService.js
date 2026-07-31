@@ -29,7 +29,6 @@ import TradeMessage from '../models/Trades/tradeMessagesModel.js';
 import { enviarMensajeAUsuario } from '../socket/chatSocketServer.mjs';
 import TradeActions from '../models/Trades/tradeActionsModel.js';
 import TradeRatings from '../models/Trades/tradeRatingsModel.js';
-import PendingPresents from '../models/pendingPresentsModel.js';
 import MarketBanned from '../models/MarketBannedModel.js';
 import UsersPanel from '../models/usersPanelModel.js';
 import LogPanelGM from '../models/logPanelGMModel.js';
@@ -37,10 +36,6 @@ import ItemLoan from '../models/itemLoanModel.js';
 import { generateUniqueItemCode } from '../utils/itemLoanUtils.js';
 import ItemTraceLog from '../models/itemTraceLogModel.js';
 import { ITEM_TRACE_ACTIONS, ITEM_TRACE_ORIGINS } from '../utils/itemTraceConstants.js';
-import {
-    UNIQUE_ACCOUNT_ITEM_IDS,
-    checkUniqueAccountItemAvailability,
-} from '../utils/uniqueAccountItems.js';
 
 class MarketService {
     normalizeWhatsappPhone(phone = '') {
@@ -491,20 +486,6 @@ class MarketService {
                 lock: t.LOCK.UPDATE,
             });
             const marketLimitTime = await this.resolveMarketItemLimitTime(itemUserSeller);
-            const uniqueAvailability = await checkUniqueAccountItemAvailability({
-                userGameId: userGame.id,
-                itemId: itemUserSeller.itemid,
-                itemName: `Item ${itemUserSeller.itemid}`,
-                transaction: t,
-            });
-
-            if (!uniqueAvailability.allowed) {
-                return await rollbackOwn({
-                    success: false,
-                    code: '202',
-                    message: uniqueAvailability.reason,
-                });
-            }
 
             // Añadir el item a useriteminfo :)
             const newItem = await UserItemInfo.create({
@@ -587,7 +568,6 @@ class MarketService {
         const {
             actor = null,
             reason = null,
-            bypassUniqueAccountValidation = false,
         } = options || {};
         try {
 
@@ -747,33 +727,6 @@ class MarketService {
             const shouldTraceMarketplaceReturn = Boolean(returnedUniqueItemCode) && (codeFromUserItemInfo || !generatedOnPublish);
 
             // Obtener nombre del item desde ItemInfo
-            const itemInfo = await ItemInfo.findOne({
-                where: { id: itemUserSeller.itemid },
-                transaction: t,
-            });
-    
-            let itemName = itemInfo ? itemInfo.name : item.itemid;
-
-            if (!bypassUniqueAccountValidation) {
-                const uniqueAvailability = await checkUniqueAccountItemAvailability({
-                    userGameId: userGame.id,
-                    itemId: itemUserSeller.itemid,
-                    itemName,
-                    transaction: t,
-                    excludeMarketId: idmarket,
-                    includeMarketplace: false,
-                    actionLabel: 'devolver',
-                });
-
-                if (!uniqueAvailability.allowed) {
-                    await t.rollback();
-                    return {
-                        success: false,
-                        code: '202',
-                        message: uniqueAvailability.reason,
-                    };
-                }
-            }
     
             // Añadir el item a useriteminfo :)
             const newItem = await UserItemInfo.create({
@@ -1216,7 +1169,6 @@ class MarketService {
                 const returned = await this.returnItem(chat.seller, null, chat.trade_id, 3, t, true, {
                     actor: panelUser,
                     reason: `Item retornado por cancelacion de chat #${chat.id}`,
-                    bypassUniqueAccountValidation: true,
                 });
 
                 if (!returned.success) {
@@ -1691,7 +1643,6 @@ class MarketService {
                         const res = await this.returnItem(chat.seller,null,chat.trade_id,3,t,true, {
                             actor: isPanel ? panelUser : effectiveUser,
                             reason: `Item retornado por cancelacion de chat #${chat.id}`,
-                            bypassUniqueAccountValidation: isPanel,
                         });
 
                         if(res.success){ // Luego sera si se pudo liberar el item (espacio en el inventario del usuario mas que nada)
@@ -2072,48 +2023,13 @@ class MarketService {
 
     const marketItemId = Number(tempitem.itemid);
 
-    // Solo validar items limitados a uno por cuenta.
-    if (UNIQUE_ACCOUNT_ITEM_IDS.includes(marketItemId)) {
+    // Marketplace permite comercializar items 8004/8009 aunque el usuario ya tenga otros.
+    /*
 
         // 1️⃣ Obtener id real del usuario desde usergameinfo
-        const userInfo = await UserGameInfo.findOne({
-            where: { name: user },
-            transaction: t
-        });
-
-        const userId = userInfo?.id;
-
-        if (!userId) {
-            return { success: false, code: '200', message: 'Usuario no encontrado' };
-        }
-
         // 2️⃣ Verificar si ya tiene el item en pendingpresents
-        const hasPendingUniqueItem = await PendingPresents.findOne({
-            where: {
-            user_id: userId,
-            present_id: marketItemId
-            },
-            transaction: t
-        });
-
         // 3️⃣ Verificar si ya tiene el item en inventario
-        const hasUniqueItem = await UserItemInfo.findOne({
-            where: {
-            userid: userId,
-            itemid: marketItemId
-            },
-            transaction: t
-        });
-
-        if (hasPendingUniqueItem || hasUniqueItem) {
-             await t.rollback();
-            return {
-            success: false,
-            code: '200',
-            message: 'Ya tienes este item en tu inventario o en regalos. Solo se puede tener uno por cuenta.'
-            };
-        }
-    }
+    */
 
     // Paso 1: Obtener todos los personajes del usuario
    
@@ -2132,36 +2048,6 @@ class MarketService {
             success: false,
             code: '200',
             message: 'ID de Usuario no encontrado',
-        };
-    }
-
-    const marketItemInfo = await ItemInfo.findOne({
-        attributes: ['name'],
-        where: {
-            id: marketItemId,
-        },
-        transaction: t,
-    });
-    const marketItemName = marketItemInfo?.name || `Item ${marketItemId}`;
-
-    const marketUniqueAvailability = await checkUniqueAccountItemAvailability({
-        userGameId: userGame.id,
-        itemId: marketItemId,
-        itemName: marketItemName,
-        transaction: t,
-        actionLabel: 'iniciar un chat para comprar',
-    });
-
-    if (!marketUniqueAvailability.allowed) {
-        await t.rollback();
-        const message = marketUniqueAvailability.source === 'marketplace'
-            ? `No puedes iniciar un chat para comprar ${marketItemName} porque ya tienes uno retenido en un chat activo o publicado en marketplace.`
-            : marketUniqueAvailability.reason;
-
-        return {
-            success: false,
-            code: '200',
-            message,
         };
     }
 
