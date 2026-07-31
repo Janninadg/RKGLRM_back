@@ -38,6 +38,8 @@ import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import Game4SpendingTracker from '../models/game4SpendingTrackerModel.js';
+import Game4SpecialPrizeUser from '../models/game4SpecialPrizeUserModel.js';
+import Game4SpecialPrizeWin from '../models/game4SpecialPrizeWinModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
 import tempCouponCache from '../modules/coupons/tempCoupon.cache.js';
@@ -231,6 +233,9 @@ const GAME_4_SPEND_CONFIG = {
   },
 };
 
+const GAME_4_SPECIAL_PRIZE_CONFIG_NAME = 'game_4_special_box6_prize_ids';
+const GAME_4_LAST_BOX_CLASS = 5;
+
 class EventService {
   getGame4SpendConfig(modality) {
     return GAME_4_SPEND_CONFIG[Number(modality)] || null;
@@ -350,6 +355,164 @@ class EventService {
         transaction,
       }
     );
+  }
+
+  async getGame4SpecialPrizeIds(transaction) {
+    const config = await ConfigParameters.findOne({
+      attributes: ['value'],
+      where: { name: GAME_4_SPECIAL_PRIZE_CONFIG_NAME },
+      transaction,
+    });
+
+    const rawValue = String(config?.value || '').trim();
+
+    if (!rawValue) {
+      return [];
+    }
+
+    let parsedValue = [];
+
+    try {
+      parsedValue = rawValue.startsWith('[')
+        ? JSON.parse(rawValue)
+        : rawValue.split(',');
+    } catch (_) {
+      parsedValue = [];
+    }
+
+    return [...new Set(
+      parsedValue
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    )];
+  }
+
+  async getGame4BeneficiaryPrize(user, currentPrizes, specialPrizeIds, transaction) {
+    if (!specialPrizeIds.length || !Array.isArray(currentPrizes) || !currentPrizes.length) {
+      return null;
+    }
+
+    const beneficiary = await Game4SpecialPrizeUser.findOne({
+      attributes: ['id'],
+      where: {
+        user,
+        active: 1,
+      },
+      transaction,
+    });
+
+    if (!beneficiary) {
+      return null;
+    }
+
+    const prizeMap = currentPrizes.reduce((acc, prize) => {
+      acc.set(Number(prize.id), prize);
+      return acc;
+    }, new Map());
+
+    const candidatePrizeIds = specialPrizeIds.filter((prizeId) => prizeMap.has(prizeId));
+
+    if (!candidatePrizeIds.length) {
+      return null;
+    }
+
+    const winRows = await Game4SpecialPrizeWin.findAll({
+      attributes: ['prizegame_id', 'wins'],
+      where: {
+        user,
+        prizegame_id: {
+          [Op.in]: candidatePrizeIds,
+        },
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    const winsByPrize = winRows.reduce((acc, row) => {
+      acc.set(Number(row.prizegame_id), Number(row.wins || 0));
+      return acc;
+    }, new Map());
+
+    const pendingPrizeIds = candidatePrizeIds.filter((prizeId) => Number(winsByPrize.get(prizeId) || 0) === 0);
+
+    if (!pendingPrizeIds.length) {
+      return null;
+    }
+
+    const hasAnyConfiguredWin = candidatePrizeIds.some((prizeId) => Number(winsByPrize.get(prizeId) || 0) > 0);
+
+    if (!hasAnyConfiguredWin) {
+      const previousBox6Wins = await Matches.count({
+        where: {
+          user,
+          game: 4,
+          picked: '6',
+        },
+        transaction,
+      });
+
+      if (Number(previousBox6Wins || 0) > 0) {
+        const randomIndex = Math.floor(Math.random() * pendingPrizeIds.length);
+        return prizeMap.get(pendingPrizeIds[randomIndex]);
+      }
+
+      return null;
+    }
+
+    return prizeMap.get(pendingPrizeIds[0]);
+  }
+
+  async registerGame4SpecialPrizeWin(user, prizeGameId, matchId, specialPrizeIds, transaction) {
+    const normalizedPrizeGameId = Number(prizeGameId);
+
+    if (!specialPrizeIds.includes(normalizedPrizeGameId)) {
+      return;
+    }
+
+    const beneficiary = await Game4SpecialPrizeUser.findOne({
+      attributes: ['id'],
+      where: {
+        user,
+        active: 1,
+      },
+      transaction,
+    });
+
+    if (!beneficiary) {
+      return;
+    }
+
+    const now = new Date();
+    let winRow = await Game4SpecialPrizeWin.findOne({
+      where: {
+        user,
+        prizegame_id: normalizedPrizeGameId,
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!winRow) {
+      await Game4SpecialPrizeWin.create(
+        {
+          user,
+          prizegame_id: normalizedPrizeGameId,
+          wins: 1,
+          last_match_id: matchId,
+          last_won_at: now,
+          created_at: now,
+          updated_at: now,
+        },
+        { transaction }
+      );
+      return;
+    }
+
+    winRow.wins = Number(winRow.wins || 0) + 1;
+    winRow.last_match_id = matchId;
+    winRow.last_won_at = now;
+    winRow.updated_at = now;
+    await winRow.save({ transaction });
   }
 
   async verifyUserTickets(userId) {
@@ -853,25 +1016,39 @@ class EventService {
                   presionada: true,
                 };
 
-                const randomProb = Math.random();
-                var premioIndex;
-                let cumulativeProb = 0;
+                const specialPrizeIds = !isTestMode && type === 4 && currentClass === GAME_4_LAST_BOX_CLASS
+                  ? await this.getGame4SpecialPrizeIds(t)
+                  : [];
 
-                //console.log(prizes);
+                let selectedPrize = await this.getGame4BeneficiaryPrize(
+                  user,
+                  currentPrizes,
+                  specialPrizeIds,
+                  t
+                );
 
-                for (let i = 0; i < currentPrizes.length; i++) {
-                  cumulativeProb += currentPrizes[i].prob;
-                  if (randomProb <= cumulativeProb) {
-                    premioIndex = i;
-                    break;
+                if (!selectedPrize) {
+                  const randomProb = Math.random();
+                  var premioIndex;
+                  let cumulativeProb = 0;
+
+                  //console.log(prizes);
+
+                  for (let i = 0; i < currentPrizes.length; i++) {
+                    cumulativeProb += currentPrizes[i].prob;
+                    if (randomProb <= cumulativeProb) {
+                      premioIndex = i;
+                      break;
+                    }
                   }
+
+                  if (premioIndex === undefined) {
+                    premioIndex = currentPrizes.length - 1;
+                  }
+
+                  selectedPrize = currentPrizes[premioIndex];
                 }
 
-                if (premioIndex === undefined) {
-                  premioIndex = currentPrizes.length - 1;
-                }
-
-                const selectedPrize = currentPrizes[premioIndex];
                 const premio = selectedPrize.name;
                 const id = selectedPrize.id;
                 const premioUrl = selectedPrize.url;
@@ -883,6 +1060,10 @@ class EventService {
                 nuevasCalabazas[index].prizeGameId = id;
                 nuevasCalabazas[index].orderPrize = selectedPrize.orderPrize;
                 nuevasCalabazas[index].clase = selectedPrize.clase;
+
+                if (specialPrizeIds.length) {
+                  await this.registerGame4SpecialPrizeWin(user, id, matchFound.id, specialPrizeIds, t);
+                }
 
                 //console.log('BBB');
                 await Matches.update(
