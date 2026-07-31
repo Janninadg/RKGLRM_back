@@ -405,10 +405,38 @@ class EventService {
       return null;
     }
 
-    const prizeMap = currentPrizes.reduce((acc, prize) => {
-      acc.set(Number(prize.id), prize);
+    const specialPrizes = await PrizesGame.findAll({
+      attributes: ['id', 'orderPrize', 'clase', 'name', 'url', 'probability'],
+      where: {
+        id: {
+          [Op.in]: specialPrizeIds,
+        },
+        type_game: 4,
+        clase: GAME_4_LAST_BOX_CLASS,
+      },
+      raw: true,
+      transaction,
+    });
+
+    const prizeMap = specialPrizes.reduce((acc, prize) => {
+      acc.set(Number(prize.id), {
+        id: prize.id,
+        orderPrize: prize.orderPrize,
+        clase: prize.clase === null ? GAME_4_LAST_BOX_CLASS : Number(prize.clase),
+        name: prize.name,
+        url: prize.url,
+        prob: Number(prize.probability || 0),
+      });
       return acc;
     }, new Map());
+
+    for (const prize of currentPrizes) {
+      const prizeId = Number(prize.id);
+
+      if (specialPrizeIds.includes(prizeId) && !prizeMap.has(prizeId)) {
+        prizeMap.set(prizeId, prize);
+      }
+    }
 
     const candidatePrizeIds = specialPrizeIds.filter((prizeId) => prizeMap.has(prizeId));
 
