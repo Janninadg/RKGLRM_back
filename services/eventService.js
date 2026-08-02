@@ -38,7 +38,6 @@ import UserAsset from '../models/userAssetsModel.js';
 import AssetPrice from '../models/assetsPriceModel.js';
 import ConfigParameters from '../models/configParametersModel.js';
 import Game4SpendingTracker from '../models/game4SpendingTrackerModel.js';
-import Game4SpecialPrizeUser from '../models/game4SpecialPrizeUserModel.js';
 import Game4SpecialPrizeWin from '../models/game4SpecialPrizeWinModel.js';
 import ValentinCards from '../models/Events/valentinCardsModel.js';
 import couponCache from '../modules/coupons/coupon.cache.js';
@@ -50,6 +49,8 @@ import publicDataCache, {
 } from '../modules/public/publicData.cache.js';
 import prizeGameCache from '../modules/events/prizeGame.cache.js';
 import eventTestUserCache from '../modules/events/eventTestUser.cache.js';
+import configParameterCache from '../modules/events/configParameter.cache.js';
+import game4SpecialPrizeUserCache from '../modules/events/game4SpecialPrizeUser.cache.js';
 import { checkUniqueAccountItemAvailability } from '../utils/uniqueAccountItems.js';
 
 const getDatabaseErrorCode = (error) => (
@@ -235,6 +236,8 @@ const GAME_4_SPEND_CONFIG = {
 
 const GAME_4_SPECIAL_PRIZE_CONFIG_NAME = 'game_4_special_box6_prize_ids';
 const GAME_4_LAST_BOX_CLASS = 5;
+const GAME_4_TICKET_PRICE_CACHE_TTL_MS = 5 * 60 * 1000;
+const game4TicketPriceCache = new Map();
 
 class EventService {
   getGame4SpendConfig(modality) {
@@ -242,14 +245,26 @@ class EventService {
   }
 
   async getNumberConfigParameter(name, fallback, transaction) {
-    const parameter = await ConfigParameters.findOne({
-      attributes: ['value'],
-      where: { name },
-      transaction,
-    });
+    await configParameterCache.ensureLoaded();
 
-    const value = Number(parameter?.value);
+    const value = Number(configParameterCache.getValue(name, fallback));
     return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  async getJsonConfigParameter(name, fallback = []) {
+    await configParameterCache.ensureLoaded();
+
+    const rawValue = configParameterCache.getValue(name, null);
+
+    if (rawValue === null || rawValue === undefined || rawValue === '') {
+      return fallback;
+    }
+
+    try {
+      return JSON.parse(rawValue);
+    } catch (_) {
+      return fallback;
+    }
   }
 
   async getGame4TicketPrice(modality, transaction) {
@@ -259,14 +274,27 @@ class EventService {
       return null;
     }
 
+    const cacheKey = String(spendConfig.asset);
+    const cachedPrice = game4TicketPriceCache.get(cacheKey);
+
+    if (cachedPrice && cachedPrice.expiresAt > Date.now()) {
+      return cachedPrice.price;
+    }
+
     const assetPrice = await AssetPrice.findOne({
       attributes: ['price'],
       where: { asset: spendConfig.asset },
-      transaction,
     });
 
     const price = Number(assetPrice?.price);
-    return Number.isFinite(price) && price > 0 ? price : spendConfig.fallbackTicketValue;
+    const resolvedPrice = Number.isFinite(price) && price > 0 ? price : spendConfig.fallbackTicketValue;
+
+    game4TicketPriceCache.set(cacheKey, {
+      price: resolvedPrice,
+      expiresAt: Date.now() + GAME_4_TICKET_PRICE_CACHE_TTL_MS,
+    });
+
+    return resolvedPrice;
   }
 
   async getGame4SpendTracker(user, modality, transaction) {
@@ -300,6 +328,21 @@ class EventService {
     return tracker;
   }
 
+  async getGame4SpentAmount(user, modality, transaction) {
+    const normalizedModality = Number(modality);
+
+    const tracker = await Game4SpendingTracker.findOne({
+      attributes: ['spent_amount'],
+      where: {
+        user,
+        modalidad: normalizedModality,
+      },
+      transaction,
+    });
+
+    return Number(tracker?.spent_amount || 0);
+  }
+
   async addGame4Spend(user, modality, transaction) {
     const spendConfig = this.getGame4SpendConfig(modality);
 
@@ -323,14 +366,14 @@ class EventService {
       return false;
     }
 
-    const tracker = await this.getGame4SpendTracker(user, modality, transaction);
+    const spentAmount = await this.getGame4SpentAmount(user, modality, transaction);
     const spendLimit = await this.getNumberConfigParameter(
       spendConfig.limitParameter,
       spendConfig.fallbackLimit,
       transaction
     );
 
-    return Number(tracker.spent_amount || 0) >= spendLimit;
+    return spentAmount >= spendLimit;
   }
 
   async resetGame4Spend(user, modality, matchId, transaction) {
@@ -358,13 +401,9 @@ class EventService {
   }
 
   async getGame4SpecialPrizeIds(transaction) {
-    const config = await ConfigParameters.findOne({
-      attributes: ['value'],
-      where: { name: GAME_4_SPECIAL_PRIZE_CONFIG_NAME },
-      transaction,
-    });
+    await configParameterCache.ensureLoaded();
 
-    const rawValue = String(config?.value || '').trim();
+    const rawValue = String(configParameterCache.getValue(GAME_4_SPECIAL_PRIZE_CONFIG_NAME, '') || '').trim();
 
     if (!rawValue) {
       return [];
@@ -392,43 +431,28 @@ class EventService {
       return null;
     }
 
-    const beneficiary = await Game4SpecialPrizeUser.findOne({
-      attributes: ['id'],
-      where: {
-        user,
-        active: 1,
-      },
-      transaction,
-    });
-
-    if (!beneficiary) {
+    if (!await game4SpecialPrizeUserCache.has(user)) {
       return null;
     }
 
-    const specialPrizes = await PrizesGame.findAll({
-      attributes: ['id', 'orderPrize', 'clase', 'name', 'url', 'probability'],
-      where: {
-        id: {
-          [Op.in]: specialPrizeIds,
-        },
-        type_game: 4,
-        clase: GAME_4_LAST_BOX_CLASS,
-      },
-      raw: true,
-      transaction,
-    });
+    await prizeGameCache.ensureLoaded();
 
-    const prizeMap = specialPrizes.reduce((acc, prize) => {
-      acc.set(Number(prize.id), {
-        id: prize.id,
-        orderPrize: prize.orderPrize,
-        clase: prize.clase === null ? GAME_4_LAST_BOX_CLASS : Number(prize.clase),
-        name: prize.name,
-        url: prize.url,
-        prob: Number(prize.probability || 0),
-      });
-      return acc;
-    }, new Map());
+    const prizeMap = new Map();
+
+    for (const prizeId of specialPrizeIds) {
+      const prize = prizeGameCache.getById(prizeId);
+
+      if (prize && Number(prize.type_game) === 4 && Number(prize.clase) === GAME_4_LAST_BOX_CLASS) {
+        prizeMap.set(Number(prize.id), {
+          id: prize.id,
+          orderPrize: prize.orderPrize,
+          clase: prize.clase === null ? GAME_4_LAST_BOX_CLASS : Number(prize.clase),
+          name: prize.name,
+          url: prize.url,
+          prob: Number(prize.probability || 0),
+        });
+      }
+    }
 
     for (const prize of currentPrizes) {
       const prizeId = Number(prize.id);
@@ -497,16 +521,7 @@ class EventService {
       return;
     }
 
-    const beneficiary = await Game4SpecialPrizeUser.findOne({
-      attributes: ['id'],
-      where: {
-        user,
-        active: 1,
-      },
-      transaction,
-    });
-
-    if (!beneficiary) {
+    if (!await game4SpecialPrizeUserCache.has(user)) {
       return;
     }
 
@@ -956,28 +971,11 @@ class EventService {
               //console.log(numGames.length);
               //console.log(numWins.length);
 
-              const probabilidades = [];
-
-              
-              const probs = await ConfigParameters.findOne({
-                  where: { name: matchFound.modalidad == 1 ? 'game_4_probs' : 'game_4_probs_2'},
-                  transaction:t,
-              });
-
-              if (probs && typeof probs.value === 'string') {
-                try {
-                  // Parseamos la cadena de texto como JSON
-                  const parsed = JSON.parse(probs.value);
-                  
-                  if (Array.isArray(parsed)) {
-                    probabilidades.push(...parsed);
-                  } else {
-                    console.error('El valor no es un array:', parsed);
-                  }
-                } catch (err) {
-                  console.error('Error al parsear los datos de game_4_probs:', err.message);
-                }
-              }
+              const probs = await this.getJsonConfigParameter(
+                matchFound.modalidad == 1 ? 'game_4_probs' : 'game_4_probs_2',
+                []
+              );
+              const probabilidades = Array.isArray(probs) ? probs : [];
                 // probabilidades.push(1, 1, 1, 1,1,1);
               // } else{
                 // probabilidades.push(1, 0.98, 0.80, 0.60,0.40,0.15);
@@ -2935,13 +2933,11 @@ class EventService {
 
   async getAllPrizesGames(type) {
     try {
-      const roulettePrizes = await PrizesGame.findAll({
-        attributes: ['id','orderPrize','name','url','clase','limite','users','mode'],
-        where: {
-          type_game: type,
-        },
-        order: [['id','ASC'],['orderPrize', 'ASC']],
-      });
+      await prizeGameCache.ensureLoaded();
+
+      const roulettePrizes = prizeGameCache
+        .getByGame(type)
+        .sort((a, b) => Number(a.id) - Number(b.id) || Number(a.orderPrize) - Number(b.orderPrize));
   
       // Función para calcular el nombre con el rango y tipo
       const calculateRandomName = (name, type) => {
@@ -2955,11 +2951,11 @@ class EventService {
         if (prize.type === 8 || prize.type === 9) {
           const adjustedName = calculateRandomName(prize.name, prize.type);
           return {
-            ...prize.toJSON(),
+            ...prize,
             name: adjustedName,
           };
         }
-        return prize.toJSON();
+        return prize;
       });
   
       return adjustedPrizes;
@@ -2970,14 +2966,11 @@ class EventService {
 
   async getAllPrizes(type,t) {
     try {
-      const roulettePrizes = await PrizesGame.findAll({
-        //attributes: ['name','url'],
-        where: {
-          type_game: type,
-        },
-        order: [['orderPrize', 'ASC'], ['id', 'ASC']],
-        transaction: t,
-      });
+      await prizeGameCache.ensureLoaded();
+
+      const roulettePrizes = prizeGameCache
+        .getByGame(type)
+        .sort((a, b) => Number(a.orderPrize) - Number(b.orderPrize) || Number(a.id) - Number(b.id));
   
       // Función para calcular el nombre con el rango y tipo
       const calculateRandomName = (name, type) => {
@@ -2991,11 +2984,11 @@ class EventService {
         if (prize.type === 8 || prize.type === 9) {
           const adjustedName = calculateRandomName(prize.name, prize.type);
           return {
-            ...prize.toJSON(),
+            ...prize,
             name: adjustedName,
           };
         }
-        return prize.toJSON();
+        return prize;
       });
   
       return adjustedPrizes;

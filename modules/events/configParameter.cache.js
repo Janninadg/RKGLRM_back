@@ -1,5 +1,7 @@
 import ConfigParameters from '../../models/configParametersModel.js';
 
+const CONFIG_PARAMETER_CACHE_TTL_MS = 5 * 60 * 1000;
+
 class ConfigParameterCache {
   constructor() {
     this.parameters = new Map(); // name -> parameter
@@ -21,6 +23,12 @@ class ConfigParameterCache {
       tipo: Number(plain.tipo ?? 0),
       clase: Number(plain.clase ?? 2),
     };
+  }
+
+  isFresh() {
+    return this.loaded &&
+      this.loadedAt &&
+      Date.now() - this.loadedAt.getTime() < CONFIG_PARAMETER_CACHE_TTL_MS;
   }
 
   clone(parameter) {
@@ -57,7 +65,7 @@ class ConfigParameterCache {
   }
 
   async ensureLoaded() {
-    if (this.loaded) {
+    if (this.isFresh()) {
       return;
     }
 

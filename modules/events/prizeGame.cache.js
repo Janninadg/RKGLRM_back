@@ -6,6 +6,7 @@ class PrizeGameCache {
     this.prizesByGame = new Map(); // type_game -> prizes[]
     this.loaded = false;
     this.loadedAt = null;
+    this.loadingPromise = null;
   }
 
   normalize(prize) {
@@ -52,25 +53,45 @@ class PrizeGameCache {
   }
 
   async loadFromDatabase() {
-    const rows = await PrizesGame.findAll({
-      raw: true,
-      order: [
-        ['type_game', 'ASC'],
-        ['clase', 'ASC'],
-        ['orderPrize', 'ASC'],
-      ],
-    });
-
-    this.prizesById.clear();
-    this.prizesByGame.clear();
-
-    for (const row of rows) {
-      this.addOrUpdate(row);
+    if (this.loadingPromise) {
+      return this.loadingPromise;
     }
 
-    this.loaded = true;
-    this.loadedAt = new Date();
-    console.log(`[PrizeGameCache] ${this.prizesById.size} premios cargados en memoria`);
+    this.loadingPromise = (async () => {
+      const rows = await PrizesGame.findAll({
+        raw: true,
+        order: [
+          ['type_game', 'ASC'],
+          ['clase', 'ASC'],
+          ['orderPrize', 'ASC'],
+        ],
+      });
+
+      this.prizesById.clear();
+      this.prizesByGame.clear();
+
+      for (const row of rows) {
+        this.addOrUpdate(row);
+      }
+
+      this.loaded = true;
+      this.loadedAt = new Date();
+      console.log(`[PrizeGameCache] ${this.prizesById.size} premios cargados en memoria`);
+    })();
+
+    try {
+      await this.loadingPromise;
+    } finally {
+      this.loadingPromise = null;
+    }
+  }
+
+  async ensureLoaded() {
+    if (this.loaded) {
+      return;
+    }
+
+    await this.loadFromDatabase();
   }
 
   addOrUpdate(prize) {
